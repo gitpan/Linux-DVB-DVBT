@@ -1,0 +1,26 @@
+/*
+ * DVB debug utils
+ */
+
+#ifndef DVB_DEBUG
+#define DVB_DEBUG
+
+#include "dvb_struct.h"
+
+extern int dvb_debug;
+
+/*------------------------------------------------------------------*/
+void dump_fe_info(struct dvb_state *h);
+void _fn_start(char *name) ;
+void _fn_end(char *name, int rc) ;
+void _indent(int level) ;
+void _prt_indent(char *name) ;
+
+void _dump_frontend_info(int indent, struct dvb_frontend_info *info) ;
+void _dump_frontend_params(int indent, struct dvb_frontend_parameters *p) ;
+void _dump_demux_filter(int indent, struct demux_filter *f) ;
+void _dump_state(char *name, char *msg, struct dvb_state *h) ;
+
+/*------------------------------------------------------------------*/
+
+#endif
