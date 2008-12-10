@@ -409,7 +409,7 @@ dvb_scan(DVB *dvb, int verbose)
  # /*---------------------------------------------------------------------------------------------------*/
  # /* Scan all streams to gather all EPG information */
 SV *
-dvb_epg(DVB *dvb, int verbose, int alive)
+dvb_epg(DVB *dvb, int verbose, int alive, int section)
 
  INIT:
    AV * results;
@@ -435,13 +435,22 @@ dvb_epg(DVB *dvb, int verbose, int alive)
 	   //
 	   // 0x50 - 0x6f => 01010000 - 01101111
 	*/
-    get_eit(/* struct dvb_state *dvb */ dvb,
-   		/* int section */0x50, /* int mask */0xf0,
-   		/* int verbose */ verbose, /* int alive */ alive) ;
+	if (section)
+	{
+		epg_list = get_eit(/* struct dvb_state *dvb */ dvb,
+	   		/* int section */section, /* int mask */0xff,
+	   		/* int verbose */ verbose, /* int alive */ alive) ;
+	}
+	else
+	{
+		get_eit(/* struct dvb_state *dvb */ dvb,
+			/* int section */0x50, /* int mask */0xf0,
+			/* int verbose */ verbose, /* int alive */ alive) ;
 
-    epg_list = get_eit(/* struct dvb_state *dvb */ dvb,
-   		/* int section */0x60, /* int mask */0xf0,
-   		/* int verbose */ verbose, /* int alive */ alive) ;
+		epg_list = get_eit(/* struct dvb_state *dvb */ dvb,
+			/* int section */0x60, /* int mask */0xf0,
+			/* int verbose */ verbose, /* int alive */ alive) ;
+	}
 
     if (epg_list)
     {

@@ -1,5 +1,6 @@
 CFLAGS   := -g
 CFLAGS   += -O0
+CFLAGS   += -fPIC
 CFLAGS   += -I../libng
 
 OBJS-libdvb_lib := \

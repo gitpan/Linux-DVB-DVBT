@@ -107,7 +107,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -333,6 +333,19 @@ sub _init
 	# Set fields from parameters
 	$self->set(%args) ;
 }
+
+#-----------------------------------------------------------------------------
+# Object destruction
+sub DESTROY
+{
+	my $self = shift ;
+
+	if (ref($self->dvb()))
+	{
+		dvb_fini($self->dvb) ;
+	}
+}
+
 
 #-----------------------------------------------------------------------------
 
@@ -770,6 +783,9 @@ The dates HASH is created so that an existing EPG database can be updated by rem
 sub epg
 {
 	my $self = shift ;
+	my ($section) = @_ ;		# debug only!
+	
+	$section ||= 0 ;
 
 	my %epg ;
 	my %dates ;
@@ -818,7 +834,7 @@ sub epg
 	}	
 
 	# Gather EPG information into a list of HASH refs
-	my $epg_data = dvb_epg($self->{dvb}, $VERBOSE, $DEBUG) ;
+	my $epg_data = dvb_epg($self->{dvb}, $VERBOSE, $DEBUG, $section) ;
 prt_data("EPG data=", $epg_data) if $DEBUG ;
 	
 	# Analyse EPG info
