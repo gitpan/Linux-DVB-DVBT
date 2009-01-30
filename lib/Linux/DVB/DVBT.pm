@@ -58,6 +58,8 @@ files for all users. For example:
 
    $ dvbt-scan /usr/share/dvb/dvb-t/uk-Oxford
 
+NOTE: Frequency files are provided by the 'dvb' rpm package available for most distros
+
 =item dvbt-epg
 
 When run, this grabs the latest EPG information and updates a MySql database:
@@ -68,7 +70,7 @@ When run, this grabs the latest EPG information and updates a MySql database:
 
 Specify the channel, the duration, and the output filename to record a channel:
 
-   $ dvbt-record "bbc1" 1:00 spooks.ts
+   $ dvbt-record "bbc1" spooks.ts 1:00 
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 
@@ -89,7 +91,6 @@ record scheduling software.
 #============================================================================================
 # USES
 #============================================================================================
-use 5.008008;
 use strict;
 use warnings;
 use Carp ;
@@ -107,7 +108,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -967,6 +968,8 @@ $freq_file must be the full path to the file. The file contents should be someth
    # T freq bw fec_hi fec_lo mod transmission-mode guard-interval hierarchy
    T 578000000 8MHz 2/3 NONE QAM64 2k 1/32 NONE
 
+NOTE: Frequency files are provided by the 'dvb' rpm package available for most distros
+
 Returns the discovered channel information as a HASH (see L</scan()>)
 
 =cut
@@ -1614,6 +1617,14 @@ my %FILES = (
 
 my %NUMERALS = (
 	'one'	=> 1,
+	'two'	=> 2,
+	'three'	=> 3,
+	'four'	=> 4,
+	'five'	=> 5,
+	'six'	=> 6,
+	'seven'	=> 7,
+	'eight'	=> 8,
+	'nine'	=> 9,
 ) ;
 
 #----------------------------------------------------------------------
@@ -1660,7 +1671,9 @@ sub find_channel
 		$srch = $channel_name ;
 		foreach my $num (keys %NUMERALS)
 		{
-			$srch =~ s/($NUMERALS{$num})/$num/ge ;
+print " -- $srch - replace $NUMERALS{$num} with $num..\n" if $DEBUG>3 ;
+			$srch =~ s/($NUMERALS{$num})\b/$num/ge ;
+print " -- -- $srch\n" if $DEBUG>3 ;
 		}
 		$srch =~ s/\s+//g ;
 		$search{$srch}=1 ;

@@ -1,5 +1,12 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+
+0.03  Fri Jan 23 12:30:00 2009
+	- bug fix in channel name "fuzzy" find
+	- improved/corrected documentation
+	- updated makefile to install scripts
+	- changed dvbt-scan to generate output during scan
+
 0.02  Wed Dec 10 12:46:56 2008
 	- Small modifications to build files to allow compile on x64 and FreeBSD
 

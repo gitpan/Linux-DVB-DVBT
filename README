@@ -1,7 +1,7 @@
-Linux-DVB-DVBT version 0.01
-===========================
+Linux-DVB-DVBT 
+==============
 
-B<Linux::DVB::DVBT> is a package that provides an object interface to any installed Freeview 
+Linux::DVB::DVBT is a package that provides an object interface to any installed Freeview 
 tuner cards fitted to a Linux PC. The package supports initial set up (i.e. frequency scanning),
 searching for the latest electronic program guide (EPG), and selectign a channel for recording
 the video to disk.
@@ -26,7 +26,7 @@ When run, this grabs the latest EPG information and updates a MySql database:
 
 Specify the channel, the duration, and the output filename to record a channel:
 
-   $ dvbt-record "bbc1" 1:00 spooks.ts
+   $ dvbt-record "bbc1" spooks.ts 1:00
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 

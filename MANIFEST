@@ -42,7 +42,9 @@ script/dvbt-scan
 script/dvbt-epg
 script/dvbt-record
 script/dvbt-ffrec
-t/01.t
+t/01-basic.t
+t/02-channel.t
+t/03-config.t
 t/config/dvb-pr
 t/config/dvb-ts
 

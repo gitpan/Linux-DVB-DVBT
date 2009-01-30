@@ -20,7 +20,7 @@ use Linux::DVB::DVBT ;
     pod2usage("$0: No files given.")  if (@ARGV == 0) ;
 
 	Linux::DVB::DVBT->debug($DEBUG) ;
-	Linux::DVB::DVBT->verbose($VERBOSE) ;
+	Linux::DVB::DVBT->verbose(1) ;
 
 	## Create dvb (use first found adapter). 
 	## NOTE: With default object settings, the application will
@@ -86,6 +86,14 @@ If this program is run as root then the configuration files are stored under B</
 for any user. Otherwise they are stored in B<$HOME/.tv> for just the user.
 
 The frequency file is usually something like: B</usr/share/dvb/dvb-t/uk-Oxford>
+
+The file contents should be something like:
+
+   # Oxford
+   # T freq bw fec_hi fec_lo mod transmission-mode guard-interval hierarchy
+   T 578000000 8MHz 2/3 NONE QAM64 2k 1/32 NONE
+
+NOTE: Frequency files are provided by the 'dvb' rpm package available for most distros
 
 For full details of the DVBT functions, please see:
 
