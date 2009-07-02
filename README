@@ -9,6 +9,10 @@ the video to disk.
 Example scripts have been provided in the package which illustrate the expected use of the package (and
 are useable programs in themeselves)
 
+* dvbt-devices
+
+Shows information about fited DVB-T tuners
+
 * dvbt-scan
 
 Run this by providing the frequency file (usually stored in /usr/share/dvb/dvb-t). If run as root, this will set up the configuration

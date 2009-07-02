@@ -1,0 +1,91 @@
+#!/usr/bin/perl
+use strict ;
+use Pod::Usage ;
+use Getopt::Long qw/:config no_ignore_case/ ;
+
+++$! ;
+
+use Linux::DVB::DVBT ;
+
+	my ($help, $man, $DEBUG, $VERBOSE) ;
+	GetOptions('v|verbose=s' => \$VERBOSE,
+			   'debug=s' => \$DEBUG,
+			   'h|help' => \$help,
+			   'man' => \$man,
+			   ) or pod2usage(2) ;
+
+
+    pod2usage(1) if $help;
+    pod2usage(-verbose => 2) if $man;
+    pod2usage("$0: No files given.")  if (@ARGV == 0) ;
+
+	Linux::DVB::DVBT->debug($DEBUG) ;
+	Linux::DVB::DVBT->verbose(1) ;
+
+	## Create dvb (use first found adapter). 
+	## NOTE: With default object settings, the application will
+	## die on *any* error, so there is no error checking in this script
+	##
+	my $dvb = Linux::DVB::DVBT->new() ;
+	
+	## Show any fitted devices
+  	my @devices = Linux::DVB::DVBT->device_list() ;
+  	foreach (@devices)
+  	{
+  		printf "%s : adapter number: %d, frontend number: %d\n", 
+  			$_->{name}, $_->{adapter_num}, $_->{frontend_num} ;
+  	}
+
+	
+#=================================================================================
+# END
+#=================================================================================
+__END__
+
+=head1 NAME
+
+dvbt-devices - Show any fitted DVBT tuners
+
+=head1 SYNOPSIS
+
+dvbt-devices [options]
+
+Options:
+
+       -debug level         set debug level
+       -verbose level       set verbosity level
+       -help                brief help message
+       -man                 full documentation
+       
+=head1 OPTIONS
+
+=over 8
+
+=item B<-help>
+
+Print a brief help message and exits.
+
+=item B<-man>
+
+Prints the manual page and exits.
+
+=item B<-verbose>
+
+Set verbosity level. Higher values show more information.
+
+=item B<-debug>
+
+Set debug level. Higher levels show more debugging information (only really of any interest to developers!)
+
+
+=back
+
+=head1 DESCRIPTION
+
+Script that uses the perl Linux::DVB::DVBT package to provide DVB-T adapter functions.
+ 
+Shows information about all fitted DVB-T tuner cards
+ 
+=cut
+
+	

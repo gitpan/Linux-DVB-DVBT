@@ -4,7 +4,19 @@ use ExtUtils::MakeMaker qw(prompt WriteMakefile);
 use Config;
 use strict;
 
-my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan);
+my $name = 'Linux-DVB-DVBT' ;
+
+my $mod = $name ;
+$mod =~ s%\-%::%g ;
+
+my $modpath = $name ;
+$modpath =~ s%\-%/%g ;
+
+# See if newer version is available
+check_new_version() ;
+
+
+my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices);
 my $install_bin = 1;
 
 if ( 
@@ -32,16 +44,19 @@ EOW
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
 WriteMakefile(
-    NAME              => 'Linux::DVB::DVBT',
-    VERSION_FROM      => 'lib/Linux/DVB/DVBT.pm', # finds $VERSION
+    NAME              => $mod,
+    VERSION_FROM      => "lib/$modpath.pm", # finds $VERSION
     PREREQ_PM         => {
 		'File::Basename'	=> 0,
 		'File::Path' 		=> 0,
 		'File::Spec' 		=> 0,
 		'POSIX'			=> 0,
+		'Test::Pod::Coverage'	=> 1.08,
+		'Pod::Coverage' => 0.18,
+		'Test::Pod' => 1.22,
     }, # e.g., Module::Name => 1.1
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
-      (ABSTRACT_FROM  => 'lib/Linux/DVB/DVBT.pm', # retrieve abstract from module
+      (ABSTRACT_FROM  => "lib/$modpath.pm", # retrieve abstract from module
        AUTHOR         => 'Steve Price <cpan@sdprice.plus.com>') : ()),
     LIBS              => [''], # e.g., '-lm'
     DEFINE            => '', # e.g., '-DHAVE_SOMETHING'
@@ -66,3 +81,55 @@ $(MYEXTLIB): dvb_lib/Makefile
 ';
 }
 
+
+sub check_new_version
+{
+	my $version = ExtUtils::MM_Unix->parse_version("lib/$modpath.pm");
+
+	print "Installing Version: $version\n" ;
+	
+	## Check for newer version
+	eval {
+		require LWP::UserAgent;
+	} ;
+	if (!$@)
+	{
+		print "Checking for later version...\n" ;
+		
+		## specify user name so that I can filter out my builds
+		my $user = $ENV{USER} || $ENV{USERNAME} || 'nobody' ;
+		
+		## check for OS-specific versions
+		my $os = $^O ;
+		my $url = "http://quartz.homelinux.com/CPAN/index.php?ver=$version&mod=$name&user=$user&os=$os" ;
+		 
+		my $ua = LWP::UserAgent->new;
+		$ua->agent("CPAN-$name/$version") ;
+		$ua->timeout(10);
+		$ua->env_proxy;
+		 
+		my $response = $ua->get($url);
+		if ($response->is_success) 
+		{
+			my $content = $response->content ;
+			if ($content =~ m/Current version : ([\d\.]+)/m)
+			{
+				print "Latest CPAN version is $1\n" ;
+			}
+			if ($content =~ m/Newer version/m)
+			{
+				print "** NOTE: A newer version than this is available. Please downloaded latest version **\n" ;
+			}
+			else
+			{
+				print "Got latest version\n" ;
+			}
+		}
+		else
+		{
+			print "Unable to connect, assuming latest\n" ;
+			#print $response->status_line;
+		}
+	}
+	
+}

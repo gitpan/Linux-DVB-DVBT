@@ -51,6 +51,10 @@ are useable programs in themeselves)
 
 =over 4
 
+=item dvbt-devices
+
+Shows information about fited DVB-T tuners
+
 =item dvbt-scan
 
 Run this by providing the frequency file (usually stored in /usr/share/dvb/dvb-t). If run as root, this will set up the configuration
@@ -108,7 +112,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '0.03';
+our $VERSION = '1.00';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -126,6 +130,95 @@ my $VERBOSE=0;
 my $devices_aref ;
 
 #============================================================================================
+
+#my @CHANNEL_LIST = (
+#  # TV
+#  { 'channel' => "BBC ONE", 		'chan_num' => 1, },
+#  { 'channel' => "BBC TWO", 		'chan_num' => 2, },
+#  { 'channel' => "ITV1", 			'chan_num' => 3, },
+#  { 'channel' => "Channel 4", 		'chan_num' => 4, },
+#  { 'channel' => "Five", 			'chan_num' => 5, },
+#  { 'channel' => "ITV2", 			'chan_num' => 6, },
+#  { 'channel' => "BBC THREE", 		'chan_num' => 7, },
+#  { 'channel' => "BBC FOUR", 		'chan_num' => 9, },
+#  { 'channel' => "ITV3", 			'chan_num' => 10, },
+#  { 'channel' => "SKY THREE", 		'chan_num' => 11, },
+#  { 'channel' => "Yesterday",	 	'chan_num' => 12, },
+#  { 'channel' => "Channel 4+1", 	'chan_num' => 13, },
+#  { 'channel' => "More 4", 			'chan_num' => 14, },
+#  { 'channel' => "QVC", 			'chan_num' => 16, },
+#  { 'channel' => "G.O.L.D.", 		'chan_num' => 17, },
+#  { 'channel' => "4Music",		 	'chan_num' => 18, },
+#  { 'channel' => "Dave", 			'chan_num' => 19, },
+#  { 'channel' => "Virgin1", 		'chan_num' => 20, },
+#  { 'channel' => "TMF", 			'chan_num' => 21, },
+#  { 'channel' => "Ideal World", 	'chan_num' => 22, },
+#  { 'channel' => "Bid TV",		 	'chan_num' => 23, },
+#  { 'channel' => "Dave ja vue", 	'chan_num' => 24, },
+#  { 'channel' => "HOME",		 	'chan_num' => 26, },
+#  { 'channel' => "ITV4", 			'chan_num' => 28, },
+#  { 'channel' => "E4", 				'chan_num' => 29, },
+#  { 'channel' => "E4+1", 			'chan_num' => 30, },
+#  { 'channel' => "ITV2 +1", 		'chan_num' => 31, },
+#  { 'channel' => "Film4", 			'chan_num' => 32, },
+#  { 'channel' => "smile-TV2", 		'chan_num' => 33, },
+#  { 'channel' => "ESPN", 			'chan_num' => 34, },
+#  { 'channel' => "Five US", 		'chan_num' => 35, },
+#  { 'channel' => "FIVER", 			'chan_num' => 36, },
+#  { 'channel' => "smileTV", 		'chan_num' => 37, },
+#  { 'channel' => "TOPUP Anytime1", 	'chan_num' => 38, },
+#  { 'channel' => "TOPUP Anytime2", 	'chan_num' => 39, },
+#  { 'channel' => "TOPUP Anytime3", 	'chan_num' => 40, },
+#  { 'channel' => "TOPUP Anytime4", 	'chan_num' => 41, },
+#  { 'channel' => "Gems TV", 		'chan_num' => 43, },
+#  { 'channel' => "GEMSTV1", 		'chan_num' => 44, },
+#  { 'channel' => "Lottery Xtra", 	'chan_num' => 45, },
+#  { 'channel' => "smileTV2", 		'chan_num' => 46, },
+#  { 'channel' => "QUEST", 			'chan_num' => 47, },
+#  { 'channel' => "SuperCasino", 	'chan_num' => 48, },
+#  { 'channel' => "Rocks & co", 		'chan_num' => 49, },
+#  { 'channel' => "PARTYLAND", 		'chan_num' => 50, },
+#  { 'channel' => "CBBC Channel", 	'chan_num' => 70, },
+#  { 'channel' => "CBeebies", 		'chan_num' => 71, },
+#  { 'channel' => "CITV", 			'chan_num' => 75, },
+#  { 'channel' => "BBC NEWS", 		'chan_num' => 80, },
+#  { 'channel' => "BBC Parliament", 	'chan_num' => 81, },
+#  { 'channel' => "Sky News", 		'chan_num' => 82, },
+#  { 'channel' => "Sky Spts News", 	'chan_num' => 83, },
+#  { 'channel' => "CNN", 			'chan_num' => 83, },
+#  { 'channel' => "Russia Today", 	'chan_num' => 83, },
+#  { 'channel' => "Community", 		'chan_num' => 87, },
+#  { 'channel' => "Teachers TV", 	'chan_num' => 88, },
+#  { 'channel' => "Television X", 	'chan_num' => 97, },
+#  { 'channel' => "Teletext", 		'chan_num' => 100, },
+#  { 'channel' => "Ttext Holidays", 	'chan_num' => 101, },
+#  { 'channel' => "Rabbit", 			'chan_num' => 102, },
+#
+#  # RADIO
+#  { 'channel' => "BBC Radio 1", 	'chan_num' => 700, },
+#  { 'channel' => "1Xtra BBC", 		'chan_num' => 701, },
+#  { 'channel' => "BBC Radio 2", 	'chan_num' => 702, },
+#  { 'channel' => "BBC Radio 3", 	'chan_num' => 703, },
+#  { 'channel' => "BBC Radio 4", 	'chan_num' => 704, },
+#  { 'channel' => "BBC R5L", 		'chan_num' => 705, },
+#  { 'channel' => "BBC R5LSX", 		'chan_num' => 706, },
+#  { 'channel' => "BBC 6 Music", 	'chan_num' => 707, },
+#  { 'channel' => "BBC 7", 			'chan_num' => 708, },
+#  { 'channel' => "BBC Asian Net.", 	'chan_num' => 709, },
+#  { 'channel' => "BBC World Sv.", 	'chan_num' => 710, },
+#  { 'channel' => "The Hits Radio", 	'chan_num' => 711, },
+#  { 'channel' => "Smash Hits!", 	'chan_num' => 712, },
+#  { 'channel' => "Kiss", 			'chan_num' => 713, },
+#  { 'channel' => "heat", 			'chan_num' => 714, },
+#  { 'channel' => "Magic", 			'chan_num' => 715, },
+#  { 'channel' => "Q", 				'chan_num' => 716, },
+#  { 'channel' => "SMOOTH RADIO", 	'chan_num' => 718, },
+#  { 'channel' => "Kerrang!", 		'chan_num' => 722, },
+#  { 'channel' => "talkSPORT", 		'chan_num' => 723, },
+#  { 'channel' => "Premier Radio", 	'chan_num' => 725, },
+#  { 'channel' => "Absolute Radio",	'chan_num' => 727, },
+#  { 'channel' => "Heart", 			'chan_num' => 728, },
+#) ;
 
 
 =head2 FIELDS
@@ -247,6 +340,7 @@ my %DEFAULTS = (
 	# 'channel' => channel name
 	# 'chan_num' => channel number
 	#
+##	'channel_list'	=> \@CHANNEL_LIST,
 	'channel_list'	=> undef,
 
 	# parameters used to tune the frontend
@@ -819,12 +913,18 @@ sub epg
 	my $channels_aref = $self->get_channel_list() ;
 	if ( $channels_aref && $tuning_href )
 	{
+#print "creating chan lookup\n" ;
+#prt_data("Channels=", $channels_aref) ;
+#prt_data("Tuning=", $tuning_href) ;
 		$channel_lookup_href = {} ;
 		foreach my $chan_href (@$channels_aref)
 		{
 			my $channel = $chan_href->{'channel'} ;
+
+#print "CHAN: $channel\n" ;
 			if (exists($tuning_href->{'pr'}{$channel}))
 			{
+#print "created CHAN: $channel for $tuning_href->{pr}{$channel}{tsid} -  for $tuning_href->{pr}{$channel}{pnr}\n" ;
 				# create the lookup
 				$channel_lookup_href->{"$tuning_href->{'pr'}{$channel}{tsid}-$tuning_href->{'pr'}{$channel}{pnr}"} = {
 					'channel' => $channel,
@@ -833,6 +933,7 @@ sub epg
 			}
 		}
 	}	
+#prt_data("Lookup=", $channel_lookup_href) ;
 
 	# Gather EPG information into a list of HASH refs
 	my $epg_data = dvb_epg($self->{dvb}, $VERBOSE, $DEBUG, $section) ;
@@ -1157,8 +1258,11 @@ sub get_channel_list
 	# If not found, try creating
 	if (!$channels_aref)
 	{
+#print "create chan list\n" ;
+
 		# Get any existing info
 		my $tuning_href = $self->get_tuning_info() ;
+#prt_data("Tuning Info=",$tuning_href) ;
 		
 		# Use the scanning info to create an ordered list
 		if ($tuning_href)
@@ -1169,8 +1273,9 @@ sub get_channel_list
 			my %tsid_pnr ;
 			foreach my $channel_name (keys %{$tuning_href->{'pr'}})
 			{
-				$tsid_pnr{$tuning_href->{'pr'}{$channel_name}{'tsid'}}{$tuning_href->{'pr'}{$channel_name}{'tsid'}} = $channel_name ;
+				$tsid_pnr{$tuning_href->{'pr'}{$channel_name}{'tsid'}}{$tuning_href->{'pr'}{$channel_name}{'pnr'}} = $channel_name ;
 			}
+#prt_data("TSID-PNR=",\%tsid_pnr) ;
 
 			my $channel_num=1;
 			foreach my $tsid (sort {$a <=> $b} keys %tsid_pnr)
@@ -1181,6 +1286,7 @@ sub get_channel_list
 				}
 			}
 		}
+#prt_data("Chans=",$channels_aref) ;
 	}
 
 	return $channels_aref ;
@@ -1517,6 +1623,7 @@ sub fix_episodes
 	my ($title_ref, $synopsis_ref, $episode_ref, $num_episodes_ref) = @_ ;
 
 	# Series: "1/7"
+	$$synopsis_ref ||= "" ;
 	if ($$synopsis_ref =~ s%(\d+)/(\d+)[\:\.\s]+%%) 
 	{
 		$$episode_ref = $1;
@@ -1538,6 +1645,7 @@ sub fix_audio
 	my ($title_ref, $synopsis_ref, $flags_href) = @_ ;
 
     # extract audio described / subtitled / deaf_signed from synopsis
+	$$synopsis_ref ||= "" ;
 	return unless $$synopsis_ref =~ s/\[([A-Z,]+)\][\.\s]*//;
 	
 	my $flags = $1;
