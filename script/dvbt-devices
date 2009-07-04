@@ -17,7 +17,6 @@ use Linux::DVB::DVBT ;
 
     pod2usage(1) if $help;
     pod2usage(-verbose => 2) if $man;
-    pod2usage("$0: No files given.")  if (@ARGV == 0) ;
 
 	Linux::DVB::DVBT->debug($DEBUG) ;
 	Linux::DVB::DVBT->verbose(1) ;

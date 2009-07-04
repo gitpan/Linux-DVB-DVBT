@@ -1,7 +1,12 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.01  Sat Jul 04 12:30:00 2009
+	- Bug fix: corrected dvbt-devices script
+
 1.00  Thu Jul 03 12:30:00 2009
 	- Added default channel names for EPG
+	- Fixed bug in epg() creating channel list
+	- Added web check for later version
 
 0.03  Fri Jan 23 12:30:00 2009
 	- bug fix in channel name "fuzzy" find
