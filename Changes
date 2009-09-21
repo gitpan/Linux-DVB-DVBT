@@ -1,5 +1,8 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.02  Mon Sept 21 09:30:00 2009
+	- Handle the case where a channel scans to have no name (use it's PR number instead)
+
 1.01  Sat Jul 04 12:30:00 2009
 	- Bug fix: corrected dvbt-devices script
 
