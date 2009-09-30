@@ -13,7 +13,7 @@
 #include "dvb_lib/dvb_struct.h"
 #include "dvb_lib/dvb_lib.h"
 
-#define DVBT_VERSION	"1.001"
+#define DVBT_VERSION	"1.003"
 
 /*---------------------------------------------------------------------------------------------------*/
 
@@ -45,6 +45,7 @@ static char ret_str[1024] ;
 
    for (i=0, j=0; i < len; i++)
    {
+/*
 	   if (isalnum(str[i]) || ' ' == str[i])
 	   {
 		   ret_str[j++] = str[i] ;
@@ -54,6 +55,11 @@ static char ret_str[1024] ;
 		   sprintf(&ret_str[j], "\\x%02x",str[i]);
 		   j += strlen(&ret_str[j]) ;
 	   }
+*/	   
+	   ret_str[j++] = str[i] ;
+
+	   /* terminate */
+	   ret_str[j] = 0 ;
    }
    return ret_str ;
 }

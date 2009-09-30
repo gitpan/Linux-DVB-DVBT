@@ -1,5 +1,9 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.03  Wed Sept 30 12:30:00 2009
+	- Corrected XS so that EPG strings are correctly terminated
+	- Fixed genre string copying
+
 1.02  Mon Sept 21 09:30:00 2009
 	- Handle the case where a channel scans to have no name (use it's PR number instead)
 

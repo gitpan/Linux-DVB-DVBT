@@ -112,7 +112,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -1037,7 +1037,7 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG ;
 			'title'		=> $title,
 			'text'		=> $synopsis,
 			'etext'		=> $etext,
-			'genre'		=> Linux::DVB::DVBT::Utils::genre($epg_entry->{'cat0'}),
+			'genre'		=> $epg_entry->{'genre'},
 			
 			'repeat'	=> '',
 			'episode'	=> $episode,
