@@ -43,6 +43,7 @@ script/dvbt-epg
 script/dvbt-record
 script/dvbt-ffrec
 script/dvbt-devices
+script/dvbt-chans
 t/01-basic.t
 t/02-channel.t
 t/03-config.t

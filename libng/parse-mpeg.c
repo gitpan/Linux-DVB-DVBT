@@ -176,6 +176,42 @@ char *psi_service_type[0x100] = {
 /* ----------------------------------------------------------------------- */
 /* handle psi_ structs                                                     */
 
+void prog_info_free(struct psi_stream *stream)
+{
+    struct prog_info  *pinfo;
+    struct list_head   *item,*safe;
+
+
+
+if (dvb_debug) fprintf(stderr, "!! prog_info_free() !!\n") ;
+
+//if (dvb_debug)
+//{
+//	fprintf(stderr, "Current info list:\n") ;
+//    list_for_each(item,&stream->prog_info_list) {
+//        pinfo = list_entry(item, struct prog_info, next);
+//		fprintf(stderr, " [%p] sid=%d lcn=%d type=%d\n",
+//			pinfo,
+//			pinfo->service_id,
+//			pinfo->lcn,
+//			pinfo->service_type) ;
+//    }
+//}
+
+
+    list_for_each_safe(item,safe,&stream->prog_info_list) {
+		pinfo = list_entry(item, struct prog_info, next);
+
+if (dvb_debug) fprintf(stderr, "!! alloc free - sid=%d [%p] !!\n", pinfo->service_id, pinfo) ;
+		
+		list_del(&pinfo->next);
+		free(pinfo);
+    }
+
+if (dvb_debug) fprintf(stderr, "!! prog_info_free() - COMPLETE !!\n") ;
+}
+
+
 struct psi_info* psi_info_alloc(void)
 {
     struct psi_info *info;
@@ -197,17 +233,57 @@ void psi_info_free(struct psi_info *info)
     struct list_head   *item,*safe;
 
     list_for_each_safe(item,safe,&info->streams) {
-	stream = list_entry(item, struct psi_stream, next);
-	list_del(&stream->next);
-	free(stream);
+		stream = list_entry(item, struct psi_stream, next);
+		prog_info_free(stream) ;
+		list_del(&stream->next);
+		free(stream);
     }
     list_for_each_safe(item,safe,&info->programs) {
-	program = list_entry(item, struct psi_program, next);
-	list_del(&program->next);
-	free(program);
+		program = list_entry(item, struct psi_program, next);
+		list_del(&program->next);
+		free(program);
     }
     free(info);
 }
+
+
+struct prog_info* prog_info_get(struct psi_stream *stream, int sid, int alloc)
+{
+    struct prog_info  *pinfo;
+    struct list_head  *item;
+
+    list_for_each(item,&stream->prog_info_list) {
+        pinfo = list_entry(item, struct prog_info, next);
+		if (pinfo->service_id == sid)
+		    return pinfo;
+    }
+    if (!alloc)
+		return NULL;
+	
+    pinfo = malloc(sizeof(*pinfo));
+    memset(pinfo,0,sizeof(*pinfo));
+
+if (dvb_debug) fprintf(stderr, "!! malloc - sid=%d [%p] !!\n", sid, pinfo) ;
+   
+    pinfo->service_id    = sid;
+
+//	/* from service_list_descriptor 0x41 */
+//	int 				 service_id ;
+//	int 				 service_type ;
+//	
+//	/* from descriptor 0x83 */
+//	int					 visible ;
+//	int					 lcn ;
+
+    // flag unset
+    pinfo->service_type = -1 ;
+    pinfo->visible = -1 ;
+    pinfo->lcn = -1 ;
+
+    list_add_tail(&pinfo->next,&stream->prog_info_list);
+    return pinfo;
+}
+
 
 struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int alloc)
 {
@@ -216,13 +292,14 @@ struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int alloc)
 
     list_for_each(item,&info->streams) {
         stream = list_entry(item, struct psi_stream, next);
-	if (stream->tsid == tsid)
-	    return stream;
+		if (stream->tsid == tsid)
+		    return stream;
     }
     if (!alloc)
 	return NULL;
     stream = malloc(sizeof(*stream));
     memset(stream,0,sizeof(*stream));
+    INIT_LIST_HEAD(&stream->prog_info_list);
     stream->tsid    = tsid;
     stream->updated = 1;
 

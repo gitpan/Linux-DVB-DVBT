@@ -13,7 +13,7 @@
 #include "dvb_lib/dvb_struct.h"
 #include "dvb_lib/dvb_lib.h"
 
-#define DVBT_VERSION	"1.003"
+#define DVBT_VERSION	"1.004"
 
 /*---------------------------------------------------------------------------------------------------*/
 
@@ -180,6 +180,14 @@ dvb_fini(DVB *dvb);
 
 
  # /*---------------------------------------------------------------------------------------------------*/
+
+void
+dvb_set_debug(int debug);
+	CODE:
+	 dvb_debug = debug ;
+
+
+ # /*---------------------------------------------------------------------------------------------------*/
  # /* Use the specified parameters (or AUTO) to tune the frontend */
 int
 dvb_tune (DVB *dvb, HV *parameters)
@@ -287,17 +295,21 @@ dvb_scan(DVB *dvb, int verbose)
   INIT:
     HV * results;
     HV * streams ;
+    HV * lcns ;
     HV * programs ;
 
     char key[256] ;
+    char key2[256] ;
 
     struct dvbmon *dm ;
-	struct list_head *item, *safe;
+	struct list_head *item, *safe, *pitem ;
 	struct psi_program *program ;
 	struct psi_stream *stream;
+	struct prog_info *pinfo ;
 
     results = (HV *)sv_2mortal((SV *)newHV());
     streams = (HV *)sv_2mortal((SV *)newHV());
+    lcns = (HV *)sv_2mortal((SV *)newHV());
     programs = (HV *)sv_2mortal((SV *)newHV());
 
   CODE:
@@ -307,11 +319,14 @@ dvb_scan(DVB *dvb, int verbose)
   	/** Create Perl data **/
 	HVS(results, ts, newRV((SV *)streams)) ;
 	HVS(results, pr, newRV((SV *)programs)) ;
+	HVS(results, lcn, newRV((SV *)lcns)) ;
 
     /* Store stream info */
 	list_for_each(item,&dm->info->streams)
 	{
 		HV * rh;
+		HV * tsidh ;
+		
 		stream = list_entry(item, struct psi_stream, next);
 
 		/*
@@ -336,6 +351,7 @@ dvb_scan(DVB *dvb, int verbose)
 
 		/* Convert structure fields into hash elements */
 		rh = (HV *)sv_2mortal((SV *)newHV());
+		tsidh = (HV *)sv_2mortal((SV *)newHV());
 
 		HVS_S(rh, stream, bandwidth) ;
 		HVSN_S(rh, stream, code_rate_hp, 	code_rate_high) ;
@@ -349,6 +365,43 @@ dvb_scan(DVB *dvb, int verbose)
 
 		sprintf(key, "%d", stream->tsid) ;
 		hv_store(streams, key, strlen(key),  newRV((SV *)rh), 0) ;
+		
+		/* Process the program lcns attached to this stream 
+		
+		'lcns' => {
+		
+			$tsid => {
+			
+				$pnr => {
+					'service_type' => xx,
+					'visible' => yy,
+					'lcn' => zz,
+				}
+			}
+		}
+		*/
+		list_for_each(pitem,&stream->prog_info_list)
+		{
+			/* Convert structure fields into hash elements */
+			HV * pnrh = (HV *)sv_2mortal((SV *)newHV());
+
+			pinfo = list_entry(pitem, struct prog_info, next);
+
+			/*			
+			int 				 service_id ;
+			int 				 service_type ;
+			int					 visible ;
+			int					 lcn ;
+			*/
+			HVS_I(pnrh, pinfo, service_type) ;
+			HVS_I(pnrh, pinfo, visible) ;
+			HVS_I(pnrh, pinfo, lcn) ;
+			
+			sprintf(key2, "%d", pinfo->service_id) ;
+			hv_store(tsidh, key2, strlen(key2),  newRV((SV *)pnrh), 0) ;
+
+		}
+		hv_store(lcns, key, strlen(key),  newRV((SV *)tsidh), 0) ;
 	}
 
 	/* store program info */

@@ -17,15 +17,10 @@ use Linux::DVB::DVBT ;
 
     pod2usage(1) if $help;
     pod2usage(-verbose => 2) if $man;
-    
-    if (@ARGV == 0)
-    {
-    	print "$0: No files given.\n" ;
-    	pod2usage(-verbose => 2) ;
-    }
 
 	Linux::DVB::DVBT->debug($DEBUG) ;
-	Linux::DVB::DVBT->verbose(1) ;
+	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
+	Linux::DVB::DVBT->verbose($VERBOSE) ;
 
 	## Create dvb (use first found adapter). 
 	## NOTE: With default object settings, the application will
@@ -33,11 +28,7 @@ use Linux::DVB::DVBT ;
 	##
 	my $dvb = Linux::DVB::DVBT->new() ;
 	
-	## Do the scan
-	$dvb->scan_from_file($ARGV[0]) ;
-
-
-	## All done, just show the results
+	# read config
 	my $tuning_href = $dvb->get_tuning_info() ;
 	my $channels_aref = $dvb->get_channel_list() ;
 	
@@ -46,7 +37,7 @@ use Linux::DVB::DVBT ;
 	foreach my $ch_href (@$channels_aref)
 	{
 		my $chan = $ch_href->{'channel'} ;
-		printf "%3d : %-40s %5d-%5d $ch_href->{type}\n", 
+		printf "%3d : %-40s %5d-%5d    $ch_href->{type}\n", 
 			$ch_href->{'channel_num'},
 			$chan,
 			$tuning_href->{'pr'}{$chan}{'tsid'},
@@ -62,9 +53,8 @@ use Linux::DVB::DVBT ;
 		}
 	}
 	printf "Found %d channels (%d tv, %d radio)\n", $tv+$radio, $tv, $radio ;	
+	
 
-	
-	
 #=================================================================================
 # END
 #=================================================================================
@@ -72,11 +62,11 @@ __END__
 
 =head1 NAME
 
-dvbt-scan - Initialise DVBT channels
+dvbt-chans - Show DVBT channels
 
 =head1 SYNOPSIS
 
-dvbt-scan [options] frequency_file
+dvbt-chans [options]
 
 Options:
 
@@ -112,27 +102,7 @@ Set debug level. Higher levels show more debugging information (only really of a
 
 Script that uses the perl Linux::DVB::DVBT package to provide DVB-T adapter functions.
  
-Runs the frequency scanning function to search for Freeview channels. Stores the channel information 
-into configuration files.
-
-If this program is run as root then the configuration files are stored under B</etc/dvb> and are available
-for any user. Otherwise they are stored in B<$HOME/.tv> for just the user.
-
-The frequency file is usually something like: B</usr/share/dvb/dvb-t/uk-Oxford>
-
-The file contents should be something like:
-
-   # Oxford
-   # T freq bw fec_hi fec_lo mod transmission-mode guard-interval hierarchy
-   T 578000000 8MHz 2/3 NONE QAM64 2k 1/32 NONE
-
-Frequency files are provided by the 'dvb' rpm package available for most distros. Alternatively, if you have kaffeine installed, look in
-$HOME/.kde/share/apps/kaffeine/dvb-t. If all else fails you can always get them from my CPAN web space: 
-
-http://www.cpan.org/authors/id/S/SD/SDPRICE/Files/dvb-t.tar.gz
-
-To determine which file to use, check http://www.ukfree.tv/transmitters.php and enter your postcode. 
-
+Reads the current config files and displays the list of known channels.
 
 For full details of the DVBT functions, please see:
 

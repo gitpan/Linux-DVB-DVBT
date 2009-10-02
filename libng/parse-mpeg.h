@@ -16,6 +16,22 @@ extern const char *mpeg_frame_s[];
 extern char *psi_charset[0x20];
 char *psi_service_type[0x100];
 
+
+/* data gathered from NIT during scan - info is added to the stream */
+struct prog_info {
+    struct list_head     next;
+
+	/* from service_list_descriptor 0x41 */
+	int 				 service_id ;
+	int 				 service_type ;
+	
+	/* from descriptor 0x83 */
+	int					 visible ;
+	int					 lcn ;
+
+} ;
+
+
 /* ----------------------------------------------------------------------- */
 
 #define PSI_NEW     42  // initial version, valid range is 0 ... 32
@@ -44,7 +60,12 @@ struct psi_stream {
     /* status info */
     int                  updated;
     int					 tuned;
+    
+    /* program info */
+    struct list_head     prog_info_list;
+    
 };
+
 
 struct psi_program {
     struct list_head     next;
@@ -164,6 +185,9 @@ struct mpeg_handle {
 /* ----------------------------------------------------------------------- */
 
 /* handle psi_* */
+struct prog_info* prog_info_get(struct psi_stream *stream, int sid, int alloc) ;
+void prog_info_free(struct psi_stream *stream) ;
+
 struct psi_info* psi_info_alloc(void);
 void psi_info_free(struct psi_info *info);
 struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int alloc);

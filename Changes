@@ -1,5 +1,11 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.04
+	- I've finally worked out how to gather the logical channel number information for all of the channels.
+	- Added 'merge' option flag to allow scan results to be merged with previous (default is to overwrite previous)
+	- Now removes any channels that are not tv or radio; do not have a channel name; do not have the correct audio/video stream ids
+	- Added dvbt-chans utility script
+	
 1.03  Wed Sept 30 12:30:00 2009
 	- Corrected XS so that EPG strings are correctly terminated
 	- Fixed genre string copying

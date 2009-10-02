@@ -39,6 +39,21 @@ Linux::DVB::DVBT - Perl extension for DVB terrestrial recording, epg, and scanni
 	$dvb->record('test.ts', 30*60) ;
 
 
+	# show the logical channel numbers
+	my $tuning_href = $dvb->get_tuning_info() ;
+	my $channels_aref = $dvb->get_channel_list() ;
+	
+	print "Chans\n" ;
+	foreach my $ch_href (@$channels_aref)
+	{
+		my $chan = $ch_href->{'channel'} ;
+		printf "%3d : %-40s %5d-%5d $ch_href->{type}\n", 
+			$ch_href->{'channel_num'},
+			$chan,
+			$tuning_href->{'pr'}{$chan}{'tsid'},
+			$tuning_href->{'pr'}{$chan}{'pnr'} ;
+	}
+
 =head1 DESCRIPTION
 
 B<Linux::DVB::DVBT> is a package that provides an object interface to any installed Freeview 
@@ -78,7 +93,36 @@ Specify the channel, the duration, and the output filename to record a channel:
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 
+=item dvbt-ffrec
+
+Similar to dvbt-record, but pipes the transport stream into ffmpeg and uses that to transcode the data directly into an MPEG file (without
+saving the transport stream file).
+
+Specify the channel, the duration, and the output filename to record a channel:
+
+   $ dvbt-ffrec "bbc1" spooks.mpeg 1:00 
+   
+Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
+
+=item dvbt-devices
+
+Displays the list of currently fitted DVB-T tuners.
+
+=item dvbt-chans
+
+Use to display the current list of tuned channels. Shows them in logical channel number order.
+
 =back
+
+=head2 Logical Channel Numbers (LCNs)
+
+I've finally worked out how to gather the logical channel number information for all of the channels. The scan() method now stores the LCN information
+into the config files, and makes the list of channels available through the L</get_channel_list()> method. So you can now get the channel number you
+see (and enter) on any standard freeview TV or PVR.
+
+This is of most interest if you want to use the L</epg()> method to gather data to create a TV guide. Generally, you'd like the channel listings
+to be sorted in the order to which we've all become used to through TV viewing (i.e. it helps to have BBC1 appear before channel 4!). 
+
 
 =head2 HISTORY
 
@@ -112,7 +156,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '1.03';
+our $VERSION = '1.04';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -130,95 +174,6 @@ my $VERBOSE=0;
 my $devices_aref ;
 
 #============================================================================================
-
-#my @CHANNEL_LIST = (
-#  # TV
-#  { 'channel' => "BBC ONE", 		'chan_num' => 1, },
-#  { 'channel' => "BBC TWO", 		'chan_num' => 2, },
-#  { 'channel' => "ITV1", 			'chan_num' => 3, },
-#  { 'channel' => "Channel 4", 		'chan_num' => 4, },
-#  { 'channel' => "Five", 			'chan_num' => 5, },
-#  { 'channel' => "ITV2", 			'chan_num' => 6, },
-#  { 'channel' => "BBC THREE", 		'chan_num' => 7, },
-#  { 'channel' => "BBC FOUR", 		'chan_num' => 9, },
-#  { 'channel' => "ITV3", 			'chan_num' => 10, },
-#  { 'channel' => "SKY THREE", 		'chan_num' => 11, },
-#  { 'channel' => "Yesterday",	 	'chan_num' => 12, },
-#  { 'channel' => "Channel 4+1", 	'chan_num' => 13, },
-#  { 'channel' => "More 4", 			'chan_num' => 14, },
-#  { 'channel' => "QVC", 			'chan_num' => 16, },
-#  { 'channel' => "G.O.L.D.", 		'chan_num' => 17, },
-#  { 'channel' => "4Music",		 	'chan_num' => 18, },
-#  { 'channel' => "Dave", 			'chan_num' => 19, },
-#  { 'channel' => "Virgin1", 		'chan_num' => 20, },
-#  { 'channel' => "TMF", 			'chan_num' => 21, },
-#  { 'channel' => "Ideal World", 	'chan_num' => 22, },
-#  { 'channel' => "Bid TV",		 	'chan_num' => 23, },
-#  { 'channel' => "Dave ja vue", 	'chan_num' => 24, },
-#  { 'channel' => "HOME",		 	'chan_num' => 26, },
-#  { 'channel' => "ITV4", 			'chan_num' => 28, },
-#  { 'channel' => "E4", 				'chan_num' => 29, },
-#  { 'channel' => "E4+1", 			'chan_num' => 30, },
-#  { 'channel' => "ITV2 +1", 		'chan_num' => 31, },
-#  { 'channel' => "Film4", 			'chan_num' => 32, },
-#  { 'channel' => "smile-TV2", 		'chan_num' => 33, },
-#  { 'channel' => "ESPN", 			'chan_num' => 34, },
-#  { 'channel' => "Five US", 		'chan_num' => 35, },
-#  { 'channel' => "FIVER", 			'chan_num' => 36, },
-#  { 'channel' => "smileTV", 		'chan_num' => 37, },
-#  { 'channel' => "TOPUP Anytime1", 	'chan_num' => 38, },
-#  { 'channel' => "TOPUP Anytime2", 	'chan_num' => 39, },
-#  { 'channel' => "TOPUP Anytime3", 	'chan_num' => 40, },
-#  { 'channel' => "TOPUP Anytime4", 	'chan_num' => 41, },
-#  { 'channel' => "Gems TV", 		'chan_num' => 43, },
-#  { 'channel' => "GEMSTV1", 		'chan_num' => 44, },
-#  { 'channel' => "Lottery Xtra", 	'chan_num' => 45, },
-#  { 'channel' => "smileTV2", 		'chan_num' => 46, },
-#  { 'channel' => "QUEST", 			'chan_num' => 47, },
-#  { 'channel' => "SuperCasino", 	'chan_num' => 48, },
-#  { 'channel' => "Rocks & co", 		'chan_num' => 49, },
-#  { 'channel' => "PARTYLAND", 		'chan_num' => 50, },
-#  { 'channel' => "CBBC Channel", 	'chan_num' => 70, },
-#  { 'channel' => "CBeebies", 		'chan_num' => 71, },
-#  { 'channel' => "CITV", 			'chan_num' => 75, },
-#  { 'channel' => "BBC NEWS", 		'chan_num' => 80, },
-#  { 'channel' => "BBC Parliament", 	'chan_num' => 81, },
-#  { 'channel' => "Sky News", 		'chan_num' => 82, },
-#  { 'channel' => "Sky Spts News", 	'chan_num' => 83, },
-#  { 'channel' => "CNN", 			'chan_num' => 83, },
-#  { 'channel' => "Russia Today", 	'chan_num' => 83, },
-#  { 'channel' => "Community", 		'chan_num' => 87, },
-#  { 'channel' => "Teachers TV", 	'chan_num' => 88, },
-#  { 'channel' => "Television X", 	'chan_num' => 97, },
-#  { 'channel' => "Teletext", 		'chan_num' => 100, },
-#  { 'channel' => "Ttext Holidays", 	'chan_num' => 101, },
-#  { 'channel' => "Rabbit", 			'chan_num' => 102, },
-#
-#  # RADIO
-#  { 'channel' => "BBC Radio 1", 	'chan_num' => 700, },
-#  { 'channel' => "1Xtra BBC", 		'chan_num' => 701, },
-#  { 'channel' => "BBC Radio 2", 	'chan_num' => 702, },
-#  { 'channel' => "BBC Radio 3", 	'chan_num' => 703, },
-#  { 'channel' => "BBC Radio 4", 	'chan_num' => 704, },
-#  { 'channel' => "BBC R5L", 		'chan_num' => 705, },
-#  { 'channel' => "BBC R5LSX", 		'chan_num' => 706, },
-#  { 'channel' => "BBC 6 Music", 	'chan_num' => 707, },
-#  { 'channel' => "BBC 7", 			'chan_num' => 708, },
-#  { 'channel' => "BBC Asian Net.", 	'chan_num' => 709, },
-#  { 'channel' => "BBC World Sv.", 	'chan_num' => 710, },
-#  { 'channel' => "The Hits Radio", 	'chan_num' => 711, },
-#  { 'channel' => "Smash Hits!", 	'chan_num' => 712, },
-#  { 'channel' => "Kiss", 			'chan_num' => 713, },
-#  { 'channel' => "heat", 			'chan_num' => 714, },
-#  { 'channel' => "Magic", 			'chan_num' => 715, },
-#  { 'channel' => "Q", 				'chan_num' => 716, },
-#  { 'channel' => "SMOOTH RADIO", 	'chan_num' => 718, },
-#  { 'channel' => "Kerrang!", 		'chan_num' => 722, },
-#  { 'channel' => "talkSPORT", 		'chan_num' => 723, },
-#  { 'channel' => "Premier Radio", 	'chan_num' => 725, },
-#  { 'channel' => "Absolute Radio",	'chan_num' => 727, },
-#  { 'channel' => "Heart", 			'chan_num' => 728, },
-#) ;
 
 
 =head2 FIELDS
@@ -256,20 +211,11 @@ Set this to the required debug level. Higher values give more verbose informatio
 
 Read this ARRAY ref to get the list of fitted DVBT adapters. This is equivalent to running the L</device_list()> class method (see L</device_list()> for array format)
 
-=item B<channel_list> - Channel numbering 
+=item B<merge> - Merge scan results 
 
-Use this field to specify your preferred channel numbering.
+Set this flag before running the scan() method. When set, the scan will merge the new results with any previous scan results (read from the config files)
 
-You provide an ARRAY ref where the array contains HASHes of the form:
-
-    {
-        'channel' => <channel name>
-        'channel_num' => <channel number>
-    }
-
-For example, you'd probably want 'BBC ONE' to have the channel number 1.
-
-NOTE: When I've worked out how the logical channel numbering information is transmitted, then I'll automatically fill this in from the scan.
+By default this flag is cleared (so each scan will start from fresh).
 
 =item B<frontend_params> - Last used frontend settings 
 
@@ -321,6 +267,7 @@ my @FIELD_LIST = qw/dvb
 					config_path
 					tuning
 					errmode errors
+					merge
 					/ ;
 my %FIELDS = map {$_=>1} @FIELD_LIST ;
 
@@ -340,7 +287,6 @@ my %DEFAULTS = (
 	# 'channel' => channel name
 	# 'chan_num' => channel number
 	#
-##	'channel_list'	=> \@CHANNEL_LIST,
 	'channel_list'	=> undef,
 
 	# parameters used to tune the frontend
@@ -358,6 +304,9 @@ my %DEFAULTS = (
 	# Error log
 	'errors'		=> [],
 	'errmode'		=> 'die',
+	
+	# merge scan results with existing
+	'merge'			=> 0,
 ) ;
 
 
@@ -520,6 +469,21 @@ sub debug
 	}
 
 	return $DEBUG ;
+}
+
+#-----------------------------------------------------------------------------
+
+=item C<< dvb_debug([$level]) >>
+
+Set new debug level for dvb XS code
+
+=cut
+
+sub dvb_debug
+{
+	my ($obj, $level) = @_ ;
+
+	dvb_set_debug($level||0) ;
 }
 
 #-----------------------------------------------------------------------------
@@ -1139,6 +1103,7 @@ Returns the discovered channel information as a HASH:
           'tsid' => "16384",
           'type' => "1",
           'video' => "203",
+          'lcn' => 301
         },
 		....
     },
@@ -1180,17 +1145,123 @@ prt_data("Current tuning info=", $tuning_href) if $DEBUG ;
 		return $self->handle_error("Frontend must be tuned before running scan()") ;
 	}
 
-
 	# Do scan
 	my $scan_href = dvb_scan($self->{dvb}, $VERBOSE) ;
 
 prt_data("Scan results=", $scan_href) if $DEBUG ;
 
+
+	## Post-process to weed out undesirables!
+	
+	my %tsid_map ;
+	my @del ;
+	foreach my $chan (keys %{$scan_href->{'pr'}})
+	{
+		if ($chan !~ /\S+/)
+		{
+			push @del, $chan ;
+			next ;
+		}
+		my $tsid = $scan_href->{'pr'}{$chan}{'tsid'} ;
+		my $pnr = $scan_href->{'pr'}{$chan}{'pnr'} ;
+		$tsid_map{"$tsid-$pnr"} = $chan ;
+	}
+	
+	foreach my $chan (@del)
+	{
+print " + del chan \"$chan\"\n" if $DEBUG ;
+
+		delete $scan_href->{'pr'}{$chan} ;
+	}
+
+prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG ;
+	
+	#  lcn =>
+	#    { # HASH(0x83d2608)
+	#      12290 =>
+	#        { # HASH(0x8442524)
+	#          12866 =>
+	#            { # HASH(0x8442578)
+	#              service_type => 2,
+	#            },
+	#        },
+	#      16384 =>
+	#        { # HASH(0x8442af4)
+	#          18496 =>
+	#            { # HASH(0x8442b48)
+	#              lcn => 700,
+	#              service_type => 4,
+	#              visible => 1,
+	#            },
+	#        },
+
+	foreach my $tsid (keys %{$scan_href->{'lcn'}})
+	{
+		foreach my $pnr (keys %{$scan_href->{'lcn'}{$tsid}})
+		{
+			my $href = $scan_href->{'lcn'}{$tsid}{$pnr} ;
+			my $chan = $tsid_map{"$tsid-$pnr"} ;
+
+			next unless $chan ;
+			next unless exists($scan_href->{'pr'}{$chan}) ;
+
+print " : $tsid-$pnr - $chan : lcn=$href->{'lcn'}, vis=$href->{'visible'}, service type=$href->{'service_type'} type=$scan_href->{'pr'}{$chan}{'type'}\n" if $DEBUG ;
+			
+			# check for valid
+			my $delete = 0 ;
+			if ($href->{'lcn'} && $href->{'visible'} && 
+				( ($scan_href->{'pr'}{$chan}{'type'}==1) || ($scan_href->{'pr'}{$chan}{'type'}==2) )
+			)
+			{
+				## Set entry channel number
+				$scan_href->{'pr'}{$chan}{'lcn'} = $href->{'lcn'} ;
+
+print " : : set lcn for $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG ;
+
+				if ($scan_href->{'pr'}{$chan}{'type'}==1)
+				{
+					## video
+					if (!$scan_href->{'pr'}{$chan}{'video'} || !$scan_href->{'pr'}{$chan}{'audio'})
+					{
+						++$delete ;
+					}
+				}
+				else
+				{
+					## audio
+					if (!$scan_href->{'pr'}{$chan}{'audio'})
+					{
+						++$delete ;
+					}
+				}
+
+			}
+			else
+			{
+				++$delete ;
+			}
+			
+			
+			if ($delete)
+			{
+				## Remove this entry
+				delete $scan_href->{'pr'}{$chan} if (exists($scan_href->{'pr'}{$chan})) ;
+
+print " : : REMOVE $chan\n" if $DEBUG ;
+			}
+			
+		}
+	}
+
+
 	# Merge results
-	$scan_href = Linux::DVB::DVBT::Config::merge($scan_href, $tuning_href) ;
-
+	if ($self->merge)
+	{
+		$scan_href = Linux::DVB::DVBT::Config::merge($scan_href, $tuning_href) ;
+	
 prt_data("Merged=", $scan_href) if $DEBUG ;
-
+	}
+	
 	# Save results
 	$self->tuning($scan_href) ;
 	Linux::DVB::DVBT::Config::write($self->config_path, $scan_href) ;
@@ -1242,9 +1313,14 @@ on the scan information.
 NOTE that the created list will be the best attempt at ordering the channels based on the TSID & PNR
 which won't be pretty, but it'll be better than nothing!
 
-Returns an ARRAY ref of channel_list information (see 'channel_list' field for format); otherwise returns undef
+Returns an ARRAY ref of channel_list information; otherwise returns undef. The array is sorted by logical channel number
+and contains HASHes of the form:
 
-TODO: In a later release I'll work out how to use the logical channel number broadcast on the NIT
+	{
+		'channel'		=> channel name (e.g. "BBC THREE") 
+		'channel_num'	=> the logical channel number (e.g. 7)
+		'type'			=> radio or tv channel ('radio' or 'tv')
+	}
 
 =cut
 
@@ -1270,23 +1346,18 @@ sub get_channel_list
 			$channels_aref = [] ;
 			$self->channel_list($channels_aref) ;
 			
-			my %tsid_pnr ;
-			foreach my $channel_name (keys %{$tuning_href->{'pr'}})
+			foreach my $channel_name (sort 
+				{ ($tuning_href->{'pr'}{$a}{'lcn'}||0) <=> ($tuning_href->{'pr'}{$b}{'lcn'}||0) } 
+				keys %{$tuning_href->{'pr'}})
 			{
-				$tsid_pnr{$tuning_href->{'pr'}{$channel_name}{'tsid'}}{$tuning_href->{'pr'}{$channel_name}{'pnr'}} = $channel_name ;
-			}
-#prt_data("TSID-PNR=",\%tsid_pnr) ;
-
-			my $channel_num=1;
-			foreach my $tsid (sort {$a <=> $b} keys %tsid_pnr)
-			{
-				foreach my $pnr (sort {$a <=> $b} keys %{$tsid_pnr{$tsid}})
-				{
-					push @$channels_aref, { 'channel'=>$tsid_pnr{$tsid}{$pnr}, 'channel_num'=>$channel_num++} ;
-				}
+				my $type = $tuning_href->{'pr'}{$channel_name}{'type'} || 1 ;
+				push @$channels_aref, { 
+					'channel'		=> $channel_name, 
+					'channel_num'	=> $tuning_href->{'pr'}{$channel_name}{'lcn'},
+					'type'			=> $type == 1 ? 'tv' : 'radio',
+				} ;
 			}
 		}
-#prt_data("Chans=",$channels_aref) ;
 	}
 
 	return $channels_aref ;
@@ -2046,6 +2117,8 @@ sub read_dvb_ts
 	while(defined($line=<$fh>))
 	{
 		chomp $line ;
+		next if $line =~ /^\s*#/ ; # skip comments
+		 
 		if ($line =~ /\[(\d+)\]/)
 		{
 			$tsid=$1;
@@ -2056,6 +2129,10 @@ sub read_dvb_ts
 			{
 				$dvb_ts{$tsid}{$1} = $2 ;
 			}
+		}
+		elsif ($line =~ /(\S+)\s*=/)
+		{
+			# skip empty entries
 		}
 		else
 		{
@@ -2092,6 +2169,8 @@ sub read_dvb_pr
 	while(defined($line=<$fh>))
 	{
 		chomp $line ;
+		next if $line =~ /^\s*#/ ; # skip comments
+		 
 		if ($line =~ /\[([\d]+)\-([\d]+)\]/)
 		{
 			($tsid, $pnr)=($1,$2);
@@ -2106,6 +2185,10 @@ sub read_dvb_pr
 				$dvb_pr{"$tsid-$pnr"}{'tsid'} = $tsid ;
 				$dvb_pr{"$tsid-$pnr"}{'pnr'} = $pnr ;
 			}
+		}
+		elsif ($line =~ /(\S+)\s*=/)
+		{
+			# skip empty entries
 		}
 		else
 		{
@@ -2169,7 +2252,11 @@ sub write_dvb_ts
 		print $fh "[$section]\n" ;
 		foreach my $field (keys %{$href->{$section}})
 		{
-			print $fh "$field = $href->{$section}{$field}\n" ; 
+			my $val = $href->{$section}{$field} ;
+			if ($val =~ /\S+/)
+			{
+				print $fh "$field = $val\n" ;
+			} 
 		}
 		print $fh "\n" ;
 	}
@@ -2217,7 +2304,11 @@ sub write_dvb_pr
 		print $fh "[$href->{$section}{tsid}-$href->{$section}{pnr}]\n" ;
 		foreach my $field (keys %{$href->{$section}})
 		{
-			print $fh "$field = $href->{$section}{$field}\n" ; 
+			my $val = $href->{$section}{$field} ;
+			if ($val =~ /\S+/)
+			{
+				print $fh "$field = $val\n" ;
+			} 
 		}
 		print $fh "\n" ;
 	}
@@ -2258,10 +2349,6 @@ Subsequent releases will include:
 =item *
 
 Support for event-driven applications (e.g. POE). I need to re-write some of the C to allow for event-driven hooks (and special select calls)
-
-=item *
-
-Extraction of channel numbering from broadcast. I want to work out how to decode the LCN.
 
 =back
 

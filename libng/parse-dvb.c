@@ -13,6 +13,8 @@
 #include "grab-ng.h"
 #include "parse-mpeg.h"
 
+extern int dvb_debug ;
+
 /* ----------------------------------------------------------------------- */
 
 static unsigned int unbcd(unsigned int bcd)
@@ -123,9 +125,18 @@ static void parse_nit_desc_1(unsigned char *desc, int dlen,
 {
     int i,t,l;
 
+    if (dvb_debug>1)
+		fprintf(stderr,
+			"parse_nit_desc_1()\n");
+
     for (i = 0; i < dlen; i += desc[i+1] +2) {
 	t = desc[i];
 	l = desc[i+1];
+
+    if (dvb_debug>1)
+		fprintf(stderr,
+			"ts [nit1]: t 0x%02x   l %d\n",
+			t, l);
 
 	switch (t) {
 	case 0x40:
@@ -193,11 +204,22 @@ static void parse_nit_desc_2(unsigned char *desc, int dlen,
 	[ 3 ] = "R",  // circular right
     };
     unsigned int freq,rate,fec;
-    int i,t,l;
+    int i,j, t,l;
 
-    for (i = 0; i < dlen; i += desc[i+1] +2) {
+    if (dvb_debug>1)
+		fprintf(stderr,
+			"parse_nit_desc_2()\n");
+
+    for (i = 0; i < dlen; i += desc[i+1] +2) 
+    {
 	t = desc[i];
 	l = desc[i+1];
+
+    if (dvb_debug>1)
+		fprintf(stderr,
+			"ts [nit2]: t 0x%02x   l %d\n",
+			t, l);
+
 
 	switch (t) {
 	case 0x43: /* dvb-s */
@@ -228,6 +250,69 @@ static void parse_nit_desc_2(unsigned char *desc, int dlen,
 	    stream->guard         = gu[   mpeg_getbits(desc+i+2, 51, 2) ];
 	    stream->transmission  = tr[   mpeg_getbits(desc+i+2, 54, 1) ];
 	    break;
+	    
+	case 0x83 : /* LCN */
+
+	    j = 0;
+	    while (j < l*8) 
+	    {
+		int sid, visible, lcn ;
+	    struct prog_info  *pinfo;
+		
+	
+			//	service_id 16 uimsbf
+			//	visible_service_flag 1 bslbf
+			//	reserved 5 bslbf
+			//	logical_channel_number 10 uimsbf	
+			sid			= mpeg_getbits(desc+i+2,  j, 16) ;
+			visible		= mpeg_getbits(desc+i+2,  j+17, 1) ;
+			lcn 		= mpeg_getbits(desc+i+2,  j+22, 10) ;
+	
+		    if (dvb_debug>1)
+				fprintf(stderr,
+					"LCN: service_id=%d (0x%04x)  visible=%d  lcn=%d (0x%03x)\n",
+					sid, sid, visible, lcn, lcn);
+					
+			pinfo = prog_info_get(stream, sid, 1) ;
+			pinfo->visible = visible ;
+			pinfo->lcn = lcn ;
+	
+			j += 32;
+	    }
+		break ;
+		
+	case 0x41:  /* service list descriptor */
+	
+		//service_list_descriptor(){
+		//	descriptor_tag 8 uimsbf
+		//	descriptor_length 8 uimsbf
+		//	for (i=0;i<N;I++){
+		//		service_id 16 uimsbf
+		//		service_type 8 uimsbf
+		//	}
+		//}
+	
+	    j = 0;
+	    while (j < l*8) 
+	    {
+		int sid, service_type ;
+	    struct prog_info  *pinfo;
+	
+			sid				= mpeg_getbits(desc+i+2,  j, 16) ;
+			service_type	= mpeg_getbits(desc+i+2,  j+17, 8) ;
+	
+		    if (dvb_debug>1)
+				fprintf(stderr,
+					"service_list_descriptor: service_id=%d (0x%04x)  service_type=%d (0x%02x)\n",
+					sid, sid, service_type, service_type);
+
+			pinfo = prog_info_get(stream, sid, 1) ;
+			pinfo->service_type = service_type ;
+	
+			j += 24;
+	    }
+		break ;	
+		
 	}
     }
     return;
