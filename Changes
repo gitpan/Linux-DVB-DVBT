@@ -1,6 +1,11 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
-1.04
+1.05 Mon Oct 12 11:09:00 2009
+	- Fixed typo in epg() method that caused program ids to be created using tsid-pnr rather than lcn
+	- Corrected dvbt-ffrec to enclose output filename in quote
+	- Numerous fixes to scan and epg related to multiple frequency handling (thanks to Thomas Rehn for his help in debugging)
+
+1.04 Fri Oct 02 10:00:00 2009
 	- I've finally worked out how to gather the logical channel number information for all of the channels.
 	- Added 'merge' option flag to allow scan results to be merged with previous (default is to overwrite previous)
 	- Now removes any channels that are not tv or radio; do not have a channel name; do not have the correct audio/video stream ids

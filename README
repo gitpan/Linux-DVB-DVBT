@@ -34,6 +34,21 @@ Specify the channel, the duration, and the output filename to record a channel:
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 
+* dvbt-ffrec
+
+Similar to dvbt-record, but pipes the transport stream into ffmpeg and uses that to transcode the data directly into an MPEG file (without
+saving the transport stream file).
+
+Specify the channel, the duration, and the output filename to record a channel:
+
+   $ dvbt-ffrec "bbc1" spooks.mpeg 1:00 
+   
+Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
+
+* dvbt-chans
+
+Use to display the current list of tuned channels. Shows them in logical channel number order.
+
 
 
 INSTALLATION

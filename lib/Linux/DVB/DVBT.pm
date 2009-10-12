@@ -104,10 +104,6 @@ Specify the channel, the duration, and the output filename to record a channel:
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 
-=item dvbt-devices
-
-Displays the list of currently fitted DVB-T tuners.
-
 =item dvbt-chans
 
 Use to display the current list of tuned channels. Shows them in logical channel number order.
@@ -156,7 +152,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '1.04';
+our $VERSION = '1.05';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -247,6 +243,11 @@ If the mode is set to 'die' then the application will terminate after printing a
 When the mode is set to 'return' then the object method returns control back to the calling application with a non-zero status. It is the
 application's responsibility to handle the errors (stored in  L</errors>)
 
+=item B<timeout> - Timeout
+
+Set hardware timeout time in milliseconds. Most hardware will be ok using the default (900ms), but you can use this field to increase
+the timeout time. 
+
 
 =item B<errors> - List of errors
 
@@ -268,6 +269,7 @@ my @FIELD_LIST = qw/dvb
 					tuning
 					errmode errors
 					merge
+					timeout
 					/ ;
 my %FIELDS = map {$_=>1} @FIELD_LIST ;
 
@@ -283,10 +285,6 @@ my %DEFAULTS = (
 	'dvb'			=> undef,
 	
 	# List of channels of the form:
-	#
-	# 'channel' => channel name
-	# 'chan_num' => channel number
-	#
 	'channel_list'	=> undef,
 
 	# parameters used to tune the frontend
@@ -307,6 +305,9 @@ my %DEFAULTS = (
 	
 	# merge scan results with existing
 	'merge'			=> 0,
+	
+	# timeout period ms
+	'timeout'		=> 900,
 ) ;
 
 
@@ -636,7 +637,7 @@ sub select_channel
 	}
 
 	# Tune frontend
-	if ($self->set_frontend(%$frontend_params_href))
+	if ($self->set_frontend(%$frontend_params_href, 'timeout' => $self->timeout))
 	{
 		return $self->handle_error("Unable to tune frontend") ;
 	}
@@ -765,7 +766,7 @@ print "set_demux( <$video_pid>, <$audio_pid>, <$teletext_pid> )\n" if $DEBUG ;
 
 	$teletext_pid ||= 0 ;
 
-	return dvb_set_demux($self->{dvb}, $video_pid, $audio_pid, $teletext_pid) ;
+	return dvb_set_demux($self->{dvb}, $video_pid, $audio_pid, $teletext_pid, $self->{'timeout'}) ;
 }
 
 
@@ -852,26 +853,6 @@ sub epg
 	# Get tuning information
 	my $tuning_href = $self->get_tuning_info() ;
 
-	## check for frontend tuned
-	
-	# if not tuned yet, attempt to auto-tune (assumes scan has been performed)
-	if (!$self->frontend_params())
-	{
-		# Grab first channel settings & attempt to set frontend
-		if ($tuning_href)
-		{
-			my $params_href = (values %{$tuning_href->{'ts'}})[0] ;
-			$self->set_frontend(%$params_href) ;
-		}
-	}
-			
-	# if not tuned by now then we have to raise an error
-	if (!$self->frontend_params())
-	{
-		# Raise an error
-		return $self->handle_error("Frontend must be tuned before gathering EPG data (have you run scan() yet?)") ;
-	}
-
 	# Create a lookup table to convert [tsid-pnr] values into channel names & channel numbers 
 	my $channel_lookup_href ;
 	my $channels_aref = $self->get_channel_list() ;
@@ -892,17 +873,66 @@ sub epg
 				# create the lookup
 				$channel_lookup_href->{"$tuning_href->{'pr'}{$channel}{tsid}-$tuning_href->{'pr'}{$channel}{pnr}"} = {
 					'channel' => $channel,
-					'chan_num' => $chan_href->{'chan_num'},
+					'channel_num' => $tuning_href->{'pr'}{$channel}{'lcn'} || $chan_href->{'channel_num'},
 				} ;
 			}
 		}
 	}	
-#prt_data("Lookup=", $channel_lookup_href) ;
+prt_data("Lookup=", $channel_lookup_href) if $DEBUG >= 2 ;
 
-	# Gather EPG information into a list of HASH refs
-	my $epg_data = dvb_epg($self->{dvb}, $VERBOSE, $DEBUG, $section) ;
-prt_data("EPG data=", $epg_data) if $DEBUG ;
+
+	## check for frontend tuned
 	
+	# list of carrier frequencies to tune to
+	my @next_freq ;
+	
+	# if not tuned yet, tune to all station freqs (assumes scan has been performed)
+	if (!$self->frontend_params())
+	{
+		# Grab first channel settings & attempt to set frontend
+		if ($tuning_href)
+		{
+			@next_freq = values %{$tuning_href->{'ts'}} ;
+			my $params_href = shift @next_freq ;
+prt_data("Set frontend : params=", $params_href) if $DEBUG >= 2 ;
+			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
+		}
+	}
+
+	# start with a cleared list
+	dvb_clear_epg() ;
+	
+	# collect all the EPG data from all carriers
+	my $params_href ;
+	my $epg_data ;
+	do
+	{		
+		# if not tuned by now then we have to raise an error
+		if (!$self->frontend_params())
+		{
+			# Raise an error
+			return $self->handle_error("Frontend must be tuned before gathering EPG data (have you run scan() yet?)") ;
+		}
+	
+		# Gather EPG information into a list of HASH refs (collects all previous runs)
+		$epg_data = dvb_epg($self->{dvb}, $VERBOSE, $DEBUG, $section) ;
+
+		# tune to next carrier in the list (if any are left)
+		$params_href = undef ;
+		if (@next_freq)
+		{
+			$params_href = shift @next_freq ;
+prt_data("Retune params=", $params_href)  if $DEBUG >= 2 ;
+			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
+		}
+	}
+	while ($params_href) ;
+
+prt_data("EPG data=", $epg_data) if $DEBUG ;
+
+	# ok to clear down the low-level list now
+	dvb_clear_epg() ;
+		
 	# Analyse EPG info
 	foreach my $epg_entry (@$epg_data)
 	{
@@ -910,12 +940,12 @@ prt_data("EPG data=", $epg_data) if $DEBUG ;
 		my $pnr = $epg_entry->{'pnr'} ;
 
 		my $chan = "$tsid-$pnr" ;		
-		my $chan_num = $chan ;
+		my $channel_num = $chan ;
 		
 		if ($channel_lookup_href)
 		{
 			# Replace channel name with the text name (rather than tsid/pnr numbers) 
-			$chan_num = $channel_lookup_href->{$chan}{'chan_num'} || $chan ;
+			$channel_num = $channel_lookup_href->{$chan}{'channel_num'} || $chan ;
 			$chan = $channel_lookup_href->{$chan}{'channel'} || $chan ;
 		}
 		
@@ -942,7 +972,7 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG ;
 		my $date  = strftime "%Y-%m-%d", @start_localtime ;
 
 		my $pid_date = strftime "%Y%m%d", @start_localtime ;
-		my $pid = "$epg_entry->{'id'}-$chan_num-$pid_date" ;	# id is reused on different channels 
+		my $pid = "$epg_entry->{'id'}-$channel_num-$pid_date" ;	# id is reused on different channels 
 		
 		my @end_localtime =  localtime($epg_entry->{'stop'}) ;
 		my $end = strftime "%H:%M:%S", @end_localtime ;
@@ -1046,7 +1076,7 @@ sub scan_from_file
 
 	return $self->handle_error( "Error: No frequency file specified") unless $freq_file ;
 
-	my %tuning_params ;
+	my @tuning_list ;
 
 	# parse file
 	open my $fh, "<$freq_file" or return $self->handle_error( "Error: Unable to read frequency file $freq_file : $!") ;
@@ -1058,24 +1088,43 @@ sub scan_from_file
 		{
 			# get first
 			my ($freq, $bw, $r_hi1, $r_hi2, $r_lo1, $r_lo2, $mo, $tr, $gu, $hi) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ;
+
+			my %tuning_params ;
 			
 			$tuning_params{'frequency'} = $freq if ($freq) ;
 			$tuning_params{'bandwidth'} = $bw if ($bw) ;
 			$tuning_params{'transmission'} = $tr if ($tr) ;
 			$tuning_params{'guard_interval'} = $gu if ($gu) ;
-			last ;
+			
+			push @tuning_list, \%tuning_params ;
 		}
 	}
 	close $fh ;
 	
-	return $self->handle_error( "Error: No tuning parameters found") unless keys %tuning_params ;
-	
-	# set tuning
-	my $rc = $self->set_frontend(%tuning_params) ;
-	return $self->handle_error( "Error: Tuning error : $rc" ) unless $rc==0 ;
+	# exit on failure
+	return $self->handle_error( "Error: No tuning parameters found") unless @tuning_list ;
 
-	# Scan
-	return $self->scan() ;
+	## tune into each frequency & perform the scan
+	my $saved_merge = $self->merge ;
+	foreach my $tuning_params_href (@tuning_list)
+	{
+		# set tuning
+		print "Setting frequency: $tuning_params_href->{frequency} MHz\n" if $self->verbose ;
+		my $rc = $self->set_frontend(%$tuning_params_href, 'timeout' => $self->timeout) ;
+		return $self->handle_error( "Error: Sorry, I can't set the DVB-T tuner to $tuning_params_href->{frequency} MHz (error code $rc)" ) unless $rc==0 ;
+	
+		# Scan
+		$self->scan() ;
+		
+		# ensure next results are merged in
+		$self->merge(1) ;
+	}
+
+	## restore flag
+	$self->merge($saved_merge) ;
+
+	## return tuning settings	
+	return $self->tuning() ;
 }
 
 
@@ -1204,6 +1253,7 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG ;
 
 			next unless $chan ;
 			next unless exists($scan_href->{'pr'}{$chan}) ;
+			next unless exists($href->{'lcn'}) ;	# skip broadcasts where the LCN info is not output
 
 print " : $tsid-$pnr - $chan : lcn=$href->{'lcn'}, vis=$href->{'visible'}, service type=$href->{'service_type'} type=$scan_href->{'pr'}{$chan}{'type'}\n" if $DEBUG ;
 			
@@ -1345,19 +1395,46 @@ sub get_channel_list
 		{
 			$channels_aref = [] ;
 			$self->channel_list($channels_aref) ;
+
+			my %tsid_pnr ;
+			foreach my $channel_name (keys %{$tuning_href->{'pr'}})
+			{
+				my $tsid = $tuning_href->{'pr'}{$channel_name}{'tsid'} ;
+				my $pnr = $tuning_href->{'pr'}{$channel_name}{'pnr'} ;
+				$tsid_pnr{$channel_name} = "$tsid-$pnr" ;
+			}
 			
+			my $channel_num=1 ;
 			foreach my $channel_name (sort 
-				{ ($tuning_href->{'pr'}{$a}{'lcn'}||0) <=> ($tuning_href->{'pr'}{$b}{'lcn'}||0) } 
+				{ 
+					my $lcn_a = $tuning_href->{'pr'}{$a}{'lcn'}||0 ;
+					my $lcn_b = $tuning_href->{'pr'}{$b}{'lcn'}||0 ;
+					if (!$lcn_a || !$lcn_b)
+					{
+						$tuning_href->{'pr'}{$a}{'tsid'} <=> $tuning_href->{'pr'}{$b}{'tsid'}
+						||
+						$tuning_href->{'pr'}{$a}{'pnr'} <=> $tuning_href->{'pr'}{$b}{'pnr'} ;
+					}
+					else
+					{
+						$lcn_a <=> $lcn_b ;
+					}
+					
+				} 
 				keys %{$tuning_href->{'pr'}})
 			{
 				my $type = $tuning_href->{'pr'}{$channel_name}{'type'} || 1 ;
 				push @$channels_aref, { 
 					'channel'		=> $channel_name, 
-					'channel_num'	=> $tuning_href->{'pr'}{$channel_name}{'lcn'},
+					'channel_num'	=> $tuning_href->{'pr'}{$channel_name}{'lcn'} || $channel_num,
 					'type'			=> $type == 1 ? 'tv' : 'radio',
 				} ;
+				
+				++$channel_num ;
 			}
 		}
+
+#prt_data("TSID-PNR=",\%tsid_pnr) ;
 	}
 
 	return $channels_aref ;
@@ -1485,7 +1562,7 @@ sub setup_modules
 		if (load_module('Data::Dumper'))
 		{
 			# Create local function
-			*prt_data = sub {print Data::Dumper->Dump(@_)} ;
+			*prt_data = sub {print Data::Dumper->Dump([@_])} ;
 		}	
 		else
 		{
@@ -2327,7 +2404,13 @@ __END__
 
 =head1 ACKNOWLEDGEMENTS
 
-Gerd Knorr for writing xawtv (see L<http://linux.bytesex.org/xawtv/>)
+=head3 Thomas Rehn
+
+Special thanks to Thomas, not only for providing feedback on a number of latent bugs but also for his
+patience in re-running numerous test versions to gather the debug data I needed. Thanks Thomas.
+
+
+=head3 Gerd Knorr for writing xawtv (see L<http://linux.bytesex.org/xawtv/>)
 
 Some of the C code used in this module is used directly from Gerd's libng. All other files
 are entirely written by me, or drastically modified from Gerd's original to (a) make the code
@@ -2339,6 +2422,20 @@ functions required by this module.
 Steve Price
 
 Please report bugs using L<http://rt.cpan.org>.
+
+=head1 BUGS
+
+=over 4
+
+=item *
+
+There is a known issue where the scan locks onto the wrong frequency of a multiplex where there are more than
+one possible frequency reported in the NIT. I'm currently investigating into this and hope to get a fix out in
+the next release.
+
+=back
+
+
 
 =head1 FUTURE
 

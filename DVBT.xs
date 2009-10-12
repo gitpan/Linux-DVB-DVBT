@@ -13,7 +13,8 @@
 #include "dvb_lib/dvb_struct.h"
 #include "dvb_lib/dvb_lib.h"
 
-#define DVBT_VERSION	"1.004"
+#define DVBT_VERSION		"1.005"
+#define DEFAULT_TIMEOUT		900
 
 /*---------------------------------------------------------------------------------------------------*/
 
@@ -41,21 +42,10 @@
 static char *_to_string(char *str)
 {
 int i, j, len = strlen(str);
-static char ret_str[1024] ;
+static char ret_str[8192] ;
 
    for (i=0, j=0; i < len; i++)
    {
-/*
-	   if (isalnum(str[i]) || ' ' == str[i])
-	   {
-		   ret_str[j++] = str[i] ;
-	   }
-	   else
-	   {
-		   sprintf(&ret_str[j], "\\x%02x",str[i]);
-		   j += strlen(&ret_str[j]) ;
-	   }
-*/	   
 	   ret_str[j++] = str[i] ;
 
 	   /* terminate */
@@ -188,6 +178,14 @@ dvb_set_debug(int debug);
 
 
  # /*---------------------------------------------------------------------------------------------------*/
+
+void
+dvb_clear_epg();
+	CODE:
+	 clear_epg() ;
+
+
+ # /*---------------------------------------------------------------------------------------------------*/
  # /* Use the specified parameters (or AUTO) to tune the frontend */
 int
 dvb_tune (DVB *dvb, HV *parameters)
@@ -206,9 +204,10 @@ dvb_tune (DVB *dvb, HV *parameters)
 		int guard_interval=GUARD_INTERVAL_AUTO;
 		int hierarchy=HIERARCHY_AUTO;
 
-		int timeout=100;
+		int timeout=DEFAULT_TIMEOUT;
 
 	CODE:
+		/* Read all those HASH values that are actually set */
 		HVF_I(parameters, frequency) ;
 		HVF_I(parameters, inversion) ;
 		HVF_I(parameters, bandwidth) ;
@@ -245,12 +244,11 @@ dvb_tune (DVB *dvb, HV *parameters)
  # /*---------------------------------------------------------------------------------------------------*/
  # /* Set the DEMUX to the specified streams */
 int
-dvb_set_demux (DVB *dvb, int vpid, int apid, int tpid)
-   INIT:
-		int timeout=100;
+dvb_set_demux (DVB *dvb, int vpid, int apid, int tpid, int timeout)
 
 	CODE:
-
+		if (!timeout) timeout = DEFAULT_TIMEOUT ;
+		
 		// Initialise the demux filter
 		dvb_demux_filter_setup(dvb, vpid, apid) ;
 
@@ -558,17 +556,6 @@ dvb_epg(DVB *dvb, int verbose, int alive, int section)
 			av_push(results, newRV((SV *)rh));
 	   }
 
-
-		/* Free up results */
-		  /* TODO: Provide C call to do this */
-	   list_for_each_safe(item,safe,epg_list)
-	   {
-			epg = list_entry(item, struct epgitem, next);
-			list_del(&epg->next);
-
-			if (epg->etext) free(epg->etext) ;
-			free(epg);
-	   };
 
    }
 

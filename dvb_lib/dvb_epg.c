@@ -626,20 +626,40 @@ int    eit_count_records;
 #define CYCLES_WRITEFILE	500
 
 /* ----------------------------------------------------------------------- */
+void clear_epg()
+{
+struct list_head *item, *safe;
+struct epgitem   *epg;
+
+	/* Free up results */
+   	list_for_each_safe(item,safe,&epg_list)
+   	{
+		epg = list_entry(item, struct epgitem, next);
+		list_del(&epg->next);
+
+		if (epg->etext) free(epg->etext) ;
+		free(epg);
+   	};
+   	
+}
+
+/* ----------------------------------------------------------------------- */
 struct list_head *get_eit(struct dvb_state *dvb,  int section, int mask, int verbose, int alive)
 {
-	int n;
-	time_t t;
-	unsigned char buf[4096];
-	struct dmx_sct_filter_params sctFilterParams;
-	struct pollfd ufd;
-	int found = 0;
+int n;
+//	time_t t;
+unsigned char buf[4096];
+struct dmx_sct_filter_params sctFilterParams;
+struct pollfd ufd;
+int found = 0;
 
-struct eit_state *eit;
 unsigned int to = 10 ;
 
 unsigned int updates=0;
 unsigned int cycles=0;
+int section_retries=2;
+
+struct eit_state *eit;
 
     eit = malloc(sizeof(*eit));
     memset(eit,0,sizeof(*eit));
@@ -655,7 +675,7 @@ unsigned int cycles=0;
 					0, 20);
 
 
-	t = 0;
+//	t = 0;
 
 
 	for(;;)
@@ -689,14 +709,25 @@ unsigned int cycles=0;
 			return (struct list_head *)0;
 		}
 
-		if (verbose>5) fprintf(stderr, " + get_section\n") ;
+		if (verbose>5) fprintf(stderr, " + get_section() fd=%d\n", eit->fd) ;
 
 		if (dvb_demux_get_section(eit->fd, buf, sizeof(buf)) < 0)
 		{
-			eit->fd = dvb_demux_req_section(eit->dvb,
+		if (verbose>5) fprintf(stderr, " + + !! failed to get_section() - request retune\n") ;
+		
+			if (--section_retries > 0)
+			{
+				eit->fd = dvb_demux_req_section(eit->dvb,
 						eit->fd , 0x12,
 						eit->sec, eit->mask,
 						0, 20);
+		if (verbose>5) fprintf(stderr, " + + retune fd=%d\n", eit->fd) ;
+			}
+			else
+			{
+				// assume we've finished - some tuners seem to indicate to poll() that they're ready even when they aren't
+				return &epg_list ;	
+			}
 		}
 		else
 		{
@@ -716,10 +747,8 @@ unsigned int cycles=0;
 				if (cycles > CYCLES_WRITEFILE)
 				{
 					if (verbose>5) fprintf(stderr, "File dump...\n") ;
-//					eit_write_file(filename) ;
 					updates=0;
 					cycles = 0 ;
-
 				}
 			}
 			/* nothing new so stop */
@@ -731,7 +760,6 @@ if (verbose>5)
 {
 	fprintf(stderr,"epg complete\n") ;
 }
-cycles=0;
 					return &epg_list ;
 				}
 			}
@@ -744,7 +772,7 @@ if (verbose>5)
 {
 	fprintf(stderr,"epg end\n") ;
 }
-cycles=0;
+
 	return &epg_list ;
 }
 

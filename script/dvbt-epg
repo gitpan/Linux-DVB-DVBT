@@ -24,11 +24,12 @@ $text
 .
 
 
-	my ($help, $man, $DEBUG, $VERBOSE) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
+			   'cfg=s' => \$config,
 			   ) or pod2usage(2) ;
 
 
@@ -44,6 +45,8 @@ $text
 	## die on *any* error, so there is no error checking in this script
 	##
 	my $dvb = Linux::DVB::DVBT->new() ;
+
+	$dvb->config_path($config) if $config ;
 	
 	## Get EPG info - automatically tunes the frontend
 	my ($epg_href, $dates_href) = $dvb->epg() ;

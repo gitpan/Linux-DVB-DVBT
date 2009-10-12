@@ -249,6 +249,14 @@ static void parse_nit_desc_2(unsigned char *desc, int dlen,
 	    stream->code_rate_lp  = ra_t[ mpeg_getbits(desc+i+2, 48, 3) ];
 	    stream->guard         = gu[   mpeg_getbits(desc+i+2, 51, 2) ];
 	    stream->transmission  = tr[   mpeg_getbits(desc+i+2, 54, 1) ];
+
+if (dvb_debug > 1)
+{
+	fprintf(stderr,
+		"terrestrial_delivery_system_descriptor:: Freq=%d\n",
+		stream->frequency);
+	
+}
 	    break;
 	    
 	case 0x83 : /* LCN */

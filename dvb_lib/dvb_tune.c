@@ -125,7 +125,7 @@ int dvb_tune(struct dvb_state *h,
 	return rc ;
 }
 
-
+#ifdef NOTUSED
 /* ----------------------------------------------------------------------- */
 /*
  * Set up a channel  ready for record
@@ -169,6 +169,8 @@ int dvb_select_channel(struct dvb_state *h,
 
 	return rc ;
 }
+#endif
+
 
 /* ======================================================================= */
 /* handle diseqc                                                           */
@@ -220,7 +222,7 @@ int dvb_frontend_open(struct dvb_state *h, int write)
 	fprintf(stderr,"dvb fe: open %s: %s\n",
 		h->frontend,strerror(errno));
 	if (dvb_debug>1) _fn_end(_name, -1) ;
-	return -1;
+	return -10;
     }
 	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Created fd=%d\n", *fd);}
 	if (dvb_debug>1) _fn_end(_name, 0) ;
@@ -303,17 +305,8 @@ if (dvb_debug>1) _fn_start(_name) ;
 		fprintf(stderr,"unable to open frontend\n");
     	if (dvb_debug>1) _fn_end(_name, -1) ;
 
-    	return -1;
+    	return -11;
     }
-
-/* FIX
-    if (0 != cfg_get_int(domain, section, "ca", 0)) {
-		dvb_demux_filter_setup(h, 0, 0);
-		fprintf(stderr,"encrypted channel, can't handle that, sorry\n");
-		if (dvb_debug>1) _fn_end(_name, -1) ;
-		return -1;
-    }
-*/
 
     if (dvb_src)
     	free(dvb_src);
@@ -441,7 +434,7 @@ int dvb_frontend_wait_lock(struct dvb_state *h, int timeout)
 	if (msec > timeout && runs > 3)
 	    break;
     }
-    return -1;
+    return -12;
 }
 
 /* ======================================================================= */
@@ -549,7 +542,7 @@ int dvb_demux_filter_apply(struct dvb_state *h)
 
  oops:
 		if (dvb_debug>1) _fn_end(_name, -1) ;
-    return -1;
+    return -13;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -637,7 +630,7 @@ int mask = 0xff ;
     	close(fd);
 
 	if (dvb_debug>1) _fn_end(_name, -1) ;
-    return -1;
+    return -14;
 }
 
 /* ======================================================================= */
@@ -769,7 +762,7 @@ int dvb_wait_tune(struct dvb_state *h, int timeout)
 		if (!dvb_frontend_is_locked(h))
 		{
 			if (dvb_debug>1) _fn_end(_name, -1) ;
-		    return -1;
+		    return -15;
 		}
     }
     else
@@ -777,7 +770,7 @@ int dvb_wait_tune(struct dvb_state *h, int timeout)
 		if (0 != dvb_frontend_wait_lock(h, timeout))
 		{
 			if (dvb_debug>1) _fn_end(_name, -1) ;
-		    return -1;
+		    return -16;
 		}
     }
 
@@ -797,7 +790,7 @@ int dvb_finish_tune(struct dvb_state *h, int timeout)
 	if (0 == h->video.filter.pid && 0 == h->audio.filter.pid)
 	{
 		if (dvb_debug>1) _fn_end(_name, -2) ;
-		return -2;
+		return -20;
 	}
 
 	// Ensure frontend is tuned
@@ -809,7 +802,7 @@ int dvb_finish_tune(struct dvb_state *h, int timeout)
     if (0 != dvb_demux_filter_apply(h))
     {
     	if (dvb_debug>1) _fn_end(_name, -2) ;
-    	return -2;
+    	return -21;
     }
 
 	if (dvb_debug>1) _fn_end(_name, 0) ;
