@@ -4,6 +4,8 @@
  * (c) 2001-03 Gerd Knorr <kraxel@bytesex.org>
  *
  */
+#ifndef GRAB_NG
+#define GRAB_NG
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -670,3 +672,4 @@ void  ng_conv_nop_fini(void *handle);
  * compile-command: "(cd ..; make)"
  * End:
  */
+#endif

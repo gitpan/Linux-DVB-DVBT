@@ -115,8 +115,6 @@ struct eit_state {
     int                 sec;
     int                 mask;
     int                 fd;
-//    GIOChannel          *ch;
-//    guint               id;
     int                 verbose;
     int                 alive;
 };

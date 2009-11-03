@@ -152,7 +152,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '1.05';
+our $VERSION = '1.06';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -211,7 +211,7 @@ Read this ARRAY ref to get the list of fitted DVBT adapters. This is equivalent 
 
 Set this flag before running the scan() method. When set, the scan will merge the new results with any previous scan results (read from the config files)
 
-By default this flag is cleared (so each scan will start from fresh).
+By default this flag is set (so each scan merge with prvious results). Clear this flag to re-start from fresh - useful when broadcasters change the frequencies.
 
 =item B<frontend_params> - Last used frontend settings 
 
@@ -270,6 +270,10 @@ my @FIELD_LIST = qw/dvb
 					errmode errors
 					merge
 					timeout
+					
+					_scan_freqs
+					_device_index
+					_device_info
 					/ ;
 my %FIELDS = map {$_=>1} @FIELD_LIST ;
 
@@ -304,10 +308,196 @@ my %DEFAULTS = (
 	'errmode'		=> 'die',
 	
 	# merge scan results with existing
-	'merge'			=> 0,
+	'merge'			=> 1,
 	
 	# timeout period ms
 	'timeout'		=> 900,
+	
+	######################################
+	# Internal
+	
+	# scanning driven by frequency file
+	'_scan_freqs'	=> 0,
+	
+	# which device in the device list are we
+	'_device_index' => undef,
+	
+	# ref to this device's info from the device list
+	'_device_info'	=> undef,
+) ;
+
+my $AUTO = 999 ;
+
+#typedef enum fe_code_rate {
+#	FEC_NONE = 0,
+#	FEC_1_2,
+#	FEC_2_3,
+#	FEC_3_4,
+#	FEC_4_5,
+#	FEC_5_6,
+#	FEC_6_7,
+#	FEC_7_8,
+#	FEC_8_9,
+#	FEC_AUTO
+#} fe_code_rate_t;
+#
+#    static char *ra_t[8] = {  ???
+#	[ 0 ] = "12",
+#	[ 1 ] = "23",
+#	[ 2 ] = "34",
+#	[ 3 ] = "56",
+#	[ 4 ] = "78",
+#    };
+my %FE_CODE_RATE = (
+	'NONE'		=> 0,
+	'1/2'		=> 12,
+	'2/3'		=> 23,
+	'3/4'		=> 34,
+	'4/5'		=> 45,
+	'5/6'		=> 56,
+	'6/7'		=> 67,
+	'7/8'		=> 78,
+	'8/9'		=> 89,
+	'AUTO'		=> $AUTO,
+) ;
+
+#
+#typedef enum fe_modulation {
+#	QPSK,
+#	QAM_16,
+#	QAM_32,
+#	QAM_64,
+#	QAM_128,
+#	QAM_256,
+#	QAM_AUTO,
+#	VSB_8,
+#	VSB_16
+#} fe_modulation_t;
+#
+#    static char *co_t[4] = {
+#	[ 0 ] = "0",
+#	[ 1 ] = "16",
+#	[ 2 ] = "64",
+#    };
+#
+my %FE_MOD = (
+	'QPSK'		=> 0,
+	'QAM16'		=> 16,
+	'QAM32'		=> 32,
+	'QAM64'		=> 64,
+	'QAM128'	=> 128,
+	'QAM256'	=> 256,
+	'AUTO'		=> $AUTO,
+) ;
+
+
+#typedef enum fe_transmit_mode {
+#	TRANSMISSION_MODE_2K,
+#	TRANSMISSION_MODE_8K,
+#	TRANSMISSION_MODE_AUTO
+#} fe_transmit_mode_t;
+#
+#    static char *tr[2] = {
+#	[ 0 ] = "2",
+#	[ 1 ] = "8",
+#    };
+my %FE_TRANSMISSION = (
+	'2k'		=> 2,
+	'8k'		=> 8,
+	'AUTO'		=> $AUTO,
+) ;
+
+#typedef enum fe_bandwidth {
+#	BANDWIDTH_8_MHZ,
+#	BANDWIDTH_7_MHZ,
+#	BANDWIDTH_6_MHZ,
+#	BANDWIDTH_AUTO
+#} fe_bandwidth_t;
+#
+#    static char *bw[4] = {
+#	[ 0 ] = "8",
+#	[ 1 ] = "7",
+#	[ 2 ] = "6",
+#    };
+my %FE_BW = (
+	'8MHz'		=> 8,
+	'7MHz'		=> 7,
+	'6MHz'		=> 6,
+	'AUTO'		=> $AUTO,
+) ;
+
+#
+#typedef enum fe_guard_interval {
+#	GUARD_INTERVAL_1_32,
+#	GUARD_INTERVAL_1_16,
+#	GUARD_INTERVAL_1_8,
+#	GUARD_INTERVAL_1_4,
+#	GUARD_INTERVAL_AUTO
+#} fe_guard_interval_t;
+#
+#    static char *gu[4] = {
+#	[ 0 ] = "32",
+#	[ 1 ] = "16",
+#	[ 2 ] = "8",
+#	[ 3 ] = "4",
+#    };
+my %FE_GUARD = (
+	'1/32'		=> 32,
+	'1/16'		=> 16,
+	'1/8'		=> 8,
+	'1/4'		=> 4,
+	'AUTO'		=> $AUTO,
+) ;
+
+#typedef enum fe_hierarchy {
+#	HIERARCHY_NONE,
+#	HIERARCHY_1,
+#	HIERARCHY_2,
+#	HIERARCHY_4,
+#	HIERARCHY_AUTO
+#} fe_hierarchy_t;
+#
+#    static char *hi[4] = {
+#	[ 0 ] = "0",
+#	[ 1 ] = "1",
+#	[ 2 ] = "2",
+#	[ 3 ] = "4",
+#    };
+#
+my %FE_HIER = (
+	'NONE'		=> 0,
+	'1'			=> 1,
+	'2'			=> 2,
+	'4'			=> 4,
+	'AUTO'		=> $AUTO,
+) ;		
+
+# =8 -> ?
+#			$tuning_params{'bandwidth'} = $bw if ($bw) ;
+# =2 -> AUTO
+#			$tuning_params{'transmission'} = $tr if ($tr) ;
+# =1 -> 1/16 ?
+#			$tuning_params{'guard_interval'} = $gu if ($gu) ;
+
+## All FE params
+my %FE_PARAMS = (
+	bandwidth 			=> \%FE_BW,
+	code_rate_high 		=> \%FE_CODE_RATE,
+	code_rate_low 		=> \%FE_CODE_RATE,
+	modulation 			=> \%FE_MOD,
+	transmission 		=> \%FE_TRANSMISSION,
+	guard_interval 		=> \%FE_GUARD,
+	hierarchy 			=> \%FE_HIER,
+) ;
+
+my %FE_CAPABLE = (
+	bandwidth 			=> 'FE_CAN_BANDWIDTH_AUTO',
+	code_rate_high 		=> 'FE_CAN_FEC_AUTO',
+	code_rate_low 		=> 'FE_CAN_FEC_AUTO',
+	modulation 			=> 'FE_CAN_QAM_AUTO',
+	transmission 		=> 'FE_CAN_TRANSMISSION_MODE_AUTO',
+	guard_interval 		=> 'FE_CAN_GUARD_INTERVAL_AUTO',
+	hierarchy 			=> 'FE_CAN_HIERARCHY_AUTO',
 ) ;
 
 
@@ -409,17 +599,19 @@ sub hwinit
 {
 	my $self = shift ;
 
+	my $info_aref = $self->devices() ;
+
 	# If no adapter set, use first in list
 	if (!defined($self->adapter_num))
 	{
 		# use first device found
-		my $info_aref = $self->devices() ;
 		if (scalar(@$info_aref))
 		{
 			$self->set(
 				'adapter_num' => $info_aref->[0]{'adapter_num'},
 				'frontend_num' => $info_aref->[0]{'frontend_num'},
 			) ;
+			$self->_device_index(0) ;
 		}
 		else
 		{
@@ -427,6 +619,55 @@ sub hwinit
 		}
 	}
 	
+	# If no frontend set, use first in list
+	if (!defined($self->frontend_num))
+	{
+		# use first frontend found
+		if (scalar(@$info_aref))
+		{
+			my $adapter = $self->adapter_num ;
+			my $dev_idx=0;
+			foreach my $device_href (@$info_aref)
+			{
+				if ($device_href->{'adapter_num'} == $adapter)
+				{
+					$self->frontend_num($device_href->{'frontend_num'}) ;				
+					$self->_device_index($dev_idx) ;
+					last ;
+				}
+				++$dev_idx ;
+			}
+		}
+		else
+		{
+			return $self->handle_error("Error: No adapters found to initialise") ;
+		}
+	}
+	
+	## ensure device exists
+	if (!defined($self->_device_index))
+	{
+		my $adapter = $self->adapter_num ;
+		my $fe = $self->frontend_num ;
+		my $dev_idx=0;
+		foreach my $device_href (@$info_aref)
+		{
+			if ( ($device_href->{'adapter_num'} == $adapter) && ($device_href->{'frontend_num'} == $fe) )
+			{
+				$self->_device_index($dev_idx) ;
+				last ;
+			}
+			++$dev_idx ;
+		}
+		if (!defined($self->_device_index))
+		{
+			return $self->handle_error("Error: Specified adapter ($adapter) and frontend ($fe) does not exist") ;
+		}
+	}
+	
+	## set info ref
+	my $dev_idx = $self->_device_index() ;
+	$self->_device_info($info_aref->[$dev_idx]) ;
 	
 	# Create DVB 
 	my $dvb = dvb_init_nr($self->adapter_num, $self->frontend_num) ;
@@ -536,6 +777,8 @@ sub device_list
 		# Get list of available devices & information for those devices
 		$devices_aref = dvb_device() ;
 	}
+	
+	prt_data("DEVICE LIST=", $devices_aref) if $DEBUG >= 10 ;
 	
 	return @$devices_aref ;
 }
@@ -1069,6 +1312,12 @@ Returns the discovered channel information as a HASH (see L</scan()>)
 
 =cut
 
+# TODOs
+#
+# 1. Pass freq info back up here
+# 2. Don't re-scan previously seen freqs
+# 3. Use prog TSID + prog freq to determine Transponders
+#
 sub scan_from_file
 {
 	my $self = shift ;
@@ -1078,24 +1327,52 @@ sub scan_from_file
 
 	my @tuning_list ;
 
-	# parse file
+	# device info
+	my $dev_info_href = $self->_device_info ;
+	my $capabilities_href = $dev_info_href->{'capabilities'} ;
+
+prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBUG>=2 ;
+
+
+	## parse file
 	open my $fh, "<$freq_file" or return $self->handle_error( "Error: Unable to read frequency file $freq_file : $!") ;
 	my $line ;
 	while (defined($line=<$fh>))
 	{
 		chomp $line ;
-		if ($line =~ m%^\s*T\s+(\d+)\s+(\d+)MHz\s+(\d+)/(\d+)\s+(\w+)\s+QAM(\d+)\s+(\d+)k\s+(\d+)/(\d+)\s+(\w+)%i)
-		{
-			# get first
-			my ($freq, $bw, $r_hi1, $r_hi2, $r_lo1, $r_lo2, $mo, $tr, $gu, $hi) = ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ;
+		## # T freq      bw   fec_hi fec_lo mod   transmission-mode guard-interval hierarchy
+		##   T 578000000 8MHz 2/3    NONE   QAM64 2k                1/32           NONE
 
+		if ($line =~ m%^\s*T\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)%i)
+		{
+			my $freq = $1 ;
+
+			## setting all params doesn't necessarily work since the freq file is quite often out of date!				
+			my %params = (
+				bandwidth => $2,
+				code_rate_high => $3,
+				code_rate_low => $4,
+				modulation => $5,
+				transmission => $6,
+				guard_interval => $7,
+				hierarchy => $8,
+			) ;
+			
+			# convert file entry into a frontend param
 			my %tuning_params ;
-			
-			$tuning_params{'frequency'} = $freq if ($freq) ;
-			$tuning_params{'bandwidth'} = $bw if ($bw) ;
-			$tuning_params{'transmission'} = $tr if ($tr) ;
-			$tuning_params{'guard_interval'} = $gu if ($gu) ;
-			
+			foreach my $param (keys %params)
+			{
+				## convert freq file value into VDR format
+				if (exists($FE_PARAMS{$param}{$params{$param}}))
+				{
+					$tuning_params{$param} = $FE_PARAMS{$param}{$params{$param}} ;
+				}				
+			}
+			$tuning_params{'frequency'} = $freq ;
+
+prt_data("Tuning params=", \%tuning_params) if $DEBUG>=2 ;
+
+			## add to tuning list
 			push @tuning_list, \%tuning_params ;
 		}
 	}
@@ -1104,24 +1381,102 @@ sub scan_from_file
 	# exit on failure
 	return $self->handle_error( "Error: No tuning parameters found") unless @tuning_list ;
 
+	## prep for scan
+	dvb_scan_new($self->{dvb}, $VERBOSE) ;
+
 	## tune into each frequency & perform the scan
+	my $freqs_href = {} ;
 	my $saved_merge = $self->merge ;
-	foreach my $tuning_params_href (@tuning_list)
+	while (@tuning_list)
 	{
-		# set tuning
-		print "Setting frequency: $tuning_params_href->{frequency} MHz\n" if $self->verbose ;
-		my $rc = $self->set_frontend(%$tuning_params_href, 'timeout' => $self->timeout) ;
-		return $self->handle_error( "Error: Sorry, I can't set the DVB-T tuner to $tuning_params_href->{frequency} MHz (error code $rc)" ) unless $rc==0 ;
+		my $tuned = 0 ;
+
+print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
+		
+		while (!$tuned)
+		{
+			my $tuning_params_href = shift @tuning_list ;
+
+			# convert file entry into a frontend param
+			my %tuning_params ;
+			foreach my $param (keys %$tuning_params_href)
+			{
+				next unless exists($FE_CAPABLE{$param}) ;
+print STDERR " +check param $param\n" if $DEBUG>=2 ;
+
+				## check to see if we are capable of using auto
+				unless ($capabilities_href->{$FE_CAPABLE{$param}})
+				{
+					# can't use auto so we have to set it
+					$tuning_params{$param} = $tuning_params_href->{$param} ;
+				}
+			}
+			$tuning_params{'frequency'} = $tuning_params_href->{'frequency'} ;
+			
+			# set tuning
+			print STDERR "Setting frequency: $tuning_params{frequency} Hz\n" if $self->verbose ;
+			my $rc = $self->set_frontend(%tuning_params, 'timeout' => $self->timeout) ;
+			if ($rc == 0)
+			{
+				$tuned = 1 ;
+			}
+			else
+			{
+				print STDERR "    Failed to set the DVB-T tuner to $tuning_params{frequency} Hz ... skipping\n" ;
+
+				# try next frequency
+				last unless @tuning_list ;			
+			}
+
+print STDERR "Attempt tune: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
+
+		}
+		
+		last if !$tuned ;
 	
 		# Scan
+		$self->_scan_freqs(1) ;
 		$self->scan() ;
+		$self->_scan_freqs(0) ;
 		
 		# ensure next results are merged in
 		$self->merge(1) ;
+		
+		# update frequency list
+		my $tuning_href = $self->tuning ;
+		$freqs_href = $tuning_href->{'freqs'} if exists($tuning_href->{'freqs'}) ;
+		
+		# update frequencies
+		my %freq_list ;
+		foreach my $href (@tuning_list)
+		{
+			$freq_list{$href->{'frequency'}} = 1 ;
+		}
+		foreach my $freq (keys %$freqs_href)
+		{
+			next if $freqs_href->{$freq}{'seen'} ;
+			if (!exists($freq_list{$freq}) )
+			{
+				push @tuning_list, {
+					'frequency'		=> $freq,
+					%{$freqs_href->{$freq}},
+				} ;
+print STDERR " + adding freq $freq\n" if $DEBUG>=2 ;
+			}
+		} 
+
+prt_data("Loop end Tuning list=", \@tuning_list) if $DEBUG>=2 ;
+
+print STDERR "Loop end: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
+
 	}
 
 	## restore flag
 	$self->merge($saved_merge) ;
+
+	## clear ready for next scan
+	dvb_scan_new($self->{dvb}, $VERBOSE) ;
+
 
 	## return tuning settings	
 	return $self->tuning() ;
@@ -1185,7 +1540,7 @@ sub scan
 	# Get any existing info
 	my $tuning_href = $self->get_tuning_info() ;
 
-prt_data("Current tuning info=", $tuning_href) if $DEBUG ;
+prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 
 	# if not tuned by now then we have to raise an error
 	if (!$self->frontend_params())
@@ -1194,14 +1549,233 @@ prt_data("Current tuning info=", $tuning_href) if $DEBUG ;
 		return $self->handle_error("Frontend must be tuned before running scan()") ;
 	}
 
-	# Do scan
-	my $scan_href = dvb_scan($self->{dvb}, $VERBOSE) ;
+	## Initialise for scan
+	dvb_scan_new($self->{dvb}, $VERBOSE) unless $self->_scan_freqs ;
+	dvb_scan_init($self->{dvb}, $VERBOSE) ;
 
-prt_data("Scan results=", $scan_href) if $DEBUG ;
 
+	## Do scan
+	#
+	#	Scan results are returned in arrays:
+	#	
+	#  freqs => 
+	#    { # HASH(0x844d76c)
+	#      482000000 => 
+	#        { # HASH(0x8448da4)
+	#          'seen' => 1,
+	#          'strength' => 0,
+	#          'tuned' => 0,
+	#        },
+	#	
+	#    'pr' => 
+	#    [ 
+	#        { 
+	#          'audio' => "407",
+	#          'audio_details' => "eng:407 und:408",
+	#          'ca' => "0",
+	#          'name' => "301",
+	#          'net' => "BBC",
+	#          'pnr' => "19456",
+	#          'running' => "4",
+	#          'teletext' => "0",
+	#          'tsid' => "16384",
+	#          'type' => "1",
+	#          'video' => "203",
+	#          'lcn' => 301
+	#          'freqs' => [
+	#				57800000,
+	#			],
+	#        },
+	#		....
+	#    ],
+	#    
+	#    'ts' =>
+	#    [
+	#        { 
+	#          'tsid' => 4107,
+	#          'bandwidth' => "8",
+	#          'code_rate_high' => "23",
+	#          'code_rate_low' => "12",
+	#          'frequency' => "713833330",	# reported centre freq
+	#          'guard_interval' => "32",
+	#          'hierarchy' => "0",
+	#          'modulation' => "64",
+	#          'net' => "Oxford/Bexley",
+	#          'transmission' => "2",
+	#		   'lcn' =>
+	#		   {
+	#		   		$pnr => {
+	#		   			'lcn' => 305,
+	#		   			'service_type' => 24,
+	#		   			'visible' => 1,
+	#		   		}
+	#		   }
+	#        },
+	#    	...
+	#    ]
+	#
+	# these results need to analysed and converted into the expected format:
+	#
+	#    'pr' => 
+	#    { 
+	#        $channel_name => 
+	#        { 
+	#          'audio' => "407",
+	#			...
+	#        },
+	#		....
+	#    },
+	#    
+	#    'ts' =>
+	#    {
+	#      $tsid => 
+	#        { 
+	#          'bandwidth' => "8",
+	#			...
+	#        },
+	#    	...
+	#    }
+	#
+	# 
+	my $raw_scan_href = dvb_scan($self->{dvb}, $VERBOSE) ;
 
-	## Post-process to weed out undesirables!
+prt_data("Raw scan results=", $raw_scan_href) if $DEBUG>=5 ;
+print STDERR "dvb_scan_end()...\n" if $DEBUG>=5 ;
+
+	## Clear up after scan
+	dvb_scan_end($self->{dvb}, $VERBOSE) ;
+	dvb_scan_new($self->{dvb}, $VERBOSE) unless $self->_scan_freqs ;
+
+print STDERR "process raw...\n" if $DEBUG>=5 ;
+
+	## Process the raw results for programs
+	my $scan_href = {
+		'freqs' => $raw_scan_href->{'freqs'},
+		'lcn' 	=> {},
+	} ;
+
+	# create hash of frequencies/channel names for the programs
+	my %programs ;
+	foreach my $prog_href (@{$raw_scan_href->{'pr'}})
+	{
+		my $chan = $prog_href->{'name'} ;
+		
+		# create a program entry for each frequency
+		my $freqs_aref = delete $prog_href->{'freqs'} ;
+		foreach my $freq (@$freqs_aref)
+		{
+			$programs{$freq}{$chan} = $prog_href ;
+		}
+	}
+prt_data("Programs=", \%programs) if $DEBUG>=5 ;
+
+	# process each freq/channel
+	my %tsids ;
+	foreach my $freq (keys %programs)
+	{
+		# process progs
+		foreach my $chan (keys %{$programs{$freq}})
+		{
+			# map tsid to freq(s)
+			my $tsid = $programs{$freq}{$chan}{'tsid'} ;
+			$tsids{$tsid}{$freq} = 1 ;
+			
+			## add to processed hash 
+
+			# see if there are more than 1
+			my $overwrite = 1 ;
+			$scan_href->{'pr'} ||= {} ;
+			if (exists($scan_href->{'pr'}{$chan}))
+			{	
+				my $existing_freq = $scan_href->{'pr'}{$chan}{'tuned_freq'} ;
+
+print STDERR " + found 2 progs \"$chan\" : existing $existing_freq Hz ($raw_scan_href->{'freqs'}{$existing_freq}{'strength'}) -> new $freq Hz ($raw_scan_href->{'freqs'}{$freq}{'strength'})\n" if $DEBUG>=5 ;
+				
+				# use channel associated with strongest transponder
+				$overwrite=0;
+				if ($raw_scan_href->{'freqs'}{$freq}{'strength'} > $raw_scan_href->{'freqs'}{$existing_freq}{'strength'})
+				{
+					my $new_strength = $raw_scan_href->{'freqs'}{$freq}{'strength'} * 100 / 65535 ;
+					my $old_strength = $raw_scan_href->{'freqs'}{$existing_freq}{'strength'} * 100 / 65535 ;
+					
+					print STDERR "  Found 2 programs \"$chan\" : using new signal $new_strength % (old $old_strength %)\n" if $VERBOSE ;
+					
+					$overwrite = 1 ;
+print STDERR " + + using new\n" if $DEBUG>=5 ;
+				}
+			}
+			if ($overwrite)
+			{		
+				$scan_href->{'pr'}{$chan} = $programs{$freq}{$chan} ;
+			}
+		}
+	}
+prt_data("TSIDs=", \%tsids) if $DEBUG>=5 ;
+print STDERR "process raw streams...\n" if $DEBUG>=5 ;
 	
+	## Process the results for transponders
+	my %transponders ;
+	foreach my $stream_href (@{$raw_scan_href->{'ts'}})
+	{
+		# map tsid+freq to a transponder
+		my $tsid = $stream_href->{'tsid'} ;
+		my $centre_freq = $stream_href->{'frequency'} ;
+		$transponders{"$centre_freq-$tsid"} = $stream_href ;
+	}
+
+prt_data("Transponders=", \%transponders) if $DEBUG>=5 ;
+print STDERR "process tsids...\n" if $DEBUG>=5 ;
+
+	foreach my $tsid (keys %tsids)
+	{
+		my @freqs = keys %{$tsids{$tsid}} ;
+		my $freq = $freqs[0] ;
+		
+		# see if we have more than one
+		if (@freqs > 1)
+		{
+print STDERR " + found more than 1 transponder providing $tsid\n" if $DEBUG>=5 ;
+			# use best signal
+			foreach my $f2 (@freqs)
+			{
+				next unless $freq == $f2 ;
+
+				my $new_strength = $raw_scan_href->{'freqs'}{$freq}{'strength'} * 100 / 65535 ;
+				my $old_strength = $raw_scan_href->{'freqs'}{$f2}{'strength'} * 100 / 65535 ;
+				
+				print STDERR "  Found 2 transponders TSID $tsid : using new signal $new_strength % (old $old_strength %)\n" if $VERBOSE ;
+
+print STDERR " + + compare $freq Hz ($raw_scan_href->{'freqs'}{$freq}{'strength'}) -> $f2 Hz ($raw_scan_href->{'freqs'}{$f2}{'strength'})\n" ;
+				if ($raw_scan_href->{'freqs'}{$f2}{'strength'} > $raw_scan_href->{'freqs'}{$freq}{'strength'})
+				{
+					$freq = $f2 ;
+				}
+			}
+		}
+print STDERR " + tsid $tsid => $freq Hz\n" if $DEBUG>=5 ;
+		
+		# keep best transponder iff it is valid
+		if (exists($transponders{"$freq-$tsid"}))
+		{
+			# get the transponder info
+			$scan_href->{'ts'}{$tsid} = $transponders{"$freq-$tsid"} ;
+			
+			# move this transponder's lcn info into lcn hash
+			if (exists($scan_href->{'ts'}{$tsid}{'lcn'}))
+			{
+				my $lcn_href = delete $scan_href->{'ts'}{$tsid}{'lcn'} ;
+				$scan_href->{'lcn'}{$tsid} = $lcn_href ;
+			}
+			
+			# add signal strength
+			$scan_href->{'ts'}{$tsid}{'strength'} = $raw_scan_href->{'freqs'}{$freq}{'strength'} ;
+		}
+	}
+	
+prt_data("Scan results=", $scan_href) if $DEBUG>=5 ;
+print STDERR "process rest...\n" if $DEBUG>=5 ;
+	
+	## Post-process to weed out undesirables!
 	my %tsid_map ;
 	my @del ;
 	foreach my $chan (keys %{$scan_href->{'pr'}})
@@ -1218,12 +1792,14 @@ prt_data("Scan results=", $scan_href) if $DEBUG ;
 	
 	foreach my $chan (@del)
 	{
-print " + del chan \"$chan\"\n" if $DEBUG ;
+print " + del chan \"$chan\"\n" if $DEBUG>=5 ;
 
 		delete $scan_href->{'pr'}{$chan} ;
 	}
 
-prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG ;
+prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
+	
+	## Post-process based on logical channel number iff we have this data
 	
 	#  lcn =>
 	#    { # HASH(0x83d2608)
@@ -1243,78 +1819,126 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG ;
 	#              visible => 1,
 	#            },
 	#        },
-
-	foreach my $tsid (keys %{$scan_href->{'lcn'}})
+	if (keys %{$scan_href->{'lcn'}})
 	{
-		foreach my $pnr (keys %{$scan_href->{'lcn'}{$tsid}})
+		foreach my $tsid (keys %{$scan_href->{'lcn'}})
 		{
-			my $href = $scan_href->{'lcn'}{$tsid}{$pnr} ;
-			my $chan = $tsid_map{"$tsid-$pnr"} ;
-
-			next unless $chan ;
-			next unless exists($scan_href->{'pr'}{$chan}) ;
-			next unless exists($href->{'lcn'}) ;	# skip broadcasts where the LCN info is not output
-
-print " : $tsid-$pnr - $chan : lcn=$href->{'lcn'}, vis=$href->{'visible'}, service type=$href->{'service_type'} type=$scan_href->{'pr'}{$chan}{'type'}\n" if $DEBUG ;
-			
-			# check for valid
-			my $delete = 0 ;
-			if ($href->{'lcn'} && $href->{'visible'} && 
-				( ($scan_href->{'pr'}{$chan}{'type'}==1) || ($scan_href->{'pr'}{$chan}{'type'}==2) )
-			)
+			foreach my $pnr (keys %{$scan_href->{'lcn'}{$tsid}})
 			{
-				## Set entry channel number
-				$scan_href->{'pr'}{$chan}{'lcn'} = $href->{'lcn'} ;
-
-print " : : set lcn for $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG ;
-
-				if ($scan_href->{'pr'}{$chan}{'type'}==1)
+				my $lcn_href = $scan_href->{'lcn'}{$tsid}{$pnr} ;
+				my $chan = $tsid_map{"$tsid-$pnr"} ;
+	
+				next unless $chan ;
+				next unless exists($scan_href->{'pr'}{$chan}) ;
+	
+	if ($DEBUG>=5)
+	{
+		my $lcn = defined($lcn_href->{'lcn'}) ? $lcn_href->{'lcn'} : 'undef' ;
+		my $vis = defined($lcn_href->{'visible'}) ? $lcn_href->{'visible'} : 'undef' ;
+		my $type = defined($lcn_href->{'service_type'}) ? $lcn_href->{'service_type'} : 'undef' ;
+		 
+	print " : $tsid-$pnr - $chan : lcn=$lcn, vis=$vis, service type=$type type=$scan_href->{'pr'}{$chan}{'type'}\n" ;
+	}	
+			
+				## handle LCN if set
+				my $delete = 0 ;
+				if ($lcn_href && $lcn_href->{'lcn'} )
 				{
-					## video
-					if (!$scan_href->{'pr'}{$chan}{'video'} || !$scan_href->{'pr'}{$chan}{'audio'})
+					## Set entry channel number
+					$scan_href->{'pr'}{$chan}{'lcn'} = $lcn_href->{'lcn'} ;
+	
+	print " : : set lcn for $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG>=5 ;
+	
+					if (!$lcn_href->{'visible'})
 					{
 						++$delete ;
-					}
-				}
-				else
+					}			
+				}	
+				
+				## See if need to delete	
+				if ($delete)
 				{
-					## audio
-					if (!$scan_href->{'pr'}{$chan}{'audio'})
-					{
-						++$delete ;
-					}
+					## Remove this entry
+					delete $scan_href->{'pr'}{$chan} if (exists($scan_href->{'pr'}{$chan})) ;
+	
+	print " : : REMOVE $chan\n" if $DEBUG>=5 ;
 				}
+				
+			}
+		}
+		
+	}
 
+	## Fallback to standard checks
+	@del = () ;
+	foreach my $chan (keys %{$scan_href->{'pr'}})
+	{
+		## check for valid channel
+		my $delete = 0 ;
+		if (($scan_href->{'pr'}{$chan}{'type'}==1) || ($scan_href->{'pr'}{$chan}{'type'}==2) )
+		{
+
+print " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG >=5;
+
+			## check that this type has the required streams
+			if ($scan_href->{'pr'}{$chan}{'type'}==1)
+			{
+				## video
+				if (!$scan_href->{'pr'}{$chan}{'video'} || !$scan_href->{'pr'}{$chan}{'audio'})
+				{
+					++$delete ;
+				}
 			}
 			else
 			{
-				++$delete ;
+				## audio
+				if (!$scan_href->{'pr'}{$chan}{'audio'})
+				{
+					++$delete ;
+				}
 			}
-			
-			
-			if ($delete)
-			{
-				## Remove this entry
-				delete $scan_href->{'pr'}{$chan} if (exists($scan_href->{'pr'}{$chan})) ;
 
-print " : : REMOVE $chan\n" if $DEBUG ;
-			}
-			
 		}
+		else
+		{
+			# remove none video/radio types
+			++$delete ;
+		}
+
+		push @del, $chan if $delete;
 	}
 
+	foreach my $chan (@del)
+	{
+print " + del chan \"$chan\"\n" if $DEBUG>=5 ;
+
+		delete $scan_href->{'pr'}{$chan} ;
+	}
+		
+printf STDERR "Merg flag=%d\n", $self->merge  if $DEBUG>=5 ;
+prt_data("Current Tuning=", $tuning_href, "Scan before merge=", $scan_href) if $DEBUG>=5 ;
 
 	# Merge results
 	if ($self->merge)
 	{
-		$scan_href = Linux::DVB::DVBT::Config::merge($scan_href, $tuning_href) ;
-	
-prt_data("Merged=", $scan_href) if $DEBUG ;
+		if ($self->_scan_freqs)
+		{
+			## update the old information with the new iff new has better signal
+			$scan_href = Linux::DVB::DVBT::Config::merge_scan_freqs($scan_href, $tuning_href, $VERBOSE) ;
+		}
+		else
+		{
+			## just update the old information with the new
+			$scan_href = Linux::DVB::DVBT::Config::merge($scan_href, $tuning_href) ;
+		}	
+prt_data("Merged=", $scan_href) if $DEBUG>=5 ;
 	}
 	
 	# Save results
 	$self->tuning($scan_href) ;
 	Linux::DVB::DVBT::Config::write($self->config_path, $scan_href) ;
+
+print STDERR "DONE\n" if $DEBUG>=5 ;
 
 	return $self->tuning() ;
 }
@@ -1554,7 +2178,7 @@ sub setup_modules
 	if (load_module('Debug::DumpObj'))
 	{
 		# Create local function
-		*prt_data = sub {Debug::DumpObj::prt_data(@_)} ;
+		*prt_data = sub {print STDERR Debug::DumpObj::prtstr_data(@_)} ;
 	}
 	else
 	{
@@ -1562,12 +2186,12 @@ sub setup_modules
 		if (load_module('Data::Dumper'))
 		{
 			# Create local function
-			*prt_data = sub {print Data::Dumper->Dump([@_])} ;
+			*prt_data = sub {print STDERR Data::Dumper->Dump([@_])} ;
 		}	
 		else
 		{
 			# Create local function
-			*prt_data = sub {print @_, "\n"} ;
+			*prt_data = sub {print STDERR @_, "\n"} ;
 		}
 	}
 
@@ -2015,7 +2639,7 @@ sub write
 }
 
 #----------------------------------------------------------------------
-# Merge tuning information
+# Merge tuning information - overwrites previous with new
 #
 #	region: 'ts' => 
 #		section: '4107' =>
@@ -2023,25 +2647,124 @@ sub write
 #
 sub merge
 {
-	my ($href1, $href2) = @_ ;
+	my ($new_href, $old_href) = @_ ;
 
-	if ($href2 && $href1)
+	if ($old_href && $new_href)
 	{
 		foreach my $region (keys %FILES)
 		{
-			foreach my $section (keys %{$href2->{$region}})
+			foreach my $section (keys %{$new_href->{$region}})
 			{
-				foreach my $field (keys %{$href2->{$region}{$section}})
+				foreach my $field (keys %{$new_href->{$region}{$section}})
 				{
-					$href1->{$region}{$section}{$field} = $href2->{$region}{$section}{$field} ; 
+					$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
 				}
 			}
 		}
 	}
 
-	$href1 = $href2 if (!$href1) ;
+	$old_href = $new_href if (!$old_href) ;
 	
-	return $href1 ;
+	return $old_href ;
+}
+
+#----------------------------------------------------------------------
+# Merge tuning information - checks to ensure new program info has the 
+# best strength, and that new program has all of it's settings
+#
+#	'pr' =>
+#	      BBC ONE => 
+#	        {
+#	          pnr => 4171,
+#	          tsid => 4107,
+#	          tuned_freq => 57800000,
+#	          ...
+#	        },
+#	'ts' => 
+#	      4107 =>
+#	        { 
+#	          tsid => 4107,   
+#			  frequency => 57800000,            
+#	          ...
+#	        },
+#	'freqs' => 
+#	      57800000 =>
+#	        { 
+#	          strength => aaaa,               
+#	          snr => bbb,               
+#	          ber => ccc,               
+#	          ...
+#	        },
+#
+#
+sub merge_scan_freqs
+{
+	my ($new_href, $old_href, $verbose) = @_ ;
+
+#print STDERR "merge_scan_freqs()\n" ;
+
+	if ($old_href && $new_href)
+	{
+		foreach my $region (keys %$new_href)
+		{
+			foreach my $section (keys %{$new_href->{$region}})
+			{
+				## merge programs/streams differently if they already exist
+				my $overwrite = 1 ;
+				if ( (($region eq 'pr')||($region eq 'ts')) && exists($old_href->{$region}{$section}) )
+				{
+#	print STDERR " + found 2 instances of {$region}{$section}\n" ;
+					# check for signal quality to compare
+					my ($new_freq, $old_freq) ;
+					foreach (qw/frequency tuned_freq/)
+					{
+						$new_freq = $new_href->{$region}{$section}{$_} if exists($new_href->{$region}{$section}{$_}) ;	
+						$old_freq = $old_href->{$region}{$section}{$_} if exists($old_href->{$region}{$section}{$_}) ;	
+					}
+					if ($new_freq && $old_freq)
+					{
+						# just compare signal strength (for now!)
+						my ($new_strength, $old_strength) ;
+						foreach my $href ($new_href, $old_href)
+						{
+							$new_strength = $href->{'freqs'}{$new_freq}{'strength'} if exists($href->{'freqs'}{$new_freq}{'strength'} ) ;	
+							$old_strength = $href->{'freqs'}{$old_freq}{'strength'} if exists($href->{'freqs'}{$old_freq}{'strength'} ) ;	
+						}
+						if ($new_strength && $old_strength)
+						{
+#	print STDERR " + checking $region $section  : Strength NEW=$new_strength  OLD=$old_strength\n" ;
+							if ($old_strength >= $new_strength)
+							{
+#	print STDERR " + + keep stronger signal (OLD)\n" ;
+
+								$new_strength = $new_strength * 100 / 65535 ;
+								$old_strength = $old_strength * 100 / 65535 ;
+								
+								print STDERR "  Found 2 \"$section\" : keeping old signal $old_freq Hz $old_strength % (new $new_freq Hz $new_strength %)\n" if $verbose ;
+
+								$overwrite = 0 ;
+							}
+						}
+					}
+				}
+				
+				if ($overwrite)
+				{
+					## Just overwrite
+					foreach my $field (keys %{$new_href->{$region}{$section}})
+					{
+						$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
+					}
+				}
+			}
+		}
+	}
+
+	$old_href = $new_href if (!$old_href) ;
+	
+#print STDERR "merge_scan_freqs() - DONE\n" ;
+	
+	return $old_href ;
 }
 
 
@@ -2303,7 +3026,7 @@ sub read_dvb_pr
 #	          hierarchy => 0,
 #	          net => Oxford/Bexley,
 #	          transmission => 2,
-#	          tsid => 4107,               -N/A-
+#	          tsid => 4107,               
 #	        },
 #	
 #[4107]
@@ -2350,7 +3073,7 @@ sub write_dvb_ts
 #	          a_pid => 601,                   audio
 #	          audio => eng:601 eng:602,       audio_details
 #	          ca => 0,
-#	          name => BBC ONE,
+#	          name => "BBC ONE",
 #	          net => BBC,
 #	          p_pid => 4171,                  -N/A-
 #	          pnr => 4171,
@@ -2404,10 +3127,12 @@ __END__
 
 =head1 ACKNOWLEDGEMENTS
 
-=head3 Thomas Rehn
+=head3 Debugging
 
-Special thanks to Thomas, not only for providing feedback on a number of latent bugs but also for his
+Special thanks to Thomas Rehn, not only for providing feedback on a number of latent bugs but also for his
 patience in re-running numerous test versions to gather the debug data I needed. Thanks Thomas.
+
+Also, thanks to Arthur Gidlow for running various tests to debug a scanning issue.
 
 
 =head3 Gerd Knorr for writing xawtv (see L<http://linux.bytesex.org/xawtv/>)
@@ -2431,7 +3156,7 @@ Please report bugs using L<http://rt.cpan.org>.
 
 There is a known issue where the scan locks onto the wrong frequency of a multiplex where there are more than
 one possible frequency reported in the NIT. I'm currently investigating into this and hope to get a fix out in
-the next release.
+the next release. (Still ongoing - sorry Thomas!)
 
 =back
 

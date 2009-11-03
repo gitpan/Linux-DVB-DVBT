@@ -32,8 +32,8 @@ struct dvbmon {
 
 
 /* ----------------------------------------------------------------------- */
-struct dvbmon* dvbmon_init(struct dvb_state *dvb, int verbose,
-			   int o_nit, int o_sdt, int pmts);
+//struct dvbmon* dvbmon_init(struct dvb_state *dvb, int verbose,
+//			   int o_nit, int o_sdt, int pmts);
 
 void dvbmon_fini(struct dvbmon* dm);
 

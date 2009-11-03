@@ -1,5 +1,12 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.06 Tue Nov 03 08:00:00 2009
+	- Major re-write of scanning logic to make it more robust (also checks signal strengths to choose best
+	  transmitter when more than one is available for the same multiplex).
+	- Added copious debug facilities to scan logic (including Hi-res timer!). If you have any problems with scanning
+	  please re-run with '-verbose 15 -debug 15', direct stderr into a file, and send me the file.
+	- Corrected some assumptions about the tuner hardware and frequency files (thanks to Arthur Gidlow for his help with this one)
+
 1.05 Mon Oct 12 11:09:00 2009
 	- Fixed typo in epg() method that caused program ids to be created using tsid-pnr rather than lcn
 	- Corrected dvbt-ffrec to enclose output filename in quote

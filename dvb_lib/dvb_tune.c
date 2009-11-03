@@ -23,13 +23,162 @@ int dvb_type_override = -1;
 /* maintain current state for these ... */
 char *dvb_src   = NULL;
 char *dvb_lnb   = NULL;
-char *dvb_sat   = NULL;
 int  dvb_inv    = INVERSION_AUTO;
+
+
+
+
+
+/* ======================================================================= */
+/* keep track of freqs tuned to during scan                                */
+
+LIST_HEAD(freq_list);
+
+/* ----------------------------------------------------------------------- */
+//struct freqitem {
+//    struct list_head    next;
+//
+//    int                 frequency;
+//    struct dvb_frontend_parameters	params ;	// frontend format (enums)
+//    
+//	/* signal quality measure */
+//	unsigned 		ber ;
+//	unsigned		snr ;
+//	unsigned		strength ;
+//	unsigned		uncorrected_blocks ;	// if we use this then need to time it and account for wrap!
+//    
+//	// various flags used during scan    
+//    struct {
+//    	unsigned seen	: 1 ;	// set if we've attempted to tune to this freq
+//    	unsigned tuned	: 1 ;	// set if successfully tuned to this freq
+//    } flags ;
+//};
+struct freqitem* freqitem_get(struct dvb_frontend_parameters *params)
+{
+struct freqitem   *freqi;
+struct list_head *item;
+int frequency = params->frequency ;
+	
+	// round up frequency to nearest kHz
+	frequency = (int)(  ((float)frequency / 1000.0) + 0.5 ) * 1000 ; 
+
+    list_for_each(item,&freq_list) {
+		freqi = list_entry(item, struct freqitem, next);
+		if (freqi->frequency != frequency)
+		    continue;
+////		if (freqi->params.inversion != params->inversion)
+////		    continue;
+//		if (freqi->params.u.ofdm.bandwidth != params->u.ofdm.bandwidth)
+//		    continue;
+//		if (freqi->params.u.ofdm.code_rate_HP != params->u.ofdm.code_rate_HP)
+//		    continue;
+//		if (freqi->params.u.ofdm.code_rate_LP != params->u.ofdm.code_rate_LP)
+//		    continue;
+//		if (freqi->params.u.ofdm.constellation != params->u.ofdm.constellation)
+//		    continue;
+//		if (freqi->params.u.ofdm.transmission_mode != params->u.ofdm.transmission_mode)
+//		    continue;
+//		if (freqi->params.u.ofdm.guard_interval != params->u.ofdm.guard_interval)
+//		    continue;
+//		if (freqi->params.u.ofdm.hierarchy_information != params->u.ofdm.hierarchy_information)
+//		    continue;
+		return freqi;
+    }
+    freqi = malloc(sizeof(*freqi));
+    memset(freqi,0,sizeof(*freqi));
+    
+    freqi->frequency    = frequency ;		// convenience
+    freqi->params.frequency    = frequency ;
+    
+    freqi->params.inversion    = params->inversion ;
+	freqi->params.u.ofdm.bandwidth = params->u.ofdm.bandwidth ;
+	freqi->params.u.ofdm.code_rate_HP = params->u.ofdm.code_rate_HP ;
+	freqi->params.u.ofdm.code_rate_LP = params->u.ofdm.code_rate_LP ;
+	freqi->params.u.ofdm.constellation = params->u.ofdm.constellation ;
+	freqi->params.u.ofdm.transmission_mode = params->u.ofdm.transmission_mode ;
+	freqi->params.u.ofdm.guard_interval = params->u.ofdm.guard_interval ;
+	freqi->params.u.ofdm.hierarchy_information = params->u.ofdm.hierarchy_information ;
+
+	// init flags    
+    freqi->flags.seen    = 0;
+    freqi->flags.tuned   = 0;
+
+    list_add_tail(&freqi->next,&freq_list);
+    return freqi;
+}
+
+
+/* ----------------------------------------------------------------------- */
+struct freqitem* freqitem_get_from_stream(struct psi_stream *stream) 
+{
+struct dvb_frontend_parameters params ;	
+struct tuning_params vdr_params ;
+
+	// translate params
+	params_stream_to_vdr(stream, &vdr_params) ;
+	params_vdr_to_frontend(&vdr_params, &params) ;
+	
+	return freqitem_get(&params) ;
+}
+
+
+/* ----------------------------------------------------------------------- */
+void clear_freqlist()
+{
+struct list_head *item, *safe;
+struct freqitem   *freqi;
+
+	/* Free up results */
+   	list_for_each_safe(item,safe,&freq_list)
+   	{
+		freqi = list_entry(item, struct freqitem, next);
+		list_del(&freqi->next);
+
+		free(freqi);
+   	};
+   	
+}
+
+/* ----------------------------------------------------------------------- */
+void print_freqi(struct freqitem   *freqi)
+{
+	fprintf(stderr, "FREQ: %d Hz seen=%d tuned=%d (Strength=%d) [inv=%d bw=%d crh=%d crl=%d con=%d tr=%d g=%d hi=%d]\n",
+		freqi->frequency,
+		freqi->flags.seen,
+		freqi->flags.tuned,
+		freqi->strength,
+		
+	    freqi->params.inversion,
+		freqi->params.u.ofdm.bandwidth,
+		freqi->params.u.ofdm.code_rate_HP,
+		freqi->params.u.ofdm.code_rate_LP,
+		freqi->params.u.ofdm.constellation,
+		freqi->params.u.ofdm.transmission_mode,
+		freqi->params.u.ofdm.guard_interval,
+		freqi->params.u.ofdm.hierarchy_information
+		
+	) ;
+}
+
+
+/* ----------------------------------------------------------------------- */
+void print_freqs()
+{
+    struct freqitem   *freqi;
+    struct list_head *item;
+
+	fprintf(stderr, "\n\n\n==FREQUENCY LIST==\n\n") ;
+    list_for_each(item,&freq_list) {
+		freqi = list_entry(item, struct freqitem, next);
+		print_freqi(freqi) ;
+    }
+}
+
+
 
 /* ======================================================================= */
 /* map vdr config file numbers to enums                                    */
 
-#define VDR_MAX 999
 
 static fe_bandwidth_t fe_vdr_bandwidth[] = {
     [ 0 ... VDR_MAX ] = BANDWIDTH_AUTO,
@@ -52,6 +201,7 @@ static fe_code_rate_t fe_vdr_rates[] = {
 
 static fe_modulation_t fe_vdr_modulation[] = {
     [ 0 ... VDR_MAX ] = QAM_AUTO,
+    [   0 ]           = QPSK,
     [  16 ]           = QAM_16,
     [  32 ]           = QAM_32,
     [  64 ]           = QAM_64,
@@ -85,10 +235,134 @@ static fe_hierarchy_t fe_vdr_hierarchy[] = {
     [ 4 ]             = HIERARCHY_4,
 };
 
+/* ----------------------------------------------------------------------- */
+static unsigned fixup_freq(unsigned freq)
+{
+unsigned fixed_freq = freq ;
+
+	/*
+	 * DVB-C,T
+	 *   - kernel API uses Hz here.
+	 *   - /etc/vdr/channel.conf allows Hz, Hz and MHz
+	 */
+	if (fixed_freq < 1000000)
+	    fixed_freq *= 1000;
+	if (fixed_freq < 1000000)
+	    fixed_freq *= 1000;
+	    
+	return fixed_freq ;
+}
+
+
+// conversion utilities
+
+/* ----------------------------------------------------------------------- */
+// Convert the stream tuning params (stored as strings) into "VDR" format integers
+void params_stream_to_vdr(struct psi_stream *stream, struct tuning_params *vdr_params)
+{
+	// default to AUTO
+	vdr_params->bandwidth=VDR_MAX;
+	vdr_params->code_rate_high=VDR_MAX;
+	vdr_params->code_rate_low=VDR_MAX;
+	vdr_params->modulation=VDR_MAX;
+	vdr_params->transmission=VDR_MAX;
+	vdr_params->guard_interval=VDR_MAX;
+	vdr_params->hierarchy=VDR_MAX;
+
+	// convert params
+	vdr_params->frequency = stream->frequency ;
+
+//	if (stream->polarization)
+//	{
+//		inversion = fe_vdr_bandwidth[ atoi(stream->polarization) ] ;
+//	}
+	vdr_params->inversion = 0 ;
+	
+	if (stream->bandwidth)
+	{
+		vdr_params->bandwidth = atoi(stream->bandwidth) ;
+	}
+	if (stream->code_rate_hp)
+	{
+		vdr_params->code_rate_high = atoi(stream->code_rate_hp) ;
+	}
+	if (stream->code_rate_lp)
+	{
+		vdr_params->code_rate_low = atoi(stream->code_rate_lp) ;
+	}
+	if (stream->constellation)
+	{
+		vdr_params->modulation = atoi(stream->constellation) ;
+	}
+	if (stream->transmission)
+	{
+		vdr_params->transmission = atoi(stream->transmission) ;
+	}
+	if (stream->guard)
+	{
+		vdr_params->guard_interval = atoi(stream->guard) ;
+	}
+	if (stream->hierarchy)
+	{
+		vdr_params->hierarchy = atoi(stream->hierarchy) ;
+	}
+
+
+}
+
+/* ----------------------------------------------------------------------- */
+// Convert the "VDR" format integers into frontend tuning params (enums)
+void params_to_frontend(
+		int frequency,
+		int inversion,
+		int bandwidth,
+		int code_rate_high,
+		int code_rate_low,
+		int modulation,
+		int transmission,
+		int guard_interval,
+		int hierarchy,
+		struct dvb_frontend_parameters *params)
+{
+	params->frequency = fixup_freq(frequency) ;
+	params->inversion = inversion;
+
+	// Params decoded for transponders are converted into strings - convert back
+	params->u.ofdm.bandwidth = fe_vdr_bandwidth [ bandwidth ];
+	params->u.ofdm.code_rate_HP = fe_vdr_rates [ code_rate_high ];
+	params->u.ofdm.code_rate_LP = fe_vdr_rates [ code_rate_low ];
+	params->u.ofdm.constellation = fe_vdr_modulation [ modulation ];
+	params->u.ofdm.transmission_mode = fe_vdr_transmission [ transmission ];
+	params->u.ofdm.guard_interval = fe_vdr_guard [ guard_interval ];
+	params->u.ofdm.hierarchy_information = fe_vdr_hierarchy [ hierarchy ];
+
+}
+
+
+/* ----------------------------------------------------------------------- */
+// Convert the "VDR" format integers into frontend tuning params (enums)
+void params_vdr_to_frontend(struct tuning_params *vdr_params, struct dvb_frontend_parameters *params) 
+{
+	params_to_frontend(
+		vdr_params->frequency,
+		vdr_params->inversion,
+		vdr_params->bandwidth,
+		vdr_params->code_rate_high,
+		vdr_params->code_rate_low,
+		vdr_params->modulation,
+		vdr_params->transmission,
+		vdr_params->guard_interval,
+		vdr_params->hierarchy,
+		params) ;
+}
+
+
+
 
 /* ----------------------------------------------------------------------- */
 /*
- * Set up a channel  ready for record
+ * Tune the frontend. Expects parameters as "VDR" format integers
+ * (e.g. code_rate = 34)
  */
 int dvb_tune(struct dvb_state *h,
 		int frequency,
@@ -125,51 +399,56 @@ int dvb_tune(struct dvb_state *h,
 	return rc ;
 }
 
-#ifdef NOTUSED
-/* ----------------------------------------------------------------------- */
+
+/* ------------------------------------------------------------------------ */
 /*
- * Set up a channel  ready for record
+ * Tune the frontend based on the stream parameters. Parameters are stored as strings
+ * (e.g. code_rate = "34")
  */
-int dvb_select_channel(struct dvb_state *h,
-		int frequency,
-		int inversion,
-		int bandwidth,
-		int code_rate_high,
-		int code_rate_low,
-		int modulation,
-		int transmission,
-		int guard_interval,
-		int hierarchy,
-
-		int vpid,
-		int apid,
-
-		int sid
-)
+int dvb_tune_from_stream(struct dvb_state *dvb, struct psi_stream *stream, int timeout)
 {
-	int rc=0 ;
+int rc;
+struct tuning_params vdr_params ;
 
-	rc = dvb_frontend_tune(h,
-		frequency,
-		inversion,
-		bandwidth,
-		code_rate_high,
-		code_rate_low,
-		modulation,
-		transmission,
-		guard_interval,
-		hierarchy
-	);
-	if (rc != 0) return rc ;
+if (dvb_debug > 1)
+	fprintf(stderr, "Tuning tsid %d (%s) - FREQ=%d\n", stream->tsid, stream->net, stream->frequency) ;
 
-	dvb_demux_filter_setup(h, vpid, apid) ;
+	// convert params
+	params_stream_to_vdr(stream, &vdr_params) ;
 
-	rc = dvb_finish_tune(h,100);
-	if (rc != 0) return rc ;
 
-	return rc ;
+if (dvb_debug >=2)
+	fprintf(stderr, "TUNE: freq=%d inv=%d bw=%d rate_hi=%d rate_lo=%d mod=%d tx=%d guard=%d hier=%d\n",
+		vdr_params.frequency,
+		vdr_params.inversion,
+		vdr_params.bandwidth,
+		vdr_params.code_rate_high,
+		vdr_params.code_rate_low,
+		vdr_params.modulation,
+		vdr_params.transmission,
+		vdr_params.guard_interval,
+		vdr_params.hierarchy
+		) ;
+
+	// set tuning
+	rc = dvb_tune(dvb,
+			/* For frontend tuning */
+			vdr_params.frequency,
+			vdr_params.inversion,
+			vdr_params.bandwidth,
+			vdr_params.code_rate_high,
+			vdr_params.code_rate_low,
+			vdr_params.modulation,
+			vdr_params.transmission,
+			vdr_params.guard_interval,
+			vdr_params.hierarchy,
+			timeout) ;
+
+// display settings
+if (dvb_debug >= 2) dvb_frontend_tune_info(dvb) ;
+
+	return (rc) ;
 }
-#endif
 
 
 /* ======================================================================= */
@@ -200,7 +479,6 @@ xioctl(int fd, int cmd, void *arg, int mayfail)
 /* handle dvb frontend                                                     */
 
 /* ----------------------------------------------------------------------- */
-//static
 int dvb_frontend_open(struct dvb_state *h, int write)
 {
 	char *_name="dvb_frontend_open" ;
@@ -240,46 +518,9 @@ void dvb_frontend_release(struct dvb_state *h, int write)
     }
 }
 
-/* ----------------------------------------------------------------------- */
-static void fixup_numbers(struct dvb_state *h, int lof)
-{
-    switch (h->info.type) {
-    case FE_QPSK:
-	/*
-	 * DVB-S
-	 *   - kernel API uses kHz here.
-	 *   - /etc/vdr/channel.conf + diseqc.conf use MHz
-	 *   - scan (from linuxtv.org dvb utils) uses KHz
-	 */
-        if (lof < 1000000)
-	    lof *= 1000;
-        if (h->p.frequency < 1000000)
-	    h->p.frequency *= 1000;
-	h->p.frequency -= lof;
-	if (h->p.u.qpsk.symbol_rate < 1000000)
-	    h->p.u.qpsk.symbol_rate *= 1000;
-	break;
-    case FE_QAM:
-    case FE_OFDM:
-#ifdef FE_ATSC
-    case FE_ATSC:
-#endif
-	/*
-	 * DVB-C,T
-	 *   - kernel API uses Hz here.
-	 *   - /etc/vdr/channel.conf allows Hz, kHz and MHz
-	 */
-	if (h->p.frequency < 1000000)
-	    h->p.frequency *= 1000;
-	if (h->p.frequency < 1000000)
-	    h->p.frequency *= 1000;
-	break;
-    }
-}
-
 
 /* ----------------------------------------------------------------------- */
-/* int dvb_frontend_tune(struct dvb_state *h, char *domain, char *section) */
+/* Convert from "VDR" format params (e.g. code rate=34 into frontend param enums) */
 int dvb_frontend_tune(struct dvb_state *h,
 		int frequency,
 		int inversion,
@@ -300,9 +541,9 @@ if (dvb_debug>1) _fn_start(_name) ;
     int val;
     int rc;
 
-    if (-1 == dvb_frontend_open(h,1))
+    if (-1 == dvb_frontend_open(h, /* write=1*/1))
     {
-		fprintf(stderr,"unable to open frontend\n");
+		fprintf(stderr,"unable to open rw frontend\n");
     	if (dvb_debug>1) _fn_end(_name, -1) ;
 
     	return -11;
@@ -312,41 +553,39 @@ if (dvb_debug>1) _fn_start(_name) ;
     	free(dvb_src);
     if (dvb_lnb)
     	free(dvb_lnb);
-    if (dvb_sat)
-    	free(dvb_sat);
     dvb_src = NULL;
     dvb_lnb = NULL;
-    dvb_sat = NULL;
 
 if (dvb_debug>1) _dump_state(_name, "at start", h) ;
 
 
    	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "OFDM\n") ; }
 
-	h->p.frequency = frequency;
-	h->p.inversion = inversion;
+	params_to_frontend(
+		frequency,
+		inversion,
+		bandwidth,
+		code_rate_high,
+		code_rate_low,
+		modulation,
+		transmission,
+		guard_interval,
+		hierarchy,
+		&h->p) ;
 
-/*
-	h->p.u.ofdm.bandwidth = fe_vdr_bandwidth [ bandwidth ];
-	h->p.u.ofdm.code_rate_HP = fe_vdr_rates [ code_rate_high ];
-	h->p.u.ofdm.code_rate_LP = fe_vdr_rates [ code_rate_low ];
-	h->p.u.ofdm.constellation = fe_vdr_modulation [ modulation ];
-	h->p.u.ofdm.transmission_mode = fe_vdr_transmission [ transmission ];
-	h->p.u.ofdm.guard_interval = fe_vdr_guard [ guard_interval ];
-	h->p.u.ofdm.hierarchy_information = fe_vdr_hierarchy [ hierarchy ];
-*/
-
-	/* Raw numbers passed in */
-	h->p.u.ofdm.bandwidth = bandwidth ;
-	h->p.u.ofdm.code_rate_HP = code_rate_high ;
-	h->p.u.ofdm.code_rate_LP = code_rate_low ;
-	h->p.u.ofdm.constellation = modulation ;
-	h->p.u.ofdm.transmission_mode = transmission ;
-	h->p.u.ofdm.guard_interval = guard_interval ;
-	h->p.u.ofdm.hierarchy_information = hierarchy ;
-
-if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "fixup_numbers(h, lof=%d)\n", lof) ; }
-    fixup_numbers(h,lof);
+//	h->p.frequency = frequency;
+//	h->p.inversion = inversion;
+//
+//	// Params decoded for transponders are converted into strings - convert back
+//	h->p.u.ofdm.bandwidth = fe_vdr_bandwidth [ bandwidth ];
+//	h->p.u.ofdm.code_rate_HP = fe_vdr_rates [ code_rate_high ];
+//	h->p.u.ofdm.code_rate_LP = fe_vdr_rates [ code_rate_low ];
+//	h->p.u.ofdm.constellation = fe_vdr_modulation [ modulation ];
+//	h->p.u.ofdm.transmission_mode = fe_vdr_transmission [ transmission ];
+//	h->p.u.ofdm.guard_interval = fe_vdr_guard [ guard_interval ];
+//	h->p.u.ofdm.hierarchy_information = fe_vdr_hierarchy [ hierarchy ];
+//
+//    fixup_numbers(h,lof);
 
     if (0 == memcmp(&h->p, &h->plast, sizeof(h->plast))) {
 		if (dvb_frontend_is_locked(h)) {
@@ -358,18 +597,14 @@ if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "fixup_numbers(h, lof=%d)
 		}
     }
 
-    /*
-    dvb_src = NULL;
-    dvb_lnb = NULL;
-    dvb_sat = NULL;
-	*/
-if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "dvb_src=%s, dvb_lnb=%s, dvb_sat=%s\n", dvb_src, dvb_lnb, dvb_sat) ; }
 if (dvb_debug>1) _dump_state(_name, "before ioctl call", h) ;
 
     rc = -1;
 if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "xiotcl(FE_SET_FRONTEND)\n") ; }
     if (-1 == xioctl(h->fdwr,FE_SET_FRONTEND,&h->p, 0)) {
-		dump_fe_info(h);
+    	// failed
+	    if (dvb_debug)
+			dump_fe_info(h);
 		goto done;
     }
 
@@ -389,51 +624,122 @@ if (dvb_debug>1) _fn_end(_name, rc) ;
 }
 
 /* ----------------------------------------------------------------------- */
+/* print tuning settings */
+void dvb_frontend_tune_info(struct dvb_state *h)
+{
+struct dvb_frontend_parameters info ;
+	
+    if (-1 == xioctl(h->fdro,FE_GET_FRONTEND,&info,1)) 
+    {
+//		dump_fe_info(h);
+//		goto done;
+    }
+
+    if (dvb_debug)
+    {
+    	fprintf(stderr, "readback tuning:\n") ;
+		_dump_frontend_params(0, &info) ;
+    }
+
+}
+
+
+/* ----------------------------------------------------------------------- */
 int dvb_frontend_is_locked(struct dvb_state *h)
 {
     fe_status_t  status  = 0;
 
     if (-1 == ioctl(h->fdro, FE_READ_STATUS, &status)) {
-	perror("dvb fe: ioctl FE_READ_STATUS");
-	return 0;
+		perror("dvb fe: ioctl FE_READ_STATUS");
+		return 0;
     }
+if (dvb_debug>=10) fprintf(stderr, "frontend status=0x%04x\n", status) ;
+
     return (status & FE_HAS_LOCK);
+}
+
+/* ----------------------------------------------------------------------- */
+int dvb_signal_quality(struct dvb_state *h, 
+	unsigned 		*ber,
+	unsigned		*snr,
+	unsigned		*strength,
+	unsigned		*uncorrected_blocks
+)
+{
+uint32_t 		ber32 ;
+int16_t			snr16 ;
+int16_t			strength16 ;
+uint32_t		uncorrected_blocks32 ;
+int ok = 1 ;
+
+	*ber = 0 ;
+	*snr = 0 ;
+	*strength = 0 ;
+	*uncorrected_blocks = 0 ;
+
+	
+    if (-1 == ioctl(h->fdro, FE_READ_BER, &ber32)) 
+    {
+//		perror("dvb fe: ioctl FE_READ_BER");
+		ok = 0 ;
+    }
+    if (-1 == ioctl(h->fdro, FE_READ_SNR, &snr16)) 
+    {
+//		perror("dvb fe: ioctl FE_READ_SNR");
+		ok = 0 ;
+    }
+
+	if (-1 == ioctl(h->fdro, FE_READ_SIGNAL_STRENGTH, &strength16)) 
+	{
+//		perror("dvb fe: ioctl FE_READ_SIGNAL_STRENGTH");
+		ok = 0 ;
+	}
+	
+	if (-1 == ioctl(h->fdro, FE_READ_UNCORRECTED_BLOCKS, &uncorrected_blocks32)) 
+	{
+//		perror("dvb fe: ioctl FE_READ_UNCORRECTED_BLOCKS");
+		ok = 0 ;
+	}
+
+	// copy values
+	*strength = (unsigned)(strength16) & 0xFFFF ;
+	*snr = (unsigned)(snr16) & 0xFFFF ;
+	*ber = (unsigned)(ber32) ;
+	*uncorrected_blocks = (unsigned)(uncorrected_blocks32) ;
+
+	if (dvb_debug>1) 
+		fprintf(stderr, "dvb_signal_quality() ber=%u (0x%08x), snr=%u (0x%04x), uncorrected=%u (0x%08x), strength=%u (0x%04x)\n", 
+			*ber, *ber,
+			*snr, *snr,
+			*uncorrected_blocks, *uncorrected_blocks,
+			*strength, *strength) ;
+
+    return ok ;
 }
 
 /* ----------------------------------------------------------------------- */
 int dvb_frontend_wait_lock(struct dvb_state *h, int timeout)
 {
-    struct timeval start,now,tv;
-    int msec,locked = 0, runs = 0;
+fe_status_t  status  = 0;
+int i ;
 
-    gettimeofday(&start,NULL);
-/* Fix
-    if (dvb_debug)
-	dvb_frontend_status_title();
-*/
-    for (;;) {
-	tv.tv_sec  = 0;
-	tv.tv_usec = 33 * 1000;
-	select(0,NULL,NULL,NULL,&tv);
-/* Fix
-	if (dvb_debug)
-	    dvb_frontend_status_print(h);
-*/
-	if (dvb_frontend_is_locked(h))
-	    locked++;
-	else
-	    locked = 0;
-	if (locked > 3)
-	    return 0;
-	runs++;
+	for (i = 0; i < 50; i++) {
 
-	gettimeofday(&now,NULL);
-	msec  = (now.tv_sec - start.tv_sec) * 1000;
-	msec += now.tv_usec/1000;
-	msec -= start.tv_usec/1000;
-	if (msec > timeout && runs > 3)
-	    break;
-    }
+	    if (-1 == ioctl(h->fdro, FE_READ_STATUS, &status)) {
+			perror("dvb fe: ioctl FE_READ_STATUS");
+			return -22;
+	    }
+
+if ( (dvb_debug>=10) && (i%10==0) ) fprintf(stderr, ">>> tuning status == 0x%04x\n", status) ;
+
+		if (status & FE_HAS_LOCK) {
+			return 0;
+		}
+
+		usleep (40000);
+	}
+    
+    
     return -12;
 }
 
@@ -529,14 +835,6 @@ int dvb_demux_filter_apply(struct dvb_state *h)
 	}
     }
 
-/*
-    ng_mpeg_vpid = h->video.filter.pid;
-    ng_mpeg_apid = h->audio.filter.pid;
-    if (dvb_debug)
-	fprintf(stderr,"dvb mux: dvb ts pids: video=%d audio=%d\n",
-		ng_mpeg_vpid,ng_mpeg_apid);
-*/
-
 	if (dvb_debug>1) _fn_end(_name, 0) ;
     return 0;
 
@@ -558,10 +856,6 @@ void dvb_demux_filter_release(struct dvb_state *h)
 	close(h->video.fd);
 	h->video.fd = -1;
     }
-/*
-    ng_mpeg_vpid = 0;
-    ng_mpeg_apid = 0;
-*/
 }
 
 
@@ -585,13 +879,6 @@ int dvb_demux_get_section(int fd, unsigned char *buf, int len)
 int dvb_demux_req_section(struct dvb_state *h, int fd, int pid,
 			  int sec, int mask, int oneshot, int timeout)
 {
-/*
-int fd = -1 ;
-int oneshot = 1 ;
-int sec = 2 ;
-int mask = 0xff ;
-*/
-
 	char *_name="dvb_demux_req_section" ;
 	if (dvb_debug>1) _fn_start(_name) ;
 	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "fd=%d pid=%d sec=%d mask=%d oneshot=%d timeout=%d\n", fd, pid, sec, mask, oneshot, timeout); }
@@ -681,8 +968,8 @@ void dvb_fini(struct dvb_state *h)
 	char *_name="dvb_fini" ;
 	if (dvb_debug>1) _fn_start(_name) ;
 
-    dvb_frontend_release(h,1);
-    dvb_frontend_release(h,0);
+    dvb_frontend_release(h, /* write=1 */ 1);
+    dvb_frontend_release(h, /* read=0 */  0);
     dvb_demux_filter_release(h);
     dvb_dvr_release(h);
     free(h);
@@ -712,7 +999,7 @@ struct dvb_state* dvb_init(char *adapter, int frontend)
     snprintf(h->demux,    sizeof(h->demux),   "%s/demux%d",    adapter, frontend);
     snprintf(h->dvr,      sizeof(h->demux),   "%s/dvr%d",      adapter, frontend);
 
-    if (0 != dvb_frontend_open(h,0))
+    if (0 != dvb_frontend_open(h, /* read=0 */ 0))
 	goto oops;
 
     if (-1 == xioctl(h->fdro, FE_GET_INFO, &h->info, 0)) {
@@ -752,11 +1039,13 @@ struct dvb_state* dvb_init_nr(int adapter, int frontend)
 /* ----------------------------------------------------------------------- */
 int dvb_wait_tune(struct dvb_state *h, int timeout)
 {
+struct dvb_frontend_parameters info ;
+
 	char *_name="dvb_wait_tune" ;
 	if (dvb_debug>1) _fn_start(_name) ;
 	if (dvb_debug>1) _dump_state(_name, "", h);
 
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Ensure frontend locked\n"); }
+	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Ensure frontend locked (timeout=%d)\n", timeout); }
     if (0 == timeout)
     {
 		if (!dvb_frontend_is_locked(h))
@@ -773,6 +1062,20 @@ int dvb_wait_tune(struct dvb_state *h, int timeout)
 		    return -16;
 		}
     }
+
+	// Update the tuning parameters
+    if (-1 == xioctl(h->fdro,FE_GET_FRONTEND,&info,0)) 
+    {
+//		dump_fe_info(h);
+//		goto done;
+    }
+
+	// only overwrite params if these came back correctly - some tuners don't seem to properly support
+	// readback
+	if (info.frequency > 0)
+	{
+	    memcpy(&h->p, &info, sizeof(h->p));
+	}
 
 	if (dvb_debug>1) _fn_end(_name, 0) ;
     return 0;

@@ -7,11 +7,12 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-	my ($help, $man, $DEBUG, $VERBOSE) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
+			   'cfg=s' => \$config,
 			   ) or pod2usage(2) ;
 
 
@@ -27,6 +28,8 @@ use Linux::DVB::DVBT ;
 	## die on *any* error, so there is no error checking in this script
 	##
 	my $dvb = Linux::DVB::DVBT->new() ;
+	
+	$dvb->config_path($config) if $config ;
 	
 	# read config
 	my $tuning_href = $dvb->get_tuning_info() ;

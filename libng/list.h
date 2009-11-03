@@ -136,6 +136,8 @@ static __inline__ void list_splice(struct list_head *list, struct list_head *hea
  * @ptr:	the &struct list_head pointer.
  * @type:	the type of the struct this is embedded in.
  * @member:	the name of the list_struct within the struct.
+ * 
+ * e.g. struct psi_program *program = list_entry(item, struct psi_program, next);
  */
 #define list_entry(ptr, type, member) \
 	((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))

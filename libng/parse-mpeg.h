@@ -4,8 +4,12 @@
  * (c) 2003 Gerd Knorr <kraxel@bytesex.org>
  *
  */
+#ifndef PARSE_MPEG
+#define PARSE_MPEG
 
 #include <inttypes.h>
+#include "grab-ng.h"
+
 
 #define TS_SIZE                   188
 
@@ -15,6 +19,14 @@ extern const char *mpeg_frame_s[];
 
 extern char *psi_charset[0x20];
 char *psi_service_type[0x100];
+
+
+// List of tuned frequencies stored for each program
+struct freq_info {
+    struct list_head     next;
+
+	int 				 frequency ;
+} ;
 
 
 /* data gathered from NIT during scan - info is added to the stream */
@@ -46,22 +58,29 @@ struct psi_stream {
     char                 net[PSI_STR_MAX];
 
     int                  frequency;
-    int                  symbol_rate;
+
     char                 *bandwidth;
-    char                 *constellation;
-    char                 *hierarchy;
     char                 *code_rate_hp;
     char                 *code_rate_lp;
-    char                 *fec_inner;
-    char                 *guard;
+    char                 *constellation;
     char                 *transmission;
-    char                 *polarization;
+    char                 *guard;
+    char                 *hierarchy;
+
+    char                 *polarization;		// Not used
+    int                  symbol_rate;		// Not used
+    char                 *fec_inner;		// Not used
+
+	// Other frequency list    
+    int                  other_freq;
+    int                  freq_list_len;
+    int                  *freq_list;
 
     /* status info */
     int                  updated;
-    int					 tuned;
-    
-    /* program info */
+    int					 tuned;		// set when we've tuned to this transponder's freq
+
+    /* program info i.e. LCN info */
     struct list_head     prog_info_list;
     
 };
@@ -74,7 +93,14 @@ struct psi_program {
     int                  version;
     int                  running;
     int                  ca;
+    
+//    int					 tuned_freq; 	
 
+	// keep a record of the currently tuend frequency when we saw this
+    // (it may not relate to the transponder centre freq)
+    struct list_head     tuned_freq_list ;
+    
+    									
     /* program data */
     int                  type;
     int                  p_pid;             // program
@@ -183,6 +209,14 @@ struct mpeg_handle {
 };
 
 /* ----------------------------------------------------------------------- */
+// DEBUG
+/* ----------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------- */
+void print_stream(struct psi_stream *stream) ;
+void print_program(struct psi_program *program) ;
+
+/* ----------------------------------------------------------------------- */
 
 /* handle psi_* */
 struct prog_info* prog_info_get(struct psi_stream *stream, int sid, int alloc) ;
@@ -190,9 +224,10 @@ void prog_info_free(struct psi_stream *stream) ;
 
 struct psi_info* psi_info_alloc(void);
 void psi_info_free(struct psi_info *info);
-struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int alloc);
+struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int netid, int alloc);
+struct psi_stream* psi_stream_newfreq(struct psi_info *info, struct psi_stream* src_stream, int frequency);
 struct psi_program* psi_program_get(struct psi_info *info, int tsid,
-				    int pnr, int alloc);
+				    int pnr, int tuned_freq, int alloc);
 
 /* misc */
 void hexdump(char *prefix, unsigned char *data, size_t size);
@@ -216,13 +251,14 @@ unsigned char* mpeg_find_audio_hdr(unsigned char *buf, int off, int size);
 size_t mpeg_find_ps_packet(struct mpeg_handle *h, int packet, int mask, off_t *pos);
 
 /* transport stream */
-void mpeg_parse_psi_string(char *src, int slen,
-			   char *dest, int dlen);
-int mpeg_parse_psi_pat(struct psi_info *info, unsigned char *data, int verbose);
-int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int verbose);
-int mpeg_parse_psi(struct psi_info *info, struct mpeg_handle *h, int verbose);
+void mpeg_parse_psi_string(char *src, int slen, char *dest, int dlen);
+int mpeg_parse_psi_pat(struct psi_info *info, unsigned char *data, int verbose, int tuned_freq);
+int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int verbose, int tuned_freq);
+int mpeg_parse_psi(struct psi_info *info, struct mpeg_handle *h, int verbose, int tuned_freq);
 int mpeg_find_ts_packet(struct mpeg_handle *h, int wanted, off_t *pos);
 
 /* DVB stuff */
-int mpeg_parse_psi_sdt(struct psi_info *info, unsigned char *data, int verbose);
-int mpeg_parse_psi_nit(struct psi_info *info, unsigned char *data, int verbose);
+int mpeg_parse_psi_sdt(struct psi_info *info, unsigned char *data, int verbose, int tuned_freq);
+int mpeg_parse_psi_nit(struct psi_info *info, unsigned char *data, int verbose, int tuned_freq);
+
+#endif

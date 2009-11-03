@@ -58,7 +58,7 @@ WriteMakefile(
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => "lib/$modpath.pm", # retrieve abstract from module
        AUTHOR         => 'Steve Price <cpan@sdprice.plus.com>') : ()),
-    LIBS              => [''], # e.g., '-lm'
+    LIBS              => ['-lrt'], # e.g., '-lm'
     DEFINE            => '', # e.g., '-DHAVE_SOMETHING'
     INC               => '-I./dvb_lib -I./libng', # e.g., '-I. -I/usr/include/other'
     EXE_FILES         => [ map "script/$_", @programs_to_install ],

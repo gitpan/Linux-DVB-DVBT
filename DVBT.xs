@@ -13,10 +13,18 @@
 #include "dvb_lib/dvb_struct.h"
 #include "dvb_lib/dvb_lib.h"
 
-#define DVBT_VERSION		"1.005"
+#define DVBT_VERSION		"1.006"
 #define DEFAULT_TIMEOUT		900
 
 /*---------------------------------------------------------------------------------------------------*/
+
+/** ARRAY store macros **/
+
+#define AVS_H(arr, h)				av_push(arr, newRV((SV *)h))
+#define AVS_A(arr, a)				av_push(arr, newRV((SV *)a))
+#define AVS_I(arr, i)				av_push(arr, newSViv(i))
+#define AVS_S(arr, s)				av_push(arr, newSVpv(s, 0))
+
 
 /** HASH store macros **/
 
@@ -24,6 +32,9 @@
 #define HVS(h, name, sv)		hv_store(h, #name, sizeof(#name)-1, sv, 0)
 #define HVS_S(h, sp, name)		if (sp->name)      hv_store(h, #name, sizeof(#name)-1, newSVpv(sp->name, 0), 0)
 #define HVS_I(h, sp, name)		if (sp->name >= 0) hv_store(h, #name, sizeof(#name)-1, newSViv(sp->name), 0)
+#define HVS_BIT(h, var, name)	hv_store(h, #name, sizeof(#name)-1, newSViv(var & name ? 1 : 0), 0)
+
+#define HVS_INT(h, name, i)		hv_store(h, #name, sizeof(#name)-1, newSViv(i), 0)
 
 /* Specify the structure field name and HASH key name separately */
 #define HVSN_S(h, sp, name, key)		if (sp->name)      hv_store(h, #key, sizeof(#key)-1, newSVpv(sp->name, 0), 0)
@@ -34,8 +45,61 @@
 
 /** HASH read macros **/
 #define HVF_I(hv,var)                                 \
-  if ( (val = hv_fetch (hv, #var, sizeof (#var) - 1, 0)) )	\
-    var = SvIV (*val);
+  if ( (val = hv_fetch (hv, #var, sizeof (#var) - 1, 0)) ) { \
+  	if ( val != NULL ) { \
+      var = SvIV (*val); \
+  	  if (DVBT_DEBUG) fprintf(stderr, " set %s = %d\n", #var, var); \
+  	} \
+  }
+
+/* get the HASH ref using the specified key. If not currently set, then create a new HASH and add it to the parent */
+#define GET_HREF(hv, key, var)                                \
+  if ( (val = hv_fetch (hv, #key, sizeof (#key) - 1, 0)) ) { \
+  	if ( val != NULL ) { \
+      var = (HV *)sv_2mortal(*val); \
+  	} \
+  	else { \
+  	  var = (HV *)sv_2mortal((SV *)newHV()); \
+  	  hv_store(hv, #key, sizeof(#key)-1, newRV((SV *)var), 0) ; \
+  	} \
+  }
+
+
+static int bw[4] = {
+	[ 0 ] = 8,
+	[ 1 ] = 7,
+	[ 2 ] = 6,
+	[ 3 ] = 5,
+    };
+static int co_t[4] = { 
+	[ 0 ] = 0,	/* QPSK */
+	[ 1 ] = 16,
+	[ 2 ] = 64,
+    };
+static int hi[4] = {
+	[ 0 ] = 0,
+	[ 1 ] = 1,
+	[ 2 ] = 2,
+	[ 3 ] = 4,
+    };
+static int ra_t[8] = {
+	[ 0 ] = 12,
+	[ 1 ] = 23,
+	[ 2 ] = 34,
+	[ 3 ] = 56,
+	[ 4 ] = 78,
+    };
+static int gu[4] = {
+	[ 0 ] = 32,
+	[ 1 ] = 16,
+	[ 2 ] = 8,
+	[ 3 ] = 4,
+    };
+static int tr[3] = {
+	[ 0 ] = 2,
+	[ 1 ] = 8,
+	[ 2 ] = 4,
+    };
 
 
 /*---------------------------------------------------------------------------------------------------*/
@@ -53,6 +117,8 @@ static char ret_str[8192] ;
    }
    return ret_str ;
 }
+
+static int DVBT_DEBUG = 0 ;
 
 
 MODULE = Linux::DVB::DVBT		PACKAGE = Linux::DVB::DVBT
@@ -82,7 +148,9 @@ dvb_device()
   /* Create Perl data */
   list_for_each(item, info)
   {
-	HV * rh;
+  HV * rh;
+  HV * ch;
+  int flags ;
 
 		entry = list_entry(item, struct devinfo, next);
 
@@ -102,6 +170,75 @@ dvb_device()
 		HVS_I(rh, entry, adapter_num) ;
 		HVS_I(rh, entry, frontend_num) ;
 		HVS_I(rh, entry, flags) ;
+		
+		flags = entry->flags ;
+		
+		// Convert flags into capabilities HASH
+		//	typedef enum fe_caps {
+		//		FE_IS_STUPID			= 0,
+		//		FE_CAN_INVERSION_AUTO		= 0x1,
+		//		FE_CAN_FEC_1_2			= 0x2,
+		//		FE_CAN_FEC_2_3			= 0x4,
+		//		FE_CAN_FEC_3_4			= 0x8,
+		//		FE_CAN_FEC_4_5			= 0x10,
+		//		FE_CAN_FEC_5_6			= 0x20,
+		//		FE_CAN_FEC_6_7			= 0x40,
+		//		FE_CAN_FEC_7_8			= 0x80,
+		//		FE_CAN_FEC_8_9			= 0x100,
+		//		FE_CAN_FEC_AUTO			= 0x200,
+		//		FE_CAN_QPSK			= 0x400,
+		//		FE_CAN_QAM_16			= 0x800,
+		//		FE_CAN_QAM_32			= 0x1000,
+		//		FE_CAN_QAM_64			= 0x2000,
+		//		FE_CAN_QAM_128			= 0x4000,
+		//		FE_CAN_QAM_256			= 0x8000,
+		//		FE_CAN_QAM_AUTO			= 0x10000,
+		//		FE_CAN_TRANSMISSION_MODE_AUTO	= 0x20000,
+		//		FE_CAN_BANDWIDTH_AUTO		= 0x40000,
+		//		FE_CAN_GUARD_INTERVAL_AUTO	= 0x80000,
+		//		FE_CAN_HIERARCHY_AUTO		= 0x100000,
+		//		FE_CAN_8VSB			= 0x200000,
+		//		FE_CAN_16VSB			= 0x400000,
+		//		FE_NEEDS_BENDING		= 0x20000000, // not supported anymore, don't use (frontend requires frequency bending)
+		//		FE_CAN_RECOVER			= 0x40000000, // frontend can recover from a cable unplug automatically
+		//		FE_CAN_MUTE_TS			= 0x80000000  // frontend can stop spurious TS data output
+		//	} fe_caps_t;
+		
+		ch = (HV *)sv_2mortal((SV *)newHV());
+		HVS_BIT(ch, flags, FE_CAN_INVERSION_AUTO) ;
+		
+		HVS_BIT(ch, flags, FE_CAN_FEC_1_2) ;
+		HVS_BIT(ch, flags, FE_CAN_FEC_2_3) ;
+		HVS_BIT(ch, flags, FE_CAN_FEC_3_4) ;
+		HVS_BIT(ch, flags, FE_CAN_FEC_4_5) ;
+		HVS_BIT(ch, flags, FE_CAN_FEC_5_6) ;
+		HVS_BIT(ch, flags, FE_CAN_FEC_6_7) ;
+		HVS_BIT(ch, flags, FE_CAN_FEC_7_8) ;
+		HVS_BIT(ch, flags, FE_CAN_FEC_AUTO) ;
+		
+		HVS_BIT(ch, flags, FE_CAN_QPSK) ;
+		HVS_BIT(ch, flags, FE_CAN_QAM_16) ;
+		HVS_BIT(ch, flags, FE_CAN_QAM_32) ;
+		HVS_BIT(ch, flags, FE_CAN_QAM_64) ;
+		HVS_BIT(ch, flags, FE_CAN_QAM_128) ;
+		HVS_BIT(ch, flags, FE_CAN_QAM_256) ;
+		HVS_BIT(ch, flags, FE_CAN_QAM_AUTO) ;
+		
+		HVS_BIT(ch, flags, FE_CAN_TRANSMISSION_MODE_AUTO) ;
+		HVS_BIT(ch, flags, FE_CAN_BANDWIDTH_AUTO) ;
+		HVS_BIT(ch, flags, FE_CAN_GUARD_INTERVAL_AUTO) ;
+		HVS_BIT(ch, flags, FE_CAN_HIERARCHY_AUTO) ;
+		
+		HVS_BIT(ch, flags, FE_CAN_8VSB) ;
+		HVS_BIT(ch, flags, FE_CAN_16VSB) ;
+		
+		HVS_BIT(ch, flags, FE_CAN_RECOVER) ;
+		HVS_BIT(ch, flags, FE_CAN_MUTE_TS) ;
+
+		HVS(ch, FE_IS_STUPID, newSViv(flags==0 ? 1 : 0)) ;
+
+		HVS(rh, capabilities, newRV((SV *)ch)) ;
+		
 		av_push(results, newRV((SV *)rh));
 
   }
@@ -175,6 +312,7 @@ void
 dvb_set_debug(int debug);
 	CODE:
 	 dvb_debug = debug ;
+	 DVBT_DEBUG = debug ;
 
 
  # /*---------------------------------------------------------------------------------------------------*/
@@ -195,19 +333,25 @@ dvb_tune (DVB *dvb, HV *parameters)
 		int frequency=0;
 
 		/* We hope that any unset params will cope just using the AUTO option */
-		int inversion=INVERSION_AUTO;
-		int bandwidth=BANDWIDTH_AUTO;
-		int code_rate_high=FEC_AUTO;
-		int code_rate_low=FEC_AUTO;
-		int modulation=QAM_AUTO;
-		int transmission=TRANSMISSION_MODE_AUTO;
-		int guard_interval=GUARD_INTERVAL_AUTO;
-		int hierarchy=HIERARCHY_AUTO;
+		int inversion=0;
+		int bandwidth=TUNING_AUTO;
+		int code_rate_high=TUNING_AUTO;
+		int code_rate_low=TUNING_AUTO;
+		int modulation=TUNING_AUTO;
+		int transmission=TUNING_AUTO;
+		int guard_interval=TUNING_AUTO;
+		int hierarchy=TUNING_AUTO;
 
 		int timeout=DEFAULT_TIMEOUT;
 
 	CODE:
-		/* Read all those HASH values that are actually set */
+
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, " == DVBT.xs::dvb_tune() ================\n") ;
+ }
+
+		/* Read all those HASH values that are actually set into discrete variables */
 		HVF_I(parameters, frequency) ;
 		HVF_I(parameters, inversion) ;
 		HVF_I(parameters, bandwidth) ;
@@ -221,6 +365,23 @@ dvb_tune (DVB *dvb, HV *parameters)
 
 		if (frequency <= 0)
 	          croak ("Linux::DVB::DVBT::dvb_tune requires a valid frequency");
+
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, " DVBT.xs::dvb_tune() : tuning freq=%d Hz, inv=(%d) "
+		"bandwidth=(%d) code_rate=(%d - %d) constellation=(%d) "
+		"transmission=(%d) guard=(%d) hierarchy=(%d)\n",
+		frequency,
+		inversion,
+		bandwidth,
+		code_rate_high,
+		code_rate_low,
+		modulation,
+		transmission,
+		guard_interval,
+		hierarchy
+	) ;
+ }
 
 		// set tuning
 		RETVAL = dvb_tune(dvb,
@@ -238,7 +399,6 @@ dvb_tune (DVB *dvb, HV *parameters)
 
 	OUTPUT:
         RETVAL
-
 
 
  # /*---------------------------------------------------------------------------------------------------*/
@@ -286,29 +446,59 @@ dvb_record (DVB *dvb, char *filename, int sec)
 
 
  # /*---------------------------------------------------------------------------------------------------*/
- # /* Scan all frequencies based from whatever the current tuning is */
+ # /* Set up for scanning */
+
+void
+dvb_scan_new(DVB *dvb, int verbose)
+	CODE:
+		// init the freq list
+		clear_freqlist() ;
+
+ # /*---------------------------------------------------------------------------------------------------*/
+ # /* Set up for scanning */
+
+void
+dvb_scan_init(DVB *dvb, int verbose)
+	CODE:
+	 	dvb_scan_init(dvb, verbose) ;
+
+ # /*---------------------------------------------------------------------------------------------------*/
+ # /* Clear up after scanning */
+
+void
+dvb_scan_end(DVB *dvb, int verbose)
+	CODE:
+ 		/* Free up results */
+		dvb_scan_end(dvb, verbose) ;
+
+ # /*---------------------------------------------------------------------------------------------------*/
+ # /* Scan all frequencies starting from whatever the current tuning is */
 SV *
 dvb_scan(DVB *dvb, int verbose)
 
   INIT:
     HV * results;
-    HV * streams ;
-    HV * lcns ;
-    HV * programs ;
+
+    AV * streams ;
+    HV * freqs ;
+    AV * programs ;
 
     char key[256] ;
     char key2[256] ;
 
     struct dvbmon *dm ;
-	struct list_head *item, *safe, *pitem ;
+	struct list_head *item, *safe, *pitem, *fitem ;
 	struct psi_program *program ;
 	struct psi_stream *stream;
 	struct prog_info *pinfo ;
+    struct freqitem   *freqi;
+    struct freq_info  *finfo;
 
     results = (HV *)sv_2mortal((SV *)newHV());
-    streams = (HV *)sv_2mortal((SV *)newHV());
-    lcns = (HV *)sv_2mortal((SV *)newHV());
-    programs = (HV *)sv_2mortal((SV *)newHV());
+
+    streams = (AV *)sv_2mortal((SV *)newAV());
+    programs = (AV *)sv_2mortal((SV *)newAV());
+    freqs = (HV *)sv_2mortal((SV *)newHV());
 
   CODE:
   	/* get info */
@@ -317,97 +507,180 @@ dvb_scan(DVB *dvb, int verbose)
   	/** Create Perl data **/
 	HVS(results, ts, newRV((SV *)streams)) ;
 	HVS(results, pr, newRV((SV *)programs)) ;
-	HVS(results, lcn, newRV((SV *)lcns)) ;
+	HVS(results, freqs, newRV((SV *)freqs)) ;
+
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, "\n\n == DVBT.xs::dvb_scan() ================\n") ;
+	
+ }
+
+    /* Store frequency info */
+    list_for_each(item,&freq_list) 
+    {
+		HV * fh;
+    
+		freqi = list_entry(item, struct freqitem, next);
+		
+ if (DVBT_DEBUG >= 10)
+ {
+		fprintf(stderr, "FREQ: %d Hz seen=%d tuned=%d (Strength=%d)\n",
+			freqi->frequency,
+			freqi->flags.seen,
+			freqi->flags.tuned,
+			freqi->strength
+		) ;
+ }
+		/* Convert structure fields into hash elements */
+		fh = (HV *)sv_2mortal((SV *)newHV());
+
+		HVS_I(fh, freqi, strength) ;
+		HVS(fh, seen, newSViv(freqi->flags.seen)) ;
+		HVS(fh, tuned, newSViv(freqi->flags.tuned)) ;
+
+		// Convert frontend params into VDR values
+		HVS_INT(fh, inversion, freqi->params.inversion) ;
+		HVS_INT(fh, bandwidth, bw[ freqi->params.u.ofdm.bandwidth ] );
+		HVS_INT(fh, code_rate_high, ra_t[ freqi->params.u.ofdm.code_rate_HP ] );
+		HVS_INT(fh, code_rate_low, ra_t[ freqi->params.u.ofdm.code_rate_LP ] );
+		HVS_INT(fh, modulation, co_t[ freqi->params.u.ofdm.constellation ] );
+		HVS_INT(fh, transmission, tr[ freqi->params.u.ofdm.transmission_mode ] );
+		HVS_INT(fh, guard_interval, gu[ freqi->params.u.ofdm.guard_interval ] );
+		HVS_INT(fh, hierarchy, hi[ freqi->params.u.ofdm.hierarchy_information ] );
+
+		sprintf(key, "%d", freqi->frequency) ;
+		hv_store(freqs, key, strlen(key),  newRV((SV *)fh), 0) ;
+    }
+
+
 
     /* Store stream info */
 	list_for_each(item,&dm->info->streams)
 	{
 		HV * rh;
-		HV * tsidh ;
+		HV * tsidh;
+		int frequency ;
 		
 		stream = list_entry(item, struct psi_stream, next);
 
-		/*
-		//    	  int                  tsid;
-		//
-		//        // network //
-		//        int                  netid;
-		//        char                 net[PSI_STR_MAX];
-		//
-		//        int                  frequency;
-		//        int                  symbol_rate;
-		//        char                 *bandwidth;
-		//        char                 *constellation;
-		//        char                 *hierarchy;
-		//        char                 *code_rate_hp;
-		//        char                 *code_rate_lp;
-		//        char                 *fec_inner;
-		//        char                 *guard;
-		//        char                 *transmission;
-		//        char                 *polarization;
-		*/
+			// round up frequency to nearest kHz
+			// HVS_I(rh, stream, frequency) ;
+			frequency = (int)(  ((float)stream->frequency / 1000.0) + 0.5 ) * 1000 ;  
 
-		/* Convert structure fields into hash elements */
-		rh = (HV *)sv_2mortal((SV *)newHV());
-		tsidh = (HV *)sv_2mortal((SV *)newHV());
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, "  stream: TSID %d freq = %d Hz [%d Hz] : tuned=%d updated=%d\n",
+		stream->tsid,
+		stream->frequency,
+		frequency,
+		stream->tuned,
+		stream->updated
+	) ;
+ }
+ 
 
-		HVS_S(rh, stream, bandwidth) ;
-		HVSN_S(rh, stream, code_rate_hp, 	code_rate_high) ;
-		HVSN_S(rh, stream, code_rate_lp, 	code_rate_low) ;
-		HVSN_S(rh, stream, constellation, 	modulation) ;
-		HVS_I(rh, stream, frequency) ;
-		HVSN_S(rh, stream, guard, 			guard_interval) ;
-		HVS_S(rh, stream, hierarchy) ;
-		HVS_S(rh, stream, net) ;
-		HVS_S(rh, stream, transmission) ;
+		if (stream->tuned)
+		{
+			/*
+			//    	  int                  tsid;
+			//
+			//        // network //
+			//        int                  netid;
+			//        char                 net[PSI_STR_MAX];
+			//
+			//        int                  frequency;
+			//        int                  symbol_rate;
+			//        char                 *bandwidth;
+			//        char                 *constellation;
+			//        char                 *hierarchy;
+			//        char                 *code_rate_hp;
+			//        char                 *code_rate_lp;
+			//        char                 *fec_inner;
+			//        char                 *guard;
+			//        char                 *transmission;
+			//        char                 *polarization;
+			*/
+	
+			/* Convert structure fields into hash elements */
+			rh = (HV *)sv_2mortal((SV *)newHV());
+			tsidh = (HV *)sv_2mortal((SV *)newHV());
 
-		sprintf(key, "%d", stream->tsid) ;
-		hv_store(streams, key, strlen(key),  newRV((SV *)rh), 0) ;
-		
-		/* Process the program lcns attached to this stream 
-		
-		'lcns' => {
-		
-			$tsid => {
+			HVS_INT(rh, frequency, frequency) ;
+	
+			HVS_I(rh, stream, tsid) ;
+			HVS_I(rh, stream, netid) ;
+			HVS_S(rh, stream, bandwidth) ;
+			HVSN_S(rh, stream, code_rate_hp, 	code_rate_high) ;
+			HVSN_S(rh, stream, code_rate_lp, 	code_rate_low) ;
+			HVSN_S(rh, stream, constellation, 	modulation) ;
+			HVSN_S(rh, stream, guard, 			guard_interval) ;
+			HVS_S(rh, stream, hierarchy) ;
+			HVS_S(rh, stream, net) ;
+			HVS_S(rh, stream, transmission) ;
+	
+			/* Process the program lcns attached to this stream 
 			
-				$pnr => {
-					'service_type' => xx,
-					'visible' => yy,
-					'lcn' => zz,
+			'lcn' => {
+			
+				$tsid => {
+				
+					$pnr => {
+						'service_type' => xx,
+						'visible' => yy,
+						'lcn' => zz,
+					}
 				}
 			}
-		}
-		*/
-		list_for_each(pitem,&stream->prog_info_list)
-		{
-			/* Convert structure fields into hash elements */
-			HV * pnrh = (HV *)sv_2mortal((SV *)newHV());
-
-			pinfo = list_entry(pitem, struct prog_info, next);
-
-			/*			
-			int 				 service_id ;
-			int 				 service_type ;
-			int					 visible ;
-			int					 lcn ;
 			*/
-			HVS_I(pnrh, pinfo, service_type) ;
-			HVS_I(pnrh, pinfo, visible) ;
-			HVS_I(pnrh, pinfo, lcn) ;
-			
-			sprintf(key2, "%d", pinfo->service_id) ;
-			hv_store(tsidh, key2, strlen(key2),  newRV((SV *)pnrh), 0) ;
+			list_for_each(pitem,&stream->prog_info_list)
+			{
+				/* Convert structure fields into hash elements */
+				HV * pnrh = (HV *)sv_2mortal((SV *)newHV());
+	
+				pinfo = list_entry(pitem, struct prog_info, next);
 
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, "  + LCN: %d type=%d visible=%d\n",
+		pinfo->lcn,
+		pinfo->service_type,
+		pinfo->visible
+	) ;
+ }
+	
+				if (pinfo->lcn > 0)
+				{
+					/*			
+					int 				 service_id ;
+					int 				 service_type ;
+					int					 visible ;
+					int					 lcn ;
+					*/
+					HVS_I(pnrh, pinfo, service_type) ;
+					HVS_I(pnrh, pinfo, visible) ;
+					HVS_I(pnrh, pinfo, lcn) ;
+					
+					sprintf(key2, "%d", pinfo->service_id) ;
+					hv_store(tsidh, key2, strlen(key2),  newRV((SV *)pnrh), 0) ;
+				}
+			}
+			HVS(rh, lcn, newRV((SV *)tsidh)) ;
+
+			av_push(streams, newRV((SV *)rh));
+			
 		}
-		hv_store(lcns, key, strlen(key),  newRV((SV *)tsidh), 0) ;
 	}
 
 	/* store program info */
 	list_for_each(item,&dm->info->programs)
 	{
-		HV * rh;
 		program = list_entry(item, struct psi_program, next);
 
+	    if (DVBT_DEBUG >= 15)
+	    {
+	    	print_program(program) ;
+	    }
+	
 		/*
 		//         int                  tsid;
 		//         int                  pnr;
@@ -430,11 +703,35 @@ dvb_scan(DVB *dvb, int verbose)
 		//         int                  seen;
 		*/
 
-		/* Only bother saving this if the same is set */
-		if (strlen(program->name))
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, "PROG %d-%d: %s\n",
+		program->tsid,
+		program->pnr,
+		program->name
+	) ;
+ }
+
+		/* Only bother saving this if the same is set AND type > 0*/
+		if ((strlen(program->name) > 0) && (program->type > 0))
 		{
+		HV * rh;
+		AV * freq_array;
+		int frequency ;
+		
 			/* Convert structure fields into hash elements */
 			rh = (HV *)sv_2mortal((SV *)newHV());
+
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, " + PID %d  Video=%d Audio=%d Teletext=%d (type=%d)\n",
+		program->p_pid,
+		program->v_pid,
+		program->a_pid,
+		program->t_pid,
+		program->type
+	) ;
+ }
 
 			HVS_I(rh, program, tsid) ;
 			HVS_I(rh, program, pnr) ;
@@ -447,14 +744,35 @@ dvb_scan(DVB *dvb, int verbose)
 			HVS_S(rh, program, net) ;
 			HVS_S(rh, program, name) ;
 
-			hv_store(programs, program->name, strlen(program->name),  newRV((SV *)rh), 0) ;
-		}
+			// add frequencies
+			freq_array = (AV *)sv_2mortal((SV *)newAV());
+		    list_for_each(fitem,&program->tuned_freq_list) {
+		        finfo = list_entry(fitem, struct freq_info, next);
 
+				// round up frequency to nearest kHz
+				frequency = (int)(  ((float)(finfo->frequency) / 1000.0) + 0.5 ) * 1000 ;  
+		        
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, " + + freq = %d Hz [%d Hz]\n",
+		finfo->frequency, frequency
+	) ;
+ }
+
+		        AVS_I(freq_array, frequency) ;
+		    }
+			HVS(rh, freqs, newRV((SV *)freq_array)) ;
+			
+			// save entry in list
+			av_push(programs, newRV((SV *)rh));
+			
+		}
 	}
 
-
-	/* Free up results */
-    dvbmon_fini(dm) ;
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, "\n\n == DVBT.xs::dvb_scan() - END =============\n") ;
+ }
 
 
     RETVAL = newRV((SV *)results);
@@ -562,6 +880,36 @@ dvb_epg(DVB *dvb, int verbose, int alive, int section)
    RETVAL = newRV((SV *)results);
  OUTPUT:
    RETVAL
+
+ # /*---------------------------------------------------------------------------------------------------*/
+ # /* Get frontend signal stats */
+SV *
+dvb_signal_quality(DVB *dvb)
+
+  INIT:
+    HV * results;
+	unsigned 		ber ;
+	unsigned		snr ;
+	unsigned		strength ;
+	unsigned		uncorrected_blocks ;
+	int ok ;
+
+    results = (HV *)sv_2mortal((SV *)newHV());
+
+  CODE:
+  	/* get info */
+    ok = dvb_signal_quality(dvb, &ber, &snr, &strength, &uncorrected_blocks) ; 
+
+  	/** Create Perl data **/
+	HVS(results, ber, newSViv((int)ber)) ;
+	HVS(results, snr, newSViv((int)snr)) ;
+	HVS(results, strength, newSViv((int)strength)) ;
+	HVS(results, uncorrected_blocks, newSViv((int)uncorrected_blocks)) ;
+	HVS(results, ok, newSViv(ok)) ;
+
+    RETVAL = newRV((SV *)results);
+  OUTPUT:
+    RETVAL
 
  # /*---------------------------------------------------------------------------------------------------*/
 

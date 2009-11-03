@@ -5,12 +5,18 @@
 #ifndef DVB_DEBUG
 #define DVB_DEBUG
 
+#include <stdarg.h>
+
 #include "dvb_struct.h"
 
 extern int dvb_debug;
 
 /*------------------------------------------------------------------*/
 void dump_fe_info(struct dvb_state *h);
+void fprintf_timestamp(FILE *stream, const char *format, ...) ;
+void printf_timestamp(const char *format, ...) ;
+
+
 void _fn_start(char *name) ;
 void _fn_end(char *name, int rc) ;
 void _indent(int level) ;

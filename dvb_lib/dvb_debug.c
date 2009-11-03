@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <time.h>
 
 #include <sys/time.h>
 #include <sys/ioctl.h>
@@ -25,12 +26,71 @@ int dvb_debug=0;
 static int dbg_indent = 0 ;
 
 /*------------------------------------------------------------------*/
+void fprintf_timestamp(FILE *stream, const char *format, ...)
+{
+struct timespec t ;
+int ms ;
+struct tm  *ts;
+char       buf[80];
+va_list ap;
+
+    va_start(ap, format);
+ 
+	if (0 != clock_gettime(CLOCK_REALTIME, &t))
+	{
+		perror("Get time fail") ;
+		return ;
+	}
+
+	// print timestamp
+    ts = localtime(&t.tv_sec);
+    strftime(buf, sizeof(buf), "%H:%M:%S", ts);
+    ms = (int)(t.tv_nsec / 1000000L) ;
+	fprintf(stream, "[%s.%03d] ", buf, ms) ;
+	
+	// print message
+	vfprintf(stream, format, ap);
+
+    va_end(ap);
+}
+
+
+/*------------------------------------------------------------------*/
+void printf_timestamp(const char *format, ...)
+{
+struct timespec t ;
+int ms ;
+struct tm  *ts;
+char       buf[80];
+va_list ap;
+
+    va_start(ap, format);
+ 
+	if (0 != clock_gettime(CLOCK_REALTIME, &t))
+	{
+		perror("Get time fail") ;
+		return ;
+	}
+
+	// print timestamp
+    ts = localtime(&t.tv_sec);
+    strftime(buf, sizeof(buf), "%H:%M:%S", ts);
+    ms = (int)(t.tv_nsec / 1000000L) ;
+	fprintf(stdout, "[%s.%03d] ", buf, ms) ;
+	
+	// print message
+	vfprintf(stdout, format, ap);
+
+    va_end(ap);
+}
+
+/*------------------------------------------------------------------*/
 
 void dump_fe_info(struct dvb_state *h)
 {
     switch (h->info.type) {
     case FE_QPSK:
-	fprintf(stderr,"dvb fe: tuning freq=lof+%d kHz, inv=%s "
+	fprintf(stderr,"dvb fe: tuning freq=lof+%d Hz, inv=%s "
 		"symbol_rate=%d fec_inner=%s\n",
 		h->p.frequency,
 		dvb_fe_inversion [ h->p.inversion ],
@@ -47,18 +107,27 @@ void dump_fe_info(struct dvb_state *h)
 		dvb_fe_modulation [ h->p.u.qam.modulation ]);
 	break;
     case FE_OFDM:
-	fprintf(stderr,"dvb fe: tuning freq=%d Hz, inv=%s "
-		"bandwidth=%s code_rate=[%s-%s] constellation=%s "
-		"transmission=%s guard=%s hierarchy=%s\n",
+	fprintf(stderr,"dvb fe: tuning freq=%d Hz, inv=%s (%d) "
+		"bandwidth=%s (%d) code_rate=[%s-%s] (%d - %d) constellation=%s (%d) "
+		"transmission=%s (%d) guard=%s (%d) hierarchy=%s (%d)\n",
 		h->p.frequency,
 		dvb_fe_inversion    [ h->p.inversion                    ],
+		h->p.inversion ,
 		dvb_fe_bandwidth    [ h->p.u.ofdm.bandwidth             ],
+		h->p.u.ofdm.bandwidth,
 		dvb_fe_rates        [ h->p.u.ofdm.code_rate_HP          ],
 		dvb_fe_rates        [ h->p.u.ofdm.code_rate_LP          ],
+		h->p.u.ofdm.code_rate_HP,
+		h->p.u.ofdm.code_rate_LP,
 		dvb_fe_modulation   [ h->p.u.ofdm.constellation         ],
+		h->p.u.ofdm.constellation,
 		dvb_fe_transmission [ h->p.u.ofdm.transmission_mode     ],
+		h->p.u.ofdm.transmission_mode,
 		dvb_fe_guard        [ h->p.u.ofdm.guard_interval        ],
-		dvb_fe_hierarchy    [ h->p.u.ofdm.hierarchy_information ]);
+		h->p.u.ofdm.guard_interval,
+		dvb_fe_hierarchy    [ h->p.u.ofdm.hierarchy_information ],
+		h->p.u.ofdm.hierarchy_information
+		);
 	break;
 #ifdef FE_ATSC
     case FE_ATSC:
@@ -143,7 +212,7 @@ struct dvb_ofdm_parameters {
 
 struct dvb_frontend_parameters {
 	__u32 frequency;     /* (absolute) frequency in Hz for QAM/OFDM/ATSC */
-			     /* intermediate frequency in kHz for QPSK */
+			     /* intermediate frequency in Hz for QPSK */
 	fe_spectral_inversion_t inversion;
 	union {
 		struct dvb_qpsk_parameters qpsk;

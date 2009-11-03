@@ -13,6 +13,7 @@
 
 #include "grab-ng.h"
 #include "parse-mpeg.h"
+#include "../dvb_lib/dvb_debug.h"
 
 #define FILE_BUF_MIN       (512*1024)
 #define FILE_BUF_MAX    (8*1024*1024)
@@ -172,10 +173,149 @@ char *psi_service_type[0x100] = {
 };
 
 
+/* ----------------------------------------------------------------------- */
+// DEBUG
+/* ----------------------------------------------------------------------- */
 
 /* ----------------------------------------------------------------------- */
-/* handle psi_ structs                                                     */
+void print_stream(struct psi_stream *stream)
+{
+int i ;
+struct list_head *item, *safe, *pitem ;
+struct prog_info *pinfo ;
 
+	//    	int                  tsid;
+	//
+	//        /* network */
+	//        int                  netid;
+	//        char                 net[PSI_STR_MAX];
+	//
+	//        int                  frequency;
+	//        int                  symbol_rate;
+	//        char                 *bandwidth;
+	//        char                 *constellation;
+	//        char                 *hierarchy;
+	//        char                 *code_rate_hp;
+	//        char                 *code_rate_lp;
+	//        char                 *fec_inner;
+	//        char                 *guard;
+	//        char                 *transmission;
+	//        char                 *polarization;
+	//    	  int                  other_freq;
+	//    	  int                  *freq_list;
+	//
+	//        /* status info */
+	//        int                  updated;
+	//        int					 tuned;
+	//
+	fprintf(stderr, "TSID %d NETID %d : network %s : freq %d : sr %d : BW %s : Const %s : Hier %s : Code rate hp %s lp %s : FEC %s : Guard %s : Tx %s : Pol %s : Other Freq %d (up %d, tuned %d) : Freq list len=%d\n",
+			stream->tsid, stream->netid, stream->net, stream->frequency, stream->symbol_rate,
+			stream->bandwidth, stream->constellation, stream->hierarchy, stream->code_rate_hp, stream->code_rate_lp,
+			stream->fec_inner, stream->guard, stream->transmission, stream->polarization,
+			stream->other_freq,
+			stream->updated, stream->tuned,
+			stream->freq_list_len
+	) ;
+
+	list_for_each(pitem,&stream->prog_info_list)
+	{
+		pinfo = list_entry(pitem, struct prog_info, next);
+
+		/*			
+		int 				 service_id ;
+		int 				 service_type ;
+		int					 visible ;
+		int					 lcn ;
+		*/
+		fprintf(stderr, "  LCN: %3d  sid 0x%04x type %d visible %d\n",
+			pinfo->lcn,
+			pinfo->service_id,
+			pinfo->service_type,
+			pinfo->visible
+		) ;
+	}
+
+	for (i = 0; i < stream->freq_list_len; i++)
+	{
+		fprintf(stderr, "  FREQ[%3d] = %d Hz\n", i, stream->freq_list[i]) ;
+	}
+
+}
+
+/* ----------------------------------------------------------------------- */
+void print_program(struct psi_program *program)
+{
+struct list_head *item, *safe, *pitem ;
+struct freq_info *finfo ;
+
+	//        int                  tsid;
+	//         int                  pnr;
+	//         int                  version;
+	//         int                  running;
+	//         int                  ca;
+	//
+	//         /* program data */
+	//         int                  type;
+	//         int                  p_pid;             // program
+	//         int                  v_pid;             // video
+	//         int                  a_pid;             // audio
+	//         int                  t_pid;             // teletext
+	//         char                 audio[PSI_STR_MAX];
+	//         char                 net[PSI_STR_MAX];
+	//         char                 name[PSI_STR_MAX];
+	//
+	//         /* status info */
+	//         int                  updated;
+	//         int                  seen;
+
+//    if (dvb_debug >= 15)
+//    {
+//    	fprintf(stderr, "PROG [program=>%p list.next=%p list.prev=%p] ", program, program->next.next, program->next.prev) ;
+//    }
+	fprintf(stderr, "TSID %d PNR %d : name %s : network %s : running %d : type %d : prog %d, video %d, audio %d, ttext %d : audio %s (up %d / seen %d) : Tuned ",
+			program->tsid, program->pnr, program->name, program->net, program->running,
+			program->type, program->p_pid, program->v_pid, program->a_pid, program->t_pid,
+			program->audio,
+			program->updated, program->seen
+	) ;
+	
+    list_for_each(item,&program->tuned_freq_list) {
+        finfo = list_entry(item, struct freq_info, next);
+		fprintf(stderr, "%d Hz, ", finfo->frequency) ;
+    } 
+    
+	fprintf(stderr, "\n") ;
+}
+
+
+// FREE =====================================================================
+
+/* ----------------------------------------------------------------------- */
+void freq_info_free(struct psi_program *program)
+{
+    struct freq_info  *finfo;
+    struct list_head   *item,*safe;
+
+    list_for_each_safe(item,safe,&program->tuned_freq_list) {
+        finfo = list_entry(item, struct freq_info, next);
+        list_del(&finfo->next) ;
+        free(finfo) ;
+    }
+
+}
+
+
+/* ----------------------------------------------------------------------- */
+void program_free(struct psi_program *program)
+{
+	freq_info_free(program) ;
+    free(program);
+}
+
+
+
+
+/* ----------------------------------------------------------------------- */
 void prog_info_free(struct psi_stream *stream)
 {
     struct prog_info  *pinfo;
@@ -183,35 +323,39 @@ void prog_info_free(struct psi_stream *stream)
 
 
 
-if (dvb_debug) fprintf(stderr, "!! prog_info_free() !!\n") ;
-
-//if (dvb_debug)
-//{
-//	fprintf(stderr, "Current info list:\n") ;
-//    list_for_each(item,&stream->prog_info_list) {
-//        pinfo = list_entry(item, struct prog_info, next);
-//		fprintf(stderr, " [%p] sid=%d lcn=%d type=%d\n",
-//			pinfo,
-//			pinfo->service_id,
-//			pinfo->lcn,
-//			pinfo->service_type) ;
-//    }
-//}
-
+if (dvb_debug>=20) fprintf(stderr, "!! prog_info_free() !!\n") ;
 
     list_for_each_safe(item,safe,&stream->prog_info_list) {
 		pinfo = list_entry(item, struct prog_info, next);
 
-if (dvb_debug) fprintf(stderr, "!! alloc free - sid=%d [%p] !!\n", pinfo->service_id, pinfo) ;
+if (dvb_debug>=20) fprintf(stderr, "!! alloc free - sid=%d [%p] !!\n", pinfo->service_id, pinfo) ;
 		
 		list_del(&pinfo->next);
 		free(pinfo);
     }
 
-if (dvb_debug) fprintf(stderr, "!! prog_info_free() - COMPLETE !!\n") ;
+if (dvb_debug>=20) fprintf(stderr, "!! prog_info_free() - COMPLETE !!\n") ;
 }
 
 
+/* ----------------------------------------------------------------------- */
+void stream_free(struct psi_stream *stream)
+{
+	if (stream->freq_list_len && stream->freq_list)
+	{
+		free(stream->freq_list) ;
+	}
+	prog_info_free(stream) ;
+	free(stream);
+
+}
+
+
+/* ----------------------------------------------------------------------- */
+/* handle psi_ structs                                                     */
+
+
+/* ----------------------------------------------------------------------- */
 struct psi_info* psi_info_alloc(void)
 {
     struct psi_info *info;
@@ -226,6 +370,7 @@ struct psi_info* psi_info_alloc(void)
     return info;
 }
 
+/* ----------------------------------------------------------------------- */
 void psi_info_free(struct psi_info *info)
 {
     struct psi_program *program;
@@ -234,19 +379,19 @@ void psi_info_free(struct psi_info *info)
 
     list_for_each_safe(item,safe,&info->streams) {
 		stream = list_entry(item, struct psi_stream, next);
-		prog_info_free(stream) ;
 		list_del(&stream->next);
-		free(stream);
+		stream_free(stream);
     }
     list_for_each_safe(item,safe,&info->programs) {
 		program = list_entry(item, struct psi_program, next);
 		list_del(&program->next);
-		free(program);
+		program_free(program);
     }
     free(info);
 }
 
 
+/* ----------------------------------------------------------------------- */
 struct prog_info* prog_info_get(struct psi_stream *stream, int sid, int alloc)
 {
     struct prog_info  *pinfo;
@@ -263,17 +408,9 @@ struct prog_info* prog_info_get(struct psi_stream *stream, int sid, int alloc)
     pinfo = malloc(sizeof(*pinfo));
     memset(pinfo,0,sizeof(*pinfo));
 
-if (dvb_debug) fprintf(stderr, "!! malloc - sid=%d [%p] !!\n", sid, pinfo) ;
+if (dvb_debug>=20) fprintf(stderr, "!! malloc - sid=%d [%p] !!\n", sid, pinfo) ;
    
     pinfo->service_id    = sid;
-
-//	/* from service_list_descriptor 0x41 */
-//	int 				 service_id ;
-//	int 				 service_type ;
-//	
-//	/* from descriptor 0x83 */
-//	int					 visible ;
-//	int					 lcn ;
 
     // flag unset
     pinfo->service_type = -1 ;
@@ -285,47 +422,68 @@ if (dvb_debug) fprintf(stderr, "!! malloc - sid=%d [%p] !!\n", sid, pinfo) ;
 }
 
 
-struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int alloc)
+/* ----------------------------------------------------------------------- */
+struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int netid, int alloc)
 {
     struct psi_stream *stream;
     struct list_head  *item;
 
     list_for_each(item,&info->streams) {
         stream = list_entry(item, struct psi_stream, next);
-		if (stream->tsid == tsid)
-		    return stream;
+		if (stream->tsid != tsid)
+			continue ;
+		if (stream->netid != netid)
+			continue ;
+		
+		return stream;
     }
     if (!alloc)
 	return NULL;
     stream = malloc(sizeof(*stream));
     memset(stream,0,sizeof(*stream));
+
+	//    int                  tsid;
+	//
+	//    /* network */
+	//    int                  netid;
+	//    char                 net[PSI_STR_MAX];
+	//
+	//    int                  frequency;
+	//    int                  symbol_rate;
+	//    char                 *bandwidth;
+	//    char                 *constellation;
+	//    char                 *hierarchy;
+	//    char                 *code_rate_hp;
+	//    char                 *code_rate_lp;
+	//    char                 *fec_inner;
+	//    char                 *guard;
+	//    char                 *transmission;
+	//    char                 *polarization;
+	//    int                  other_freq;
+	//    int                  freq_list_len;
+	//    int                  *freq_list;
+	//
+	//    /* status info */
+	//    int                  updated;
+	//    int					 tuned;
+	//    
+	//	/* signal quality measure */
+	//	unsigned 		ber ;
+	//	unsigned		snr ;
+	//	unsigned		strength ;
+	//	unsigned		uncorrected_blocks ;
+	//    
+	//    /* program info */
+	//    struct list_head     prog_info_list;
+	
+
     INIT_LIST_HEAD(&stream->prog_info_list);
     stream->tsid    = tsid;
+    stream->netid = netid ;
     stream->updated = 1;
-
-//    int                  tsid;
-//
-//    /* network */
-//    int                  netid;
-//    char                 net[PSI_STR_MAX];
-//
-//    int                  frequency;
-//    int                  symbol_rate;
-//    char                 *bandwidth;
-//    char                 *constellation;
-//    char                 *hierarchy;
-//    char                 *code_rate_hp;
-//    char                 *code_rate_lp;
-//    char                 *fec_inner;
-//    char                 *guard;
-//    char                 *transmission;
-//    char                 *polarization;
-//
-//    /* status info */
-//    int                  updated;
+    stream->tuned = 0;
 
     // flag unset
-    stream->netid = -1 ;
     stream->frequency = -1 ;
     stream->symbol_rate = -1 ;
 
@@ -333,29 +491,122 @@ struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int alloc)
     return stream;
 }
 
+/* ----------------------------------------------------------------------- */
+// Copy an existing stream but set a new frequency. Then add to the list
+struct psi_stream* psi_stream_newfreq(struct psi_info *info, struct psi_stream* src_stream, int frequency)
+{
+struct psi_stream *stream;
+struct prog_info  *pinfo, *src_pinfo;
+struct list_head  *item;
+
+
+    stream = malloc(sizeof(*stream));
+    memset(stream,0,sizeof(*stream));
+    
+    INIT_LIST_HEAD(&stream->prog_info_list);
+
+    stream->frequency    = frequency;
+
+    stream->tsid    = src_stream->tsid;
+    stream->netid = src_stream->netid;
+    strcpy(stream->net, src_stream->net); 
+
+    stream->symbol_rate = src_stream->symbol_rate;
+
+    stream->bandwidth     = src_stream->bandwidth ;
+    stream->constellation = src_stream->constellation ;
+    stream->hierarchy     = src_stream->hierarchy ;
+    stream->code_rate_hp  = src_stream->code_rate_hp ;
+    stream->code_rate_lp  = src_stream->code_rate_lp ;
+    stream->guard         = src_stream->guard ;
+    stream->transmission  = src_stream->transmission ;
+    stream->other_freq    = src_stream->other_freq ;
+    stream->freq_list_len = 0 ;
+    stream->freq_list     = NULL ;
+
+    stream->updated = 0;
+    stream->tuned   = 0;
+    
+    // copy program information from source stream
+    list_for_each(item,&src_stream->prog_info_list) {
+        src_pinfo = list_entry(item, struct prog_info, next);
+
+		// copy
+		pinfo = prog_info_get(stream, src_pinfo->service_id, /* int alloc */ 1) ;
+	    pinfo->service_type = src_pinfo->service_type ;
+	    pinfo->visible = src_pinfo->visible ;
+	    pinfo->lcn = src_pinfo->lcn ;
+    }
+     
+
+    list_add_tail(&stream->next,&info->streams);
+    return stream;
+}
+
+
+/* ----------------------------------------------------------------------- */
+struct freq_info* freq_info_get(struct psi_program *program, int freq)
+{
+    struct freq_info  *finfo;
+    struct list_head  *item;
+
+    list_for_each(item,&program->tuned_freq_list) {
+        finfo = list_entry(item, struct freq_info, next);
+		if (finfo->frequency == freq)
+		    return finfo;
+    }
+	
+    finfo = malloc(sizeof(*finfo));
+    memset(finfo,0,sizeof(*finfo));
+
+    finfo->frequency    = freq;
+
+    list_add_tail(&finfo->next,&program->tuned_freq_list);
+    return finfo;
+}
+
+/* ----------------------------------------------------------------------- */
 struct psi_program* psi_program_get(struct psi_info *info, int tsid,
-				    int pnr, int alloc)
+				    int pnr, int tuned_freq, int alloc)
 {
     struct psi_program *program;
     struct list_head   *item;
 
+if (dvb_debug >= 15) fprintf(stderr, "<get prog(tsid=%d, pnr=%d, freq=%d, alloc=%d)>\n", tsid, pnr, tuned_freq, alloc) ;
     list_for_each(item,&info->programs) {
         program = list_entry(item, struct psi_program, next);
 		if (program->tsid == tsid &&
 			program->pnr  == pnr)
+		{
+if (dvb_debug >= 15) fprintf(stderr, "<< found prog - set freq>>\n") ;
+			if (alloc) freq_info_get(program, tuned_freq) ;
+if (dvb_debug >= 15) fprintf(stderr, "<< return prog >>\n") ;
+if (dvb_debug >= 15) print_program(program) ;
 			return program;
+		}
     }
 
     if (!alloc)
     	return NULL;
 
+if (dvb_debug >= 15) fprintf(stderr, "<< create prog (size=%d) >>\n", sizeof(*program)) ;
+
     program = malloc(sizeof(*program));
     memset(program,0,sizeof(*program));
+
+    INIT_LIST_HEAD(&program->tuned_freq_list);
 
     program->tsid    = tsid;
     program->pnr     = pnr;
     program->version = PSI_NEW;
     program->updated = 1;
+ 
+if (dvb_debug >= 15) fprintf(stderr, "<< set freq>>\n") ;
+   
+	// set frequency
+	freq_info_get(program, tuned_freq) ;
+
+if (dvb_debug >= 15) fprintf(stderr, "<< set freq done >>\n") ;
 
 //    int                  tsid; X
 //    int                  pnr; X
@@ -392,7 +643,10 @@ struct psi_program* psi_program_get(struct psi_info *info, int tsid,
 
     list_add_tail(&program->next,&info->programs);
 
-    if (dvb_debug>=2) fprintf(stderr, "## Add program: tsid=%d pnr=%d\n", tsid, pnr) ;
+    if (dvb_debug>=2) fprintf(stderr, "## Add program: tsid=%d pnr=%d freq=%d\n", tsid, pnr, tuned_freq) ;
+
+if (dvb_debug >= 15) fprintf(stderr, "<< return prog >>\n") ;
+if (dvb_debug >= 15) print_program(program) ;
 
     return program;
 }
@@ -415,6 +669,7 @@ unsigned int mpeg_getbits(unsigned char *buf, int start, int count)
     return result;
 }
 
+/* ----------------------------------------------------------------------- */
 void hexdump(char *prefix, unsigned char *data, size_t size)
 {
     char ascii[17];
@@ -463,6 +718,7 @@ struct mpeg_handle* mpeg_init(void)
     return h;
 }
 
+/* ----------------------------------------------------------------------- */
 void mpeg_fini(struct mpeg_handle *h)
 {
     if (h->vbuf)
@@ -474,6 +730,7 @@ void mpeg_fini(struct mpeg_handle *h)
     free(h);
 }
 
+/* ----------------------------------------------------------------------- */
 unsigned char* mpeg_get_data(struct mpeg_handle *h, off_t pos, size_t size)
 {
     fd_set set;
@@ -591,6 +848,7 @@ unsigned char* mpeg_get_data(struct mpeg_handle *h, off_t pos, size_t size)
     return h->buffer + (pos - h->boff);
 }
 
+/* ----------------------------------------------------------------------- */
 size_t mpeg_parse_pes_packet(struct mpeg_handle *h, unsigned char *packet,
 			     uint64_t *ts, int *al)
 {
@@ -669,6 +927,7 @@ size_t mpeg_parse_pes_packet(struct mpeg_handle *h, unsigned char *packet,
     return size;
 }
 
+/* ----------------------------------------------------------------------- */
 int mpeg_get_audio_rate(unsigned char *header)
 {
     int rate = 44100;
@@ -695,6 +954,7 @@ int mpeg_get_audio_rate(unsigned char *header)
     return rate;
 }
 
+/* ----------------------------------------------------------------------- */
 unsigned char* mpeg_find_audio_hdr(unsigned char *buf, int off, int size)
 {
     int i;
@@ -708,6 +968,7 @@ unsigned char* mpeg_find_audio_hdr(unsigned char *buf, int off, int size)
     return NULL;
 }
 
+/* ----------------------------------------------------------------------- */
 int mpeg_get_video_fmt(struct mpeg_handle *h, unsigned char *header)
 {
     if (header[0] != 0x00  ||  header[1] != 0x00  ||
@@ -725,6 +986,7 @@ int mpeg_get_video_fmt(struct mpeg_handle *h, unsigned char *header)
     return 0;
 }
 
+/* ----------------------------------------------------------------------- */
 int mpeg_check_video_fmt(struct mpeg_handle *h, unsigned char *header)
 {
     int width, height, ratio;
@@ -840,6 +1102,7 @@ static void parse_pmt_desc(unsigned char *desc, int dlen,
     }
 }
 
+/* ----------------------------------------------------------------------- */
 static char* get_lang_tag(unsigned char *desc, int dlen)
 {
     int i,t,l;
@@ -854,6 +1117,7 @@ static char* get_lang_tag(unsigned char *desc, int dlen)
     return NULL;
 }
 
+/* ----------------------------------------------------------------------- */
 static void dump_data(unsigned char *data, int len)
 {
     int i;
@@ -866,6 +1130,7 @@ static void dump_data(unsigned char *data, int len)
     }
 }
 
+/* ----------------------------------------------------------------------- */
 void mpeg_dump_desc(unsigned char *desc, int dlen)
 {
     int i,j,t,l,l2,l3;
@@ -952,7 +1217,8 @@ void mpeg_dump_desc(unsigned char *desc, int dlen)
     }
 }
 
-int mpeg_parse_psi_pat(struct psi_info *info, unsigned char *data, int verbose)
+/* ----------------------------------------------------------------------- */
+int mpeg_parse_psi_pat(struct psi_info *info, unsigned char *data, int verbose, int tuned_freq)
 {
     struct list_head   *item;
     struct psi_program *pr;
@@ -972,43 +1238,46 @@ int mpeg_parse_psi_pat(struct psi_info *info, unsigned char *data, int verbose)
     info->pat_updated  = 1;
 
     if (verbose>1)
-	fprintf(stderr, "ts [pat]: tsid %d ver %2d [%d/%d]\n",
-		tsid, version,
-		mpeg_getbits(data,48, 8),
-		mpeg_getbits(data,56, 8));
+		fprintf_timestamp(stderr, "ts [pat]: tsid %d ver %2d [%d/%d]\n",
+			tsid, version,
+			mpeg_getbits(data,48, 8),
+			mpeg_getbits(data,56, 8));
+		
     for (j = 64; j < len*8; j += 32) {
-	pnr    = mpeg_getbits(data,j+0,16);
-	pid    = mpeg_getbits(data,j+19,13);
-	if (0 == pnr) {
-	    /* network */
-	    if (verbose > 2)
-		fprintf(stderr,"   pid 0x%04x [network]\n",
-			pid);
-	} else {
-	    /* program */
-	    pr = psi_program_get(info, tsid, pnr, 1);
-	    pr->p_pid   = pid;
-	    pr->updated = 1;
-	    pr->seen    = 1;
-	    if (NULL == info->pr)
-		info->pr = pr;
-	}
+		pnr    = mpeg_getbits(data,j+0,16);
+		pid    = mpeg_getbits(data,j+19,13);
+		if (0 == pnr) {
+		    /* network */
+		    if (verbose > 2)
+			fprintf(stderr,"   pid 0x%04x [network]\n",
+				pid);
+		} else {
+		    /* program */
+		    pr = psi_program_get(info, tsid, pnr, tuned_freq, 1);
+		    pr->p_pid   = pid;
+		    pr->updated = 1;
+		    pr->seen    = 1;
+		    if (NULL == info->pr)
+				info->pr = pr;
+		}
     }
+
     if (verbose > 2) {
-	list_for_each(item,&info->programs) {
-	    pr = list_entry(item, struct psi_program, next);
-	    if (pr->tsid != tsid)
-		continue;
-	    fprintf(stderr,"   pid 0x%04x => pnr %2d [program map%s]\n",
-		    pr->p_pid, pr->pnr,
-		    pr->seen ? ",seen" : "");
-	}
-	fprintf(stderr,"\n");
+		list_for_each(item,&info->programs) {
+		    pr = list_entry(item, struct psi_program, next);
+		    if (pr->tsid != tsid)
+			continue;
+		    fprintf(stderr,"   pid 0x%04x => pnr %2d [program map%s]\n",
+			    pr->p_pid, pr->pnr,
+			    pr->seen ? ",seen" : "");
+		}
+		fprintf(stderr,"\n");
     }
     return len+4;
 }
 
-int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int verbose)
+/* ----------------------------------------------------------------------- */
+int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int verbose, int tuned_freq)
 {
     int pnr,version,current;
     int j,len,dlen,type,pid,slen;
@@ -1028,7 +1297,7 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
     dlen = mpeg_getbits(data,84,12);
     /* TODO: decode descriptor? */
     if (verbose>1) {
-	fprintf(stderr,
+	fprintf_timestamp(stderr,
 		"ts [pmt]: pnr %d ver %2d [%d/%d]  pcr 0x%04x  "
 		"pid 0x%04x  type %2d #",
 		pnr, version,
@@ -1045,45 +1314,59 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
     program->t_pid = 0;
     memset(program->audio,0,sizeof(program->audio));
     while (j < len*8) {
-	type = mpeg_getbits(data,j,8);
-	pid  = mpeg_getbits(data,j+11,13);
-	dlen = mpeg_getbits(data,j+28,12);
-	switch (type) {
-	case 1:
-	case 2:
-	    /* video */
-	    if (!program->v_pid)
-		program->v_pid = pid;
-	    break;
-	case 3:
-	case 4:
-	    /* audio */
-	    if (!program->a_pid)
-		program->a_pid = pid;
-	    lang = get_lang_tag(data + (j+40)/8, dlen);
-	    slen = strlen(program->audio);
-	    snprintf(program->audio + slen, sizeof(program->audio) - slen,
-		     "%s%.3s:%d", slen ? " " : "", lang ? lang : "xxx", pid);
-	    break;
-	case 6:
-	    /* private data */
-	    parse_pmt_desc(data + (j+40)/8, dlen, program, pid);
-	    break;
-	}
-	if (verbose > 2) {
-	    fprintf(stderr, "   pid 0x%04x => %-32s #",
-		    pid, stream_type_s[type]);
-	    mpeg_dump_desc(data + (j+40)/8, dlen);
-	    fprintf(stderr,"\n");
-	}
-	j += 40 + dlen*8;
+		type = mpeg_getbits(data,j,8);
+		pid  = mpeg_getbits(data,j+11,13);
+		dlen = mpeg_getbits(data,j+28,12);
+		switch (type) {
+		case 1:
+		case 2:
+		    /* video */
+		    if (!program->v_pid)
+				program->v_pid = pid;
+		    break;
+		case 3:
+		case 4:
+		    /* audio */
+		    if (!program->a_pid)
+			program->a_pid = pid;
+		    lang = get_lang_tag(data + (j+40)/8, dlen);
+		    slen = strlen(program->audio);
+		    snprintf(program->audio + slen, sizeof(program->audio) - slen,
+			     "%s%.3s:%d", slen ? " " : "", lang ? lang : "xxx", pid);
+		    break;
+		case 6:
+		    /* private data */
+		    parse_pmt_desc(data + (j+40)/8, dlen, program, pid);
+		    break;
+		}
+	
+		if (dvb_debug >= 2)
+		{
+		    fprintf(stderr, "   PROG: tsid=%d pnr=%d video=%d audio=%d text=%d (freq=%d)\n",
+			    program->tsid, program->pnr, 
+			    program->v_pid, program->a_pid, program->t_pid,
+			    tuned_freq);
+		}
+		if (verbose > 2) {
+		    fprintf(stderr, "   pid 0x%04x (video=%d audio=%d) => %-32s #",
+			    pid, 
+			    program->v_pid, program->a_pid,
+			    stream_type_s[type]);
+		    mpeg_dump_desc(data + (j+40)/8, dlen);
+		    fprintf(stderr,"\n");
+		}
+
+		j += 40 + dlen*8;
     }
+
     if (verbose > 2)
-	fprintf(stderr,"\n");
+		fprintf(stderr,"\n");
+
     return len+4;
 }
 
-int mpeg_parse_psi(struct psi_info *info, struct mpeg_handle *h, int verbose)
+/* ----------------------------------------------------------------------- */
+int mpeg_parse_psi(struct psi_info *info, struct mpeg_handle *h, int verbose, int tuned_freq)
 {
     int i,tid;
 
@@ -1092,23 +1375,23 @@ int mpeg_parse_psi(struct psi_info *info, struct mpeg_handle *h, int verbose)
 	    tid = mpeg_getbits(h->ts.data,i*8,8);
 	    switch (tid) {
 	    case 0:
-		i += mpeg_parse_psi_pat(info, h->ts.data+i, verbose);
-		break;
+			i += mpeg_parse_psi_pat(info, h->ts.data+i, verbose, tuned_freq);
+			break;
 	    case 1:
-		fprintf(stderr, "ts: conditional access\n");
-		return 0;
+			fprintf(stderr, "ts: conditional access\n");
+			return 0;
 	    case 2:
-		i += mpeg_parse_psi_pmt(info->pr, h->ts.data+i, verbose);
-		break;
+			i += mpeg_parse_psi_pmt(info->pr, h->ts.data+i, verbose, tuned_freq);
+			break;
 	    case 3:
-		fprintf(stderr, "ts: description\n");
-		return 0;
+			fprintf(stderr, "ts: description\n");
+			return 0;
 	    case 0xff:
-		/* end of data */
-		return 0;
+			/* end of data */
+			return 0;
 	    default:
-		fprintf(stderr, "ts: unknown table id %d\n",tid);
-		return 0;
+			fprintf(stderr, "ts: unknown table id %d\n",tid);
+			return 0;
 	    }
 	}
     }
@@ -1116,7 +1399,6 @@ int mpeg_parse_psi(struct psi_info *info, struct mpeg_handle *h, int verbose)
 }
 
 /* ----------------------------------------------------------------------- */
-
 int mpeg_find_ts_packet(struct mpeg_handle *h, int wanted, off_t *pos)
 {
     unsigned char *packet;
