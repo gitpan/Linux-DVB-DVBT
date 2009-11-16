@@ -69,6 +69,25 @@ use File::Path ;
 use File::Spec ;
 use POSIX qw(strftime);
 
+
+DOCUMENTATION
+
+Along with the installed perldoc, you can optionally create the Doxygen HTML files for the C library. 
+This will be of little interest to general Perl users of the module, but may be of interest to developers
+or those that are trying to debug a problem with the module's interaction with their tuner.
+
+Just run
+
+	make doxygen
+	
+This will create HTML files in ./doxygen/html, the file ./doxygen/html/index.html is the top-level.
+
+DEBUG
+
+If you have any problems, particularly with scanning, please re-run with debug set to 15 and send me the
+log file (see my CPAN email). I'll try to fix the problem as soon as possible.
+
+
 COPYRIGHT AND LICENCE
 
 Put the correct copyright and licence information here.

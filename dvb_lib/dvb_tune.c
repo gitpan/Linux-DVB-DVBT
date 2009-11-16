@@ -25,7 +25,12 @@ char *dvb_src   = NULL;
 char *dvb_lnb   = NULL;
 int  dvb_inv    = INVERSION_AUTO;
 
-
+// Debug problem where frequency readback from DVB tuner is not the same as requested
+//
+// requested= 698167000
+// readback=  698166000
+//
+//#define TEST_FREQ_READBACK
 
 
 
@@ -360,7 +365,8 @@ void params_vdr_to_frontend(struct tuning_params *vdr_params, struct dvb_fronten
 
 
 /* ----------------------------------------------------------------------- */
-/*
+/* Called any time
+ * 
  * Tune the frontend. Expects parameters as "VDR" format integers
  * (e.g. code_rate = 34)
  */
@@ -400,55 +406,71 @@ int dvb_tune(struct dvb_state *h,
 }
 
 
-/* ------------------------------------------------------------------------ */
-/*
- * Tune the frontend based on the stream parameters. Parameters are stored as strings
- * (e.g. code_rate = "34")
+/* ----------------------------------------------------------------------- */
+/* Called during scanning
+ * 
+ * Same as dvb_tune() but also adds frequency to scan frequency list
  */
-int dvb_tune_from_stream(struct dvb_state *dvb, struct psi_stream *stream, int timeout)
+int dvb_scan_tune(struct dvb_state *h,
+		int frequency,
+		int inversion,
+		int bandwidth,
+		int code_rate_high,
+		int code_rate_low,
+		int modulation,
+		int transmission,
+		int guard_interval,
+		int hierarchy,
+
+		int timeout
+)
 {
-int rc;
-struct tuning_params vdr_params ;
+int rc=0 ;
+struct dvb_frontend_parameters params ;
+struct freqitem* freqi ;
 
-if (dvb_debug > 1)
-	fprintf(stderr, "Tuning tsid %d (%s) - FREQ=%d\n", stream->tsid, stream->net, stream->frequency) ;
+	params_to_frontend(
+		frequency,
+		inversion,
+		bandwidth,
+		code_rate_high,
+		code_rate_low,
+		modulation,
+		transmission,
+		guard_interval,
+		hierarchy,
+		&params) ;
+		
+	// Save frequency settings for requested frequency
+	freqi = freqitem_get(&params) ;
+	freqi->flags.seen = 1 ;
+	
+	// tune it
+	rc = dvb_frontend_tune(h,
+		frequency,
+		inversion,
+		bandwidth,
+		code_rate_high,
+		code_rate_low,
+		modulation,
+		transmission,
+		guard_interval,
+		hierarchy
+	);
+	if (rc != 0) return rc ;
+	
+	// wait until tuning is complete (also reads back tuning information from the hardware and sets h->p)
+	rc = dvb_wait_tune(h, timeout) ;
+	if (rc != 0) return rc ;
 
-	// convert params
-	params_stream_to_vdr(stream, &vdr_params) ;
+	// tuned ok
+	freqi = freqitem_get(&h->p) ;
+	freqi->flags.seen = 1 ;
+	freqi->flags.tuned = 1 ;
 
-
-if (dvb_debug >=2)
-	fprintf(stderr, "TUNE: freq=%d inv=%d bw=%d rate_hi=%d rate_lo=%d mod=%d tx=%d guard=%d hier=%d\n",
-		vdr_params.frequency,
-		vdr_params.inversion,
-		vdr_params.bandwidth,
-		vdr_params.code_rate_high,
-		vdr_params.code_rate_low,
-		vdr_params.modulation,
-		vdr_params.transmission,
-		vdr_params.guard_interval,
-		vdr_params.hierarchy
-		) ;
-
-	// set tuning
-	rc = dvb_tune(dvb,
-			/* For frontend tuning */
-			vdr_params.frequency,
-			vdr_params.inversion,
-			vdr_params.bandwidth,
-			vdr_params.code_rate_high,
-			vdr_params.code_rate_low,
-			vdr_params.modulation,
-			vdr_params.transmission,
-			vdr_params.guard_interval,
-			vdr_params.hierarchy,
-			timeout) ;
-
-// display settings
-if (dvb_debug >= 2) dvb_frontend_tune_info(dvb) ;
-
-	return (rc) ;
+	return rc ;
 }
+
 
 
 /* ======================================================================= */
@@ -572,20 +594,6 @@ if (dvb_debug>1) _dump_state(_name, "at start", h) ;
 		guard_interval,
 		hierarchy,
 		&h->p) ;
-
-//	h->p.frequency = frequency;
-//	h->p.inversion = inversion;
-//
-//	// Params decoded for transponders are converted into strings - convert back
-//	h->p.u.ofdm.bandwidth = fe_vdr_bandwidth [ bandwidth ];
-//	h->p.u.ofdm.code_rate_HP = fe_vdr_rates [ code_rate_high ];
-//	h->p.u.ofdm.code_rate_LP = fe_vdr_rates [ code_rate_low ];
-//	h->p.u.ofdm.constellation = fe_vdr_modulation [ modulation ];
-//	h->p.u.ofdm.transmission_mode = fe_vdr_transmission [ transmission ];
-//	h->p.u.ofdm.guard_interval = fe_vdr_guard [ guard_interval ];
-//	h->p.u.ofdm.hierarchy_information = fe_vdr_hierarchy [ hierarchy ];
-//
-//    fixup_numbers(h,lof);
 
     if (0 == memcmp(&h->p, &h->plast, sizeof(h->plast))) {
 		if (dvb_frontend_is_locked(h)) {
@@ -1070,11 +1078,38 @@ struct dvb_frontend_parameters info ;
 //		goto done;
     }
 
+	// Actually, this piece of code is now obsolete since I'm currently only interested in the
+	// (rounded) frequency. The scan frequency list only compare entries by frequency. I'm keeping
+	// the code in case I want to switch back to checking the other tuning params (satellite decode
+	// perhaps?)
+	//  
+	// Anyway, it turns out that some tuners (a) readback all zeroes, or (b) readback a frequency
+	// 1 kHz less than actually set! To avoid these problems, I'm actually keeping the requested frequency
+	// [thus negating the whole purpose of this stuff!]
+	//
+	
+	
 	// only overwrite params if these came back correctly - some tuners don't seem to properly support
 	// readback
 	if (info.frequency > 0)
 	{
+		// save the frequency to ensure it's correct
+		int frequency = h->p.frequency ;
+		
+		// update the parameters with the params reported by the DVB tuner
 	    memcpy(&h->p, &info, sizeof(h->p));
+	    
+#ifdef TEST_FREQ_READBACK
+		// Debug problem where frequency readback from DVB tuner is not the same as requested
+		//
+		// requested= 698167000
+		// readback=  698166000
+		//
+		h->p.frequency -= 1000 ;
+#endif	    
+
+		// restore frequency
+		h->p.frequency = frequency ;
 	}
 
 	if (dvb_debug>1) _fn_end(_name, 0) ;

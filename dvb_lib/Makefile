@@ -3,6 +3,10 @@ CFLAGS   += -O0
 CFLAGS   += -fPIC
 CFLAGS   += -I../libng
 
+ifdef TESTDEF
+	CFLAGS += -D $(TESTDEF)
+endif
+
 OBJS-libdvb_lib := \
  struct-dvb.o \
  dvb_tune.o \

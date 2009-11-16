@@ -88,6 +88,20 @@ int dvb_tune(struct dvb_state *h,
 		int timeout
 ) ;
 
+int dvb_scan_tune(struct dvb_state *h,
+		int frequency,
+		int inversion,
+		int bandwidth,
+		int code_rate_high,
+		int code_rate_low,
+		int modulation,
+		int transmission,
+		int guard_interval,
+		int hierarchy,
+
+		int timeout
+) ;
+
 int dvb_select_channel(struct dvb_state *h,
 		int frequency,
 		int inversion,
@@ -117,7 +131,7 @@ int dvb_frontend_tune(struct dvb_state *h,
 		int guard_interval,
 		int hierarchy
 );
-int dvb_tune_from_stream(struct dvb_state *dvb, struct psi_stream *stream, int timeout) ;
+//int dvb_tune_from_stream(struct dvb_state *dvb, struct psi_stream *stream, int timeout) ;
 
 int dvb_frontend_is_locked(struct dvb_state *h);
 int dvb_frontend_wait_lock(struct dvb_state *h, int timeout);

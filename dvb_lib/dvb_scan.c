@@ -238,8 +238,8 @@ e) the TDT and TOT shall be transmitted at least every 30 s.
 //PMT								ALL 500 ms
 
 static int scan_timeout_secs = 20 ;
-//static int nodata_timeout_secs = 3 ;	// should see *something* by then
-static int nodata_timeout_secs = 30 ;	// debugging!
+static int nodata_timeout_secs = 15 ;	// should see *something* by then
+//static int nodata_timeout_secs = 30 ;	// debugging!
 static int poll_timeout_ms = 1000 ;
 static int current;
 
@@ -815,15 +815,15 @@ struct freqitem *current_freqi, *stream_freqi ;
 
 if (dvb_debug >= 1)
 {
-	fprintf_timestamp(stderr, "\n-- tty_scan() current FREQ %d (seen=%d, tuned=%d) -- \n",
+	fprintf_timestamp(stderr, "\n-- tty_scan() v2 current FREQ %d (seen=%d, tuned=%d) -- \n",
 		dvb->p.frequency,
 		current_freqi->flags.seen,
 		current_freqi->flags.tuned
 	) ;
 }
 
-	// skip if already seen
-	if (current_freqi->flags.seen) return ;
+//	// skip if already seen
+//	if (current_freqi->flags.seen) return ;
 	
 	// mark the currently tuned as seen
 	current_freqi->flags.seen = 1 ;
@@ -981,7 +981,7 @@ if (dvb_debug >= 15)
 }
 
    		// Process streams
-		if (dvb_debug>=3) fprintf(stderr, "Processing streams...\n") ;
+		if (dvb_debug>=3) fprintf(stderr, "Processing new streams...\n") ;
 	    list_for_each_safe(item,safe,&dvbmon->info->streams)
 	    {
 	    	stream = list_entry(item, struct psi_stream, next);
@@ -1004,6 +1004,9 @@ if (dvb_debug >= 15)
 					struct psi_stream *clone_stream;
 					struct freqitem *clone_stream_freqi ;
 						
+						if (dvb_debug) 
+							fprintf(stderr, " + cerating clone stream: freq %d Hz\n", stream->freq_list[i]) ;
+
 						// create a "cloned" stream with just a new frequency
 						clone_stream = psi_stream_newfreq(dvbmon->info, stream, stream->freq_list[i]) ;
 

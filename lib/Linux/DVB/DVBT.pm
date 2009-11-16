@@ -152,7 +152,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '1.06';
+our $VERSION = '1.07';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -1005,7 +1005,7 @@ sub set_demux
 	my $self = shift ;
 	my ($video_pid, $audio_pid, $teletext_pid) = @_ ;
 
-print "set_demux( <$video_pid>, <$audio_pid>, <$teletext_pid> )\n" if $DEBUG ;
+print STDERR "set_demux( <$video_pid>, <$audio_pid>, <$teletext_pid> )\n" if $DEBUG ;
 
 	$teletext_pid ||= 0 ;
 
@@ -1101,7 +1101,7 @@ sub epg
 	my $channels_aref = $self->get_channel_list() ;
 	if ( $channels_aref && $tuning_href )
 	{
-#print "creating chan lookup\n" ;
+#print STDERR "creating chan lookup\n" ;
 #prt_data("Channels=", $channels_aref) ;
 #prt_data("Tuning=", $tuning_href) ;
 		$channel_lookup_href = {} ;
@@ -1109,10 +1109,10 @@ sub epg
 		{
 			my $channel = $chan_href->{'channel'} ;
 
-#print "CHAN: $channel\n" ;
+#print STDERR "CHAN: $channel\n" ;
 			if (exists($tuning_href->{'pr'}{$channel}))
 			{
-#print "created CHAN: $channel for $tuning_href->{pr}{$channel}{tsid} -  for $tuning_href->{pr}{$channel}{pnr}\n" ;
+#print STDERR "created CHAN: $channel for $tuning_href->{pr}{$channel}{tsid} -  for $tuning_href->{pr}{$channel}{pnr}\n" ;
 				# create the lookup
 				$channel_lookup_href->{"$tuning_href->{'pr'}{$channel}{tsid}-$tuning_href->{'pr'}{$channel}{pnr}"} = {
 					'channel' => $channel,
@@ -1325,6 +1325,8 @@ sub scan_from_file
 
 	return $self->handle_error( "Error: No frequency file specified") unless $freq_file ;
 
+	print STDERR "scan_from_file() : Linux::DVB::DVBT version $VERSION\n\n" if $DEBUG ;
+
 	my @tuning_list ;
 
 	# device info
@@ -1415,9 +1417,13 @@ print STDERR " +check param $param\n" if $DEBUG>=2 ;
 			
 			# set tuning
 			print STDERR "Setting frequency: $tuning_params{frequency} Hz\n" if $self->verbose ;
-			my $rc = $self->set_frontend(%tuning_params, 'timeout' => $self->timeout) ;
+#			my $rc = $self->set_frontend(%tuning_params, 'timeout' => $self->timeout) ;
+			my $rc = dvb_scan_tune($self->{dvb}, {%tuning_params}) ;
+			
+			# If tuning went ok, then save params
 			if ($rc == 0)
 			{
+				$self->frontend_params( {%tuning_params} ) ;
 				$tuned = 1 ;
 			}
 			else
@@ -1792,7 +1798,7 @@ print STDERR "process rest...\n" if $DEBUG>=5 ;
 	
 	foreach my $chan (@del)
 	{
-print " + del chan \"$chan\"\n" if $DEBUG>=5 ;
+print STDERR " + del chan \"$chan\"\n" if $DEBUG>=5 ;
 
 		delete $scan_href->{'pr'}{$chan} ;
 	}
@@ -1837,7 +1843,7 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
 		my $vis = defined($lcn_href->{'visible'}) ? $lcn_href->{'visible'} : 'undef' ;
 		my $type = defined($lcn_href->{'service_type'}) ? $lcn_href->{'service_type'} : 'undef' ;
 		 
-	print " : $tsid-$pnr - $chan : lcn=$lcn, vis=$vis, service type=$type type=$scan_href->{'pr'}{$chan}{'type'}\n" ;
+	print STDERR " : $tsid-$pnr - $chan : lcn=$lcn, vis=$vis, service type=$type type=$scan_href->{'pr'}{$chan}{'type'}\n" ;
 	}	
 			
 				## handle LCN if set
@@ -1847,7 +1853,7 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
 					## Set entry channel number
 					$scan_href->{'pr'}{$chan}{'lcn'} = $lcn_href->{'lcn'} ;
 	
-	print " : : set lcn for $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG>=5 ;
+	print STDERR " : : set lcn for $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG>=5 ;
 	
 					if (!$lcn_href->{'visible'})
 					{
@@ -1861,7 +1867,7 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
 					## Remove this entry
 					delete $scan_href->{'pr'}{$chan} if (exists($scan_href->{'pr'}{$chan})) ;
 	
-	print " : : REMOVE $chan\n" if $DEBUG>=5 ;
+	print STDERR " : : REMOVE $chan\n" if $DEBUG>=5 ;
 				}
 				
 			}
@@ -1878,7 +1884,7 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
 		if (($scan_href->{'pr'}{$chan}{'type'}==1) || ($scan_href->{'pr'}{$chan}{'type'}==2) )
 		{
 
-print " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG >=5;
+print STDERR " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG >=5;
 
 			## check that this type has the required streams
 			if ($scan_href->{'pr'}{$chan}{'type'}==1)
@@ -1910,7 +1916,7 @@ print " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr
 
 	foreach my $chan (@del)
 	{
-print " + del chan \"$chan\"\n" if $DEBUG>=5 ;
+print STDERR " + del chan \"$chan\"\n" if $DEBUG>=5 ;
 
 		delete $scan_href->{'pr'}{$chan} ;
 	}
@@ -2008,7 +2014,7 @@ sub get_channel_list
 	# If not found, try creating
 	if (!$channels_aref)
 	{
-#print "create chan list\n" ;
+#print STDERR "create chan list\n" ;
 
 		# Get any existing info
 		my $tuning_href = $self->get_tuning_info() ;
@@ -2109,7 +2115,7 @@ sub record
 		mkpath([$dir], $DEBUG, 0755) or return $self->handle_error("Unable to create record directory $dir : $!") ;
 	}
 	
-	print "Recording to $file for $duration ($seconds secs)\n" if $DEBUG ;
+	print STDERR "Recording to $file for $duration ($seconds secs)\n" if $DEBUG ;
 
 	# save raw transport stream to file 
 	my $rc = dvb_record($self->{dvb}, $file, $seconds) ;
@@ -2474,7 +2480,7 @@ sub duration
 	my $duration_mins = $end_mins - $start_mins ;
 	my $duration = mins2time($duration_mins) ;
 
-#print "duration($start ($start_mins), $end ($end_mins)) = $duration ($duration_mins)\n" if $this->debug() ;
+#print STDERR "duration($start ($start_mins), $end ($end_mins)) = $duration ($duration_mins)\n" if $this->debug() ;
 
 	return $duration ;
 }
@@ -2517,13 +2523,13 @@ sub find_channel
 	my ($frontend_params_href, $demux_params_href) ;
 
 	## Look for channel info
-	print "find $channel_name ...\n" if $DEBUG ;
+	print STDERR "find $channel_name ...\n" if $DEBUG ;
 	
 	# start by just seeing if it's the correct name...
 	if (exists($tuning_href->{'pr'}{$channel_name}))
 	{
 		$demux_params_href = $tuning_href->{'pr'}{$channel_name} ;
-		print " + found $channel_name\n" if $DEBUG ;
+		print STDERR " + found $channel_name\n" if $DEBUG ;
 	}
 	else
 	{
@@ -2551,14 +2557,14 @@ sub find_channel
 		$srch = $channel_name ;
 		foreach my $num (keys %NUMERALS)
 		{
-print " -- $srch - replace $NUMERALS{$num} with $num..\n" if $DEBUG>3 ;
+print STDERR " -- $srch - replace $NUMERALS{$num} with $num..\n" if $DEBUG>3 ;
 			$srch =~ s/($NUMERALS{$num})\b/$num/ge ;
-print " -- -- $srch\n" if $DEBUG>3 ;
+print STDERR " -- -- $srch\n" if $DEBUG>3 ;
 		}
 		$srch =~ s/\s+//g ;
 		$search{$srch}=1 ;
 
-		print " + Searching tuning info [", keys %search, "]...\n" if $DEBUG>2 ;
+		print STDERR " + Searching tuning info [", keys %search, "]...\n" if $DEBUG>2 ;
 		
 		foreach my $chan (keys %{$tuning_href->{'pr'}})
 		{
@@ -2567,11 +2573,11 @@ print " -- -- $srch\n" if $DEBUG>3 ;
 			
 			foreach my $search (keys %search)
 			{
-				print " + + checking $search against $srch_chan \n" if $DEBUG>2 ;
+				print STDERR " + + checking $search against $srch_chan \n" if $DEBUG>2 ;
 				if ($srch_chan eq $search)
 				{
 					$demux_params_href = $tuning_href->{'pr'}{$chan} ;
-					print " + found $channel_name\n" if $DEBUG ;
+					print STDERR " + found $channel_name\n" if $DEBUG ;
 					last ;
 				}
 			}
@@ -2610,7 +2616,7 @@ sub read
 			$href->{$region} = &$fn("$dir/$FILES{$region}") ;
 		}
 		
-		print "Read config from $dir\n" if $DEBUG ;
+		print STDERR "Read config from $dir\n" if $DEBUG ;
 		
 	}
 	return $href ;
@@ -2634,7 +2640,7 @@ sub write
 			&$fn("$dir/$FILES{$region}", $href->{$region}) ;
 		}
 
-		print "Written config to $dir\n" if $DEBUG ;
+		print STDERR "Written config to $dir\n" if $DEBUG ;
 	}
 }
 
@@ -2817,7 +2823,7 @@ sub read_dir
 		}
 	}
 
-	print "Searched $search_path : read dir=".($dir?$dir:"")."\n" if $DEBUG ;
+	print STDERR "Searched $search_path : read dir=".($dir?$dir:"")."\n" if $DEBUG ;
 		
 	return $dir ;
 }
@@ -2833,13 +2839,13 @@ sub write_dir
 	my @dirs = _expand_search_path($search_path) ;
 	my $dir ;
 
-	print "Find dir to write to from $search_path ...\n" if $DEBUG ;
+	print STDERR "Find dir to write to from $search_path ...\n" if $DEBUG ;
 	
 	foreach my $d (@dirs)
 	{
 		my $found=1 ;
 
-		print " + processing $d\n" if $DEBUG ;
+		print STDERR " + processing $d\n" if $DEBUG ;
 
 		# See if dir exists
 		if (!-d $d)
@@ -2850,12 +2856,12 @@ sub write_dir
 			};
 			$found=0 if $@ ;
 
-			print " + $d does not exist - attempt to mkdir=$found\n" if $DEBUG ;
+			print STDERR " + $d does not exist - attempt to mkdir=$found\n" if $DEBUG ;
 		}		
 
 		if (-d $d)
 		{
-			print " + $d does exist ...\n" if $DEBUG ;
+			print STDERR " + $d does exist ...\n" if $DEBUG ;
 
 			# See if this user can write to the dir
 			foreach my $region (keys %FILES)
@@ -2864,11 +2870,11 @@ sub write_dir
 				{
 					close $fh ;
 
-					print " + + Write to $d/$FILES{$region} succeded\n" if $DEBUG ;
+					print STDERR " + + Write to $d/$FILES{$region} succeded\n" if $DEBUG ;
 				}
 				else
 				{
-					print " + + Unable to write to $d/$FILES{$region} - aborting this dir\n" if $DEBUG ;
+					print STDERR " + + Unable to write to $d/$FILES{$region} - aborting this dir\n" if $DEBUG ;
 
 					$found = 0;
 					last ;
@@ -2883,7 +2889,7 @@ sub write_dir
 		}
 	}
 
-	print "Searched $search_path : write dir=".($dir?$dir:"")."\n" if $DEBUG ;
+	print STDERR "Searched $search_path : write dir=".($dir?$dir:"")."\n" if $DEBUG ;
 	
 	return $dir ;
 }
@@ -3150,16 +3156,7 @@ Please report bugs using L<http://rt.cpan.org>.
 
 =head1 BUGS
 
-=over 4
-
-=item *
-
-There is a known issue where the scan locks onto the wrong frequency of a multiplex where there are more than
-one possible frequency reported in the NIT. I'm currently investigating into this and hope to get a fix out in
-the next release. (Still ongoing - sorry Thomas!)
-
-=back
-
+None (known) at the moment...
 
 
 =head1 FUTURE

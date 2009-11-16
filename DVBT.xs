@@ -402,6 +402,84 @@ dvb_tune (DVB *dvb, HV *parameters)
 
 
  # /*---------------------------------------------------------------------------------------------------*/
+ # /* Same as dvb_tune() but ensures that the frequency tuned to is added to the scan list */
+int
+dvb_scan_tune (DVB *dvb, HV *parameters)
+    INIT:
+		SV **val;
+
+		int frequency=0;
+
+		/* We hope that any unset params will cope just using the AUTO option */
+		int inversion=0;
+		int bandwidth=TUNING_AUTO;
+		int code_rate_high=TUNING_AUTO;
+		int code_rate_low=TUNING_AUTO;
+		int modulation=TUNING_AUTO;
+		int transmission=TUNING_AUTO;
+		int guard_interval=TUNING_AUTO;
+		int hierarchy=TUNING_AUTO;
+
+		int timeout=DEFAULT_TIMEOUT;
+
+	CODE:
+
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, " == DVBT.xs::dvb_scan_tune() ================\n") ;
+ }
+
+		/* Read all those HASH values that are actually set into discrete variables */
+		HVF_I(parameters, frequency) ;
+		HVF_I(parameters, inversion) ;
+		HVF_I(parameters, bandwidth) ;
+		HVF_I(parameters, code_rate_high) ;
+		HVF_I(parameters, code_rate_low) ;
+		HVF_I(parameters, modulation) ;
+		HVF_I(parameters, transmission) ;
+		HVF_I(parameters, guard_interval) ;
+		HVF_I(parameters, hierarchy) ;
+		HVF_I(parameters, timeout) ;
+
+		if (frequency <= 0)
+	          croak ("Linux::DVB::DVBT::dvb_tune requires a valid frequency");
+
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, " DVBT.xs::dvb_tune() : tuning freq=%d Hz, inv=(%d) "
+		"bandwidth=(%d) code_rate=(%d - %d) constellation=(%d) "
+		"transmission=(%d) guard=(%d) hierarchy=(%d)\n",
+		frequency,
+		inversion,
+		bandwidth,
+		code_rate_high,
+		code_rate_low,
+		modulation,
+		transmission,
+		guard_interval,
+		hierarchy
+	) ;
+ }
+
+		// set tuning
+		RETVAL = dvb_scan_tune(dvb,
+				/* For frontend tuning */
+				frequency,
+				inversion,
+				bandwidth,
+				code_rate_high,
+				code_rate_low,
+				modulation,
+				transmission,
+				guard_interval,
+				hierarchy,
+				timeout) ;
+
+	OUTPUT:
+        RETVAL
+
+
+ # /*---------------------------------------------------------------------------------------------------*/
  # /* Set the DEMUX to the specified streams */
 int
 dvb_set_demux (DVB *dvb, int vpid, int apid, int tpid, int timeout)

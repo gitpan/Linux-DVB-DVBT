@@ -76,8 +76,20 @@ WriteMakefile(
 ## ADDED SDP
 sub MY::postamble {
 '
+# If make is called with TESTDEF defined then it passes this definition down to the library build to allow
+# special test builds
+MAKE_TEST_DEF=
+ifdef TESTDEF
+	MAKE_TEST_DEF="TESTDEF=$(TESTDEF)"
+endif
+
+## make libs
 $(MYEXTLIB): dvb_lib/Makefile 
-	cd dvb_lib && $(MAKE) $(PASSTHRU)
+	cd dvb_lib && $(MAKE) $(MAKE_TEST_DEF) $(PASSTHRU)
+
+## Optional doxygen documentation 
+doxygen: FORCE
+	cd doxygen && doxygen
 ';
 }
 

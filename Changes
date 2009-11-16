@@ -1,5 +1,8 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.07 Mon Nov 16 12:00:00 2009
+	- Bug fix to scan. New code accounts for tuner cards that readback with the wrong frequency.
+
 1.06 Tue Nov 03 08:00:00 2009
 	- Major re-write of scanning logic to make it more robust (also checks signal strengths to choose best
 	  transmitter when more than one is available for the same multiplex).
