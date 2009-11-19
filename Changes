@@ -1,5 +1,10 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.08 Thu Nov 19 12:00:00 2009
+	- Added large file support (>2G) for recording. This is a compile time option that is enabled if your Perl build supports it.
+	  If this is not supported on your system, then use dvbt-ffrec to get ffmpeg to handle the large recordings
+	  (NOTE: This applies to recordings of approx 2hours or more)
+
 1.07 Mon Nov 16 12:00:00 2009
 	- Bug fix to scan. New code accounts for tuner cards that readback with the wrong frequency.
 

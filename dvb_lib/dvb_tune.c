@@ -503,16 +503,17 @@ xioctl(int fd, int cmd, void *arg, int mayfail)
 /* ----------------------------------------------------------------------- */
 int dvb_frontend_open(struct dvb_state *h, int write)
 {
-	char *_name="dvb_frontend_open" ;
-	if (dvb_debug>1) _fn_start(_name) ;
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Open %s\n", write ? "write" : "read-only");}
+	int *fd;
 
-	int *fd = write ? &h->fdwr : &h->fdro;
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Open %s\n", write ? "write" : "read-only");}
+
+	fd = write ? &h->fdwr : &h->fdro;
 
     if (-1 != *fd)
     {
-    	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Already got fd=%d\n", *fd);}
-    	if (dvb_debug>1) _fn_end(_name, 0) ;
+    	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Already got fd=%d\n", *fd);}
+    	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     	return 0;
     }
 
@@ -521,11 +522,11 @@ int dvb_frontend_open(struct dvb_state *h, int write)
     if (-1 == *fd) {
 	fprintf(stderr,"dvb fe: open %s: %s\n",
 		h->frontend,strerror(errno));
-	if (dvb_debug>1) _fn_end(_name, -1) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
 	return -10;
     }
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Created fd=%d\n", *fd);}
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Created fd=%d\n", *fd);}
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return 0;
 }
 
@@ -555,18 +556,18 @@ int dvb_frontend_tune(struct dvb_state *h,
 		int hierarchy
 )
 {
-char *_name="dvb_frontend_tune" ;
-if (dvb_debug>1) _fn_start(_name) ;
-    char *diseqc;
-    char *action;
-    int lof = 0;
-    int val;
-    int rc;
+char *diseqc;
+char *action;
+int lof = 0;
+int val;
+int rc;
+
+if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
     if (-1 == dvb_frontend_open(h, /* write=1*/1))
     {
 		fprintf(stderr,"unable to open rw frontend\n");
-    	if (dvb_debug>1) _fn_end(_name, -1) ;
+    	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
 
     	return -11;
     }
@@ -578,10 +579,10 @@ if (dvb_debug>1) _fn_start(_name) ;
     dvb_src = NULL;
     dvb_lnb = NULL;
 
-if (dvb_debug>1) _dump_state(_name, "at start", h) ;
+if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "at start", h) ;
 
 
-   	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "OFDM\n") ; }
+   	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "OFDM\n") ; }
 
 	params_to_frontend(
 		frequency,
@@ -605,10 +606,10 @@ if (dvb_debug>1) _dump_state(_name, "at start", h) ;
 		}
     }
 
-if (dvb_debug>1) _dump_state(_name, "before ioctl call", h) ;
+if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "before ioctl call", h) ;
 
     rc = -1;
-if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "xiotcl(FE_SET_FRONTEND)\n") ; }
+if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "xiotcl(FE_SET_FRONTEND)\n") ; }
     if (-1 == xioctl(h->fdwr,FE_SET_FRONTEND,&h->p, 0)) {
     	// failed
 	    if (dvb_debug)
@@ -624,7 +625,7 @@ if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "xiotcl(FE_SET_FRONTEND)\
 
 done:
 
-if (dvb_debug>1) _fn_end(_name, rc) ;
+if (dvb_debug>1) _fn_end((char *)__FUNCTION__, rc) ;
 
     // Hmm, the driver seems not to like that :-/
     // dvb_frontend_release(h,1);
@@ -757,9 +758,8 @@ if ( (dvb_debug>=10) && (i%10==0) ) fprintf(stderr, ">>> tuning status == 0x%04x
 /* ----------------------------------------------------------------------- */
 void dvb_demux_filter_setup(struct dvb_state *h, int video, int audio)
 {
-	char *_name="dvb_demux_filter_setup" ;
-	if (dvb_debug>1) _fn_start(_name) ;
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "vidfeo=%d, audio=%d\n", video, audio); }
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "vidfeo=%d, audio=%d\n", video, audio); }
 
 	h->video.filter.pid      = video;
     h->video.filter.input    = DMX_IN_FRONTEND;
@@ -773,16 +773,15 @@ void dvb_demux_filter_setup(struct dvb_state *h, int video, int audio)
     h->audio.filter.pes_type = DMX_PES_AUDIO;
     h->audio.filter.flags    = 0;
 
-	if (dvb_debug>1) _dump_state(_name, "", h);
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "", h);
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
 }
 
 /* ----------------------------------------------------------------------- */
 int dvb_demux_filter_apply(struct dvb_state *h)
 {
-	char *_name="dvb_demux_filter_apply" ;
-	if (dvb_debug>1) _fn_start(_name) ;
-	if (dvb_debug>1) _dump_state(_name, "", h);
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
+	if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "", h);
 
 	if (0 != h->video.filter.pid) {
 	/* setup video filter */
@@ -843,11 +842,11 @@ int dvb_demux_filter_apply(struct dvb_state *h)
 	}
     }
 
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return 0;
 
  oops:
-		if (dvb_debug>1) _fn_end(_name, -1) ;
+		if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
     return -13;
 }
 
@@ -887,12 +886,10 @@ int dvb_demux_get_section(int fd, unsigned char *buf, int len)
 int dvb_demux_req_section(struct dvb_state *h, int fd, int pid,
 			  int sec, int mask, int oneshot, int timeout)
 {
-	char *_name="dvb_demux_req_section" ;
-	if (dvb_debug>1) _fn_start(_name) ;
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "fd=%d pid=%d sec=%d mask=%d oneshot=%d timeout=%d\n", fd, pid, sec, mask, oneshot, timeout); }
+struct dmx_sct_filter_params filter;
 
-
-	struct dmx_sct_filter_params filter;
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "fd=%d pid=%d sec=%d mask=%d oneshot=%d timeout=%d\n", fd, pid, sec, mask, oneshot, timeout); }
 
     memset(&filter,0,sizeof(filter));
     filter.pid              = pid;
@@ -917,14 +914,14 @@ int dvb_demux_req_section(struct dvb_state *h, int fd, int pid,
 	goto oops;
     }
 
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return fd;
 
  oops:
     if (-1 != fd)
     	close(fd);
 
-	if (dvb_debug>1) _fn_end(_name, -1) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
     return -14;
 }
 
@@ -934,10 +931,9 @@ int dvb_demux_req_section(struct dvb_state *h, int fd, int pid,
 /* ----------------------------------------------------------------------- */
 int dvb_dvr_open(struct dvb_state *h)
 {
-	char *_name="dvb_dvr_open" ;
-	if (dvb_debug>1) _fn_start(_name) ;
+int rc=0;
 
-	int rc=0;
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
 	if (-1 == h->dvro)
 	{
@@ -949,8 +945,8 @@ int dvb_dvr_open(struct dvb_state *h)
 		}
 	}
 
-	if (dvb_debug>5) _dump_state(_name, "", h);
-	if (dvb_debug>1) _fn_end(_name, rc) ;
+	if (dvb_debug>5) _dump_state((char *)__FUNCTION__, "", h);
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, rc) ;
 	return rc ;
 }
 
@@ -973,8 +969,7 @@ int dvb_dvr_release(struct dvb_state *h)
 /* ----------------------------------------------------------------------- */
 void dvb_fini(struct dvb_state *h)
 {
-	char *_name="dvb_fini" ;
-	if (dvb_debug>1) _fn_start(_name) ;
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
     dvb_frontend_release(h, /* write=1 */ 1);
     dvb_frontend_release(h, /* read=0 */  0);
@@ -982,16 +977,15 @@ void dvb_fini(struct dvb_state *h)
     dvb_dvr_release(h);
     free(h);
 
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
 }
 
 /* ----------------------------------------------------------------------- */
 struct dvb_state* dvb_init(char *adapter, int frontend)
 {
-	char *_name="dvb_init" ;
-	if (dvb_debug>1) _fn_start(_name) ;
+struct dvb_state *h;
 
-	struct dvb_state *h;
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
     h = malloc(sizeof(*h));
     if (NULL == h)
@@ -1018,26 +1012,25 @@ struct dvb_state* dvb_init(char *adapter, int frontend)
     /* hacking DVB-S without hardware ;) */
     if (-1 != dvb_type_override)
 	h->info.type = dvb_type_override;
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return h;
 
  oops:
     if (h)
 	dvb_fini(h);
-	if (dvb_debug>1) _fn_end(_name, -1) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
     return NULL;
 }
 
 /* ----------------------------------------------------------------------- */
 struct dvb_state* dvb_init_nr(int adapter, int frontend)
 {
-	char *_name="dvb_init_nr" ;
-	if (dvb_debug>1) _fn_start(_name) ;
+char path[32];
 
-	char path[32];
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
     snprintf(path,sizeof(path),"/dev/dvb/adapter%d",adapter);
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return dvb_init(path, frontend);
 }
 
@@ -1049,16 +1042,15 @@ int dvb_wait_tune(struct dvb_state *h, int timeout)
 {
 struct dvb_frontend_parameters info ;
 
-	char *_name="dvb_wait_tune" ;
-	if (dvb_debug>1) _fn_start(_name) ;
-	if (dvb_debug>1) _dump_state(_name, "", h);
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
+	if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "", h);
 
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Ensure frontend locked (timeout=%d)\n", timeout); }
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Ensure frontend locked (timeout=%d)\n", timeout); }
     if (0 == timeout)
     {
 		if (!dvb_frontend_is_locked(h))
 		{
-			if (dvb_debug>1) _fn_end(_name, -1) ;
+			if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
 		    return -15;
 		}
     }
@@ -1066,7 +1058,7 @@ struct dvb_frontend_parameters info ;
     {
 		if (0 != dvb_frontend_wait_lock(h, timeout))
 		{
-			if (dvb_debug>1) _fn_end(_name, -1) ;
+			if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
 		    return -16;
 		}
     }
@@ -1112,7 +1104,7 @@ struct dvb_frontend_parameters info ;
 		h->p.frequency = frequency ;
 	}
 
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return 0;
 }
 
@@ -1120,30 +1112,31 @@ struct dvb_frontend_parameters info ;
 /* ----------------------------------------------------------------------- */
 int dvb_finish_tune(struct dvb_state *h, int timeout)
 {
-	char *_name="dvb_finish_tune" ;
-	if (dvb_debug>1) _fn_start(_name) ;
-	if (dvb_debug>1) _dump_state(_name, "", h);
+int rc = 0 ;
 
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Ensure video & audio filters are initialised\n"); }
+	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
+	if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "", h);
+
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Ensure video & audio filters are initialised\n"); }
 	if (0 == h->video.filter.pid && 0 == h->audio.filter.pid)
 	{
-		if (dvb_debug>1) _fn_end(_name, -2) ;
+		if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -2) ;
 		return -20;
 	}
 
 	// Ensure frontend is tuned
-	int rc = dvb_wait_tune(h, timeout) ;
+	rc = dvb_wait_tune(h, timeout) ;
 	if (rc != 0) return rc ;
 
 
-	if (dvb_debug>1) {_prt_indent(_name) ; fprintf(stderr, "Apply filter\n"); }
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Apply filter\n"); }
     if (0 != dvb_demux_filter_apply(h))
     {
-    	if (dvb_debug>1) _fn_end(_name, -2) ;
+    	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -2) ;
     	return -21;
     }
 
-	if (dvb_debug>1) _fn_end(_name, 0) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return 0;
 }
 

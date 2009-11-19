@@ -98,6 +98,7 @@ Options:
        -verbose level       set verbosity level
        -help                brief help message
        -man                 full documentation
+       -check               check validity of channels
        
 =head1 OPTIONS
 
@@ -118,6 +119,11 @@ Set verbosity level. Higher values show more information.
 =item B<-debug>
 
 Set debug level. Higher levels show more debugging information (only really of any interest to developers!)
+
+=item B<-check>
+
+Ensures that all channels have a valid set of frequency parameters (Note: does not check that these will actually
+record the correct channel!)
 
 
 =back

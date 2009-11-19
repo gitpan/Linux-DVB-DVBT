@@ -9,12 +9,11 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $merge) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
-			   'merge' => \$merge,
 			   'cfg=s' => \$config,
 			   ) or pod2usage(2) ;
 
@@ -32,7 +31,7 @@ use Linux::DVB::DVBT ;
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
-	my $dvb = Linux::DVB::DVBT->new('merge' => $merge) ;
+	my $dvb = Linux::DVB::DVBT->new() ;
 	
 	$dvb->config_path($config) if $config ;
 	
@@ -62,7 +61,6 @@ Options:
        -verbose level       set verbosity level
        -help                brief help message
        -man                 full documentation
-       -merge                 merge scans
        
 =head1 OPTIONS
 
@@ -83,12 +81,6 @@ Set verbosity level. Higher values show more information.
 =item B<-debug>
 
 Set debug level. Higher levels show more debugging information (only really of any interest to developers!)
-
-=item B<-merge>
-
-Allow new scan to merge with existing config files. This is useful when you want to run multiple scans at different times of day
-to enable all channels to be tuned in (for example BBC3 is only transmitted in the evening).  
-
 
 =back
 

@@ -1,7 +1,19 @@
 CFLAGS   := -g
 CFLAGS   += -O0
-CFLAGS   += -fPIC
 CFLAGS   += -I../libng
+
+ifdef CCFLAGS
+CFLAGS   += $(CCFLAGS)
+else
+CFLAGS   += -fPIC
+endif
+
+ifdef CCCDLFLAGS
+CFLAGS   += $(CCCDLFLAGS)
+else
+CFLAGS   += -D_LARGEFILE_SOURCE
+CFLAGS   += -D_GNU_SOURCE
+endif
 
 ifdef TESTDEF
 	CFLAGS += -D $(TESTDEF)

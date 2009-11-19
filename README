@@ -49,6 +49,8 @@ Note that the duration can be specified as an integer (number of minutes), or in
 
 Use to display the current list of tuned channels. Shows them in logical channel number order.
 
+There is also the facility of checking your config files using the -check option. This ensures that the saved channel settings do have
+valid tuning parameters (NOTE: This is mainly to ensure that the config files haven't been corrupted).
 
 
 INSTALLATION
@@ -59,6 +61,15 @@ To install this module type the following:
    make
    make test
    make install
+
+LARGE FILE SUPPORT
+
+I've added the appropriate compile options to enable the module to be compiled with large file support. These options will be enabled
+if your Perl build supports it (set in your config.pm when Perl was installed). Without this, recordings were limited to 2G (approx 2 hours).
+
+If you find you still have problems recording large files, then you can always use dvbt-ffrec (instead of dvbt-record). This gets ffmpeg to
+do the work of creating the file (and transcoding it to mpeg format).
+
 
 DEPENDENCIES
 

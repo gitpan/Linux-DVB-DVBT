@@ -85,7 +85,13 @@ endif
 
 ## make libs
 $(MYEXTLIB): dvb_lib/Makefile 
-	cd dvb_lib && $(MAKE) $(MAKE_TEST_DEF) $(PASSTHRU)
+	cd dvb_lib && $(MAKE) $(MAKE_TEST_DEF) CCFLAGS="$(CCFLAGS)" CCCDLFLAGS="$(CCCDLFLAGS)"
+
+## Clean up
+clean:: dvb_lib_clean                                                                                                   
+                                                                                                                        
+dvb_lib_clean: FORCE                                                                                                    
+	cd dvb_lib && $(MAKE) clean                                                                                     
 
 ## Optional doxygen documentation 
 doxygen: FORCE
