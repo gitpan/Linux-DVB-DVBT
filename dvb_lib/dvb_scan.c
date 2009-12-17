@@ -1090,6 +1090,17 @@ if (dvb_debug > 2) fprintf(stderr, "# freqs left = %d\n", num_freqs) ;
 
     }
 
+// Test where broadcast centre freq is invalid
+#ifdef TEST_INVALID_CENTRE
+
+    list_for_each(item,&dvbmon->info->streams)
+    {
+    	stream = list_entry(item, struct psi_stream, next);
+		stream->tuned = 0 ;
+    }
+#endif
+
+
 if (dvbmon->verbose >= 2)
 {
     print_streams(dvbmon) ;

@@ -428,6 +428,8 @@ struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int netid, in
     struct psi_stream *stream;
     struct list_head  *item;
 
+if (dvb_debug >= 15) fprintf_timestamp(stderr, "psi_stream_get(tsid=%d, netid=%d [alloc=%d])\n", tsid, netid, alloc) ;
+
     list_for_each(item,&info->streams) {
         stream = list_entry(item, struct psi_stream, next);
 		if (stream->tsid != tsid)
@@ -438,7 +440,10 @@ struct psi_stream* psi_stream_get(struct psi_info *info, int tsid, int netid, in
 		return stream;
     }
     if (!alloc)
-	return NULL;
+		return NULL;
+
+if (dvb_debug >= 15) fprintf_timestamp(stderr, "## New stream\n", tsid, netid, alloc) ;
+
     stream = malloc(sizeof(*stream));
     memset(stream,0,sizeof(*stream));
 
@@ -510,6 +515,8 @@ struct list_head  *item;
     stream->tsid    = src_stream->tsid;
     stream->netid = src_stream->netid;
     strcpy(stream->net, src_stream->net); 
+
+if (dvb_debug >= 15) fprintf_timestamp(stderr, "psi_stream_newfreq(tsid=%d, netid=%d : freq=%d)\n", stream->tsid, stream->netid, frequency) ;
 
     stream->symbol_rate = src_stream->symbol_rate;
 

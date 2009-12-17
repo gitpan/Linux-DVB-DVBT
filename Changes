@@ -1,5 +1,10 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+1.09 Thu Dec 17 09:23:00 2009
+	- Fixed scan for the case where the centre frequency information is not correctly(?) transmitted by the broadcaster (i.e. Italy).
+	  Module now (attempts to!) works out the frequency based on the program information gathered.
+
+
 1.08 Thu Nov 19 12:00:00 2009
 	- Added large file support (>2G) for recording. This is a compile time option that is enabled if your Perl build supports it.
 	  If this is not supported on your system, then use dvbt-ffrec to get ffmpeg to handle the large recordings

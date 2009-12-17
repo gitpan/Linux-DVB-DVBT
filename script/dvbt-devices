@@ -7,6 +7,33 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
+my %CAPABILITIES = (
+		FE_IS_STUPID			=> 'Not too bright',
+		FE_CAN_INVERSION_AUTO	=> 'Inversion: Auto',
+		FE_CAN_FEC_1_2			=> 'FEC 1/2',
+		FE_CAN_FEC_2_3			=> 'FEC 2/3',
+		FE_CAN_FEC_3_4			=> 'FEC 3/4',
+		FE_CAN_FEC_4_5			=> 'FEC 4/5',
+		FE_CAN_FEC_5_6			=> 'FEC 5/6',
+		FE_CAN_FEC_6_7			=> 'FEC 6/7',
+		FE_CAN_FEC_7_8			=> 'FEC 7/8',
+		FE_CAN_FEC_8_9			=> 'FEC 8/9',
+		FE_CAN_FEC_AUTO			=> 'FEC: Auto',
+		FE_CAN_QPSK				=> 'Mod: QPSK',
+		FE_CAN_QAM_16			=> 'Mod: QAM16',
+		FE_CAN_QAM_32			=> 'Mod: QAM32',
+		FE_CAN_QAM_64			=> 'Mod: QAM64',
+		FE_CAN_QAM_128			=> 'Mod: QAM128',
+		FE_CAN_QAM_256			=> 'Mod: QAM256',
+		FE_CAN_QAM_AUTO			=> 'Mod: Auto',
+		FE_CAN_TRANSMISSION_MODE_AUTO	=> 'Transmission mode: Auto',
+		FE_CAN_BANDWIDTH_AUTO		=> 'Bandwidth: Auto',
+		FE_CAN_GUARD_INTERVAL_AUTO	=> 'Guard: Auto',
+		FE_CAN_HIERARCHY_AUTO		=> 'Hierarchy: Auto',
+		FE_CAN_8VSB					=> '8VSB',
+		FE_CAN_16VSB				=> '16VSB',
+) ;
+
 	my ($help, $man, $DEBUG, $VERBOSE) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
@@ -33,6 +60,17 @@ use Linux::DVB::DVBT ;
   	{
   		printf "%s : adapter number: %d, frontend number: %d\n", 
   			$_->{name}, $_->{adapter_num}, $_->{frontend_num} ;
+  			
+  		if ($VERBOSE)
+  		{
+  			my $caps_href = $_->{capabilities} ;
+  			print "Capabilities:\n" ;
+  			foreach my $cap (sort keys %CAPABILITIES)
+  			{
+  				print "   $CAPABILITIES{$cap}\n" if ($caps_href->{$cap}) ;
+  			}
+  			print "\n" ;
+  		}
   	}
 
 	

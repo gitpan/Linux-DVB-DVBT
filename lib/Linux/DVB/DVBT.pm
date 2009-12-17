@@ -152,7 +152,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '1.08';
+our $VERSION = '1.09';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -270,6 +270,7 @@ my @FIELD_LIST = qw/dvb
 					errmode errors
 					merge
 					timeout
+					prune_channels
 					
 					_scan_freqs
 					_device_index
@@ -312,6 +313,9 @@ my %DEFAULTS = (
 	
 	# timeout period ms
 	'timeout'		=> 900,
+
+	# remove un-tuneable channels
+	'prune_channels'	=> 1,
 	
 	######################################
 	# Internal
@@ -1717,6 +1721,7 @@ print STDERR " + + using new\n" if $DEBUG>=5 ;
 		}
 	}
 prt_data("TSIDs=", \%tsids) if $DEBUG>=5 ;
+
 print STDERR "process raw streams...\n" if $DEBUG>=5 ;
 	
 	## Process the results for transponders
@@ -1728,8 +1733,32 @@ print STDERR "process raw streams...\n" if $DEBUG>=5 ;
 		my $centre_freq = $stream_href->{'frequency'} ;
 		$transponders{"$centre_freq-$tsid"} = $stream_href ;
 	}
-
 prt_data("Transponders=", \%transponders) if $DEBUG>=5 ;
+
+	## If we have no results, use the program info
+	if (! keys %transponders)
+	{
+prt_data("FREQS=", $raw_scan_href->{'freqs'}) if $DEBUG>=5 ;
+		foreach my $tsid (keys %tsids)
+		{
+print STDERR "tsid=$tsid\n"  if $DEBUG>=5 ;	
+		
+			# can only do this for a single frequency
+			if (scalar(keys %{$tsids{$tsid}}) == 1)
+			{
+				my $freq = (keys %{$tsids{$tsid}})[0] ;
+print STDERR "tsid=$tsid freq=$freq\n" if $DEBUG>=5 ;			
+				if (exists($raw_scan_href->{'freqs'}{$freq}))
+				{
+					my $transponder_href = $raw_scan_href->{'freqs'}{$freq} ;
+					$transponders{"$freq-$tsid"} = $transponder_href if $transponder_href->{'tuned'};
+				}
+			}
+		}
+prt_data("Interpreted Transponders=", \%transponders) if $DEBUG>=5 ;
+	}
+
+
 print STDERR "process tsids...\n" if $DEBUG>=5 ;
 
 	foreach my $tsid (keys %tsids)
@@ -1786,6 +1815,7 @@ print STDERR "process rest...\n" if $DEBUG>=5 ;
 	my @del ;
 	foreach my $chan (keys %{$scan_href->{'pr'}})
 	{
+		# strip out chans with no names (or just spaces)
 		if ($chan !~ /\S+/)
 		{
 			push @del, $chan ;
@@ -1860,7 +1890,10 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
 						++$delete ;
 					}			
 				}	
-				
+
+				# skip delete if pruning not required
+				$delete = 0 unless $self->prune_channels ;
+			
 				## See if need to delete	
 				if ($delete)
 				{
@@ -1910,6 +1943,9 @@ print STDERR " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_hre
 			# remove none video/radio types
 			++$delete ;
 		}
+
+		# skip delete if pruning not required
+		$delete = 0 unless $self->prune_channels ;
 
 		push @del, $chan if $delete;
 	}
@@ -2057,7 +2093,8 @@ sub get_channel_list
 				push @$channels_aref, { 
 					'channel'		=> $channel_name, 
 					'channel_num'	=> $tuning_href->{'pr'}{$channel_name}{'lcn'} || $channel_num,
-					'type'			=> $type == 1 ? 'tv' : 'radio',
+					'type'			=> $type == 1 ? 'tv' :  ($type == 2 ? 'radio' : 'special'),
+					'type_code'		=> $type,
 				} ;
 				
 				++$channel_num ;

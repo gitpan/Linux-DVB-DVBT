@@ -7,16 +7,19 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $check) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $check, $noprune) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'clean' => \$clean,
 			   'cfg=s' => \$config,
+			   'noprune' => \$noprune,
 			   'check' => \$check,
 			   ) or pod2usage(2) ;
 
+	# force checking on
+	$check = 1 ;
 
     pod2usage(1) if $help;
     pod2usage(-verbose => 2) if $man;
@@ -38,11 +41,13 @@ $VERBOSE ||= 1 ;
 	##
 	my $dvb = Linux::DVB::DVBT->new() ;
 	
+	$dvb->set('prune_channels' => 0) if $noprune ;
 	$dvb->config_path($config) if $config ;
 	$dvb->merge(0) if $clean ;
 	
 	## Do the scan
-	$dvb->scan_from_file($ARGV[0]) ;
+	my $freqfile = $ARGV[0] ;
+	$dvb->scan_from_file($freqfile) ;
 
 
 	## All done, just show the results
@@ -85,10 +90,36 @@ $VERBOSE ||= 1 ;
 			++$radio ;
 		}
 	}
-	printf STDERR "Found %d channels (%d tv, %d radio)\n", $tv+$radio, $tv, $radio ;	
+	printf STDERR "Found %d channels (%d tv, %d other)\n", $tv+$radio, $tv, $radio ;	
 	if ($check)
 	{
 		print STDERR $ok ? "Passed checks\n" : "FAILED checks\n" ;
+		if ($tv+$radio == 0)
+		{
+			$ok = 0 ;
+			print STDERR "Failed to find any channels\n" ;
+		}
+		
+		if (!$ok)
+		{
+			print STDERR <<"ERRMSG" ;
+                                                                                                                        
+=======================================================================================                                 
+Sorry, but your scan failed. Please either contact me or raise a bug report at:                                         
+    http://rt.cpan.org/Public/Bug/Report.html?Queue=Linux-DVB-DVBT.                                                     
+                                                                                                                        
+It would be most helpful if you can attach a debug log of your scan. To do this run:                                    
+                                                                                                                        
+ # dvbt-scan -debug 15 -verbose 15 $freqfile >scan.log 2>&1                                                             
+ # tar cvfz scan.log.tar.gz scan.log                                                                                    
+                                                                                                                        
+then attach the scan.log.tar.gz file to your email or bug report.                                                       
+                                                                                                                        
+Thanks.                                                                                                                 
+=======================================================================================                                 
+                                                                                                                        
+ERRMSG
+		}
 	}
 
 	

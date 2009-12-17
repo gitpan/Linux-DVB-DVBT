@@ -72,7 +72,7 @@ use Linux::DVB::DVBT ;
 			++$radio ;
 		}
 	}
-	printf "Found %d channels (%d tv, %d radio)\n", $tv+$radio, $tv, $radio ;	
+	printf "Found %d channels (%d tv, %d other)\n", $tv+$radio, $tv, $radio ;	
 	if ($check)
 	{
 		print $ok ? "Passed checks\n" : "FAILED checks\n" ;
