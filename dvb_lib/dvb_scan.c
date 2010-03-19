@@ -1005,7 +1005,7 @@ if (dvb_debug >= 15)
 					struct freqitem *clone_stream_freqi ;
 						
 						if (dvb_debug) 
-							fprintf(stderr, " + cerating clone stream: freq %d Hz\n", stream->freq_list[i]) ;
+							fprintf(stderr, " + creating clone stream: freq %d Hz\n", stream->freq_list[i]) ;
 
 						// create a "cloned" stream with just a new frequency
 						clone_stream = psi_stream_newfreq(dvbmon->info, stream, stream->freq_list[i]) ;
@@ -1089,17 +1089,6 @@ if (dvb_debug > 3)
 if (dvb_debug > 2) fprintf(stderr, "# freqs left = %d\n", num_freqs) ;
 
     }
-
-// Test where broadcast centre freq is invalid
-#ifdef TEST_INVALID_CENTRE
-
-    list_for_each(item,&dvbmon->info->streams)
-    {
-    	stream = list_entry(item, struct psi_stream, next);
-		stream->tuned = 0 ;
-    }
-#endif
-
 
 if (dvbmon->verbose >= 2)
 {

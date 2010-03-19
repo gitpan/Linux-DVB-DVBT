@@ -7,50 +7,7 @@ searching for the latest electronic program guide (EPG), and selectign a channel
 the video to disk.
 
 Example scripts have been provided in the package which illustrate the expected use of the package (and
-are useable programs in themeselves)
-
-* dvbt-devices
-
-Shows information about fited DVB-T tuners
-
-* dvbt-scan
-
-Run this by providing the frequency file (usually stored in /usr/share/dvb/dvb-t). If run as root, this will set up the configuration
-files for all users. For example:
-
-   $ dvbt-scan /usr/share/dvb/dvb-t/uk-Oxford
-
-* dvbt-epg
-
-When run, this grabs the latest EPG information and updates a MySql database:
-
-   $ dvbt-epg
-
-* dvbt-record
-
-Specify the channel, the duration, and the output filename to record a channel:
-
-   $ dvbt-record "bbc1" spooks.ts 1:00
-   
-Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
-
-* dvbt-ffrec
-
-Similar to dvbt-record, but pipes the transport stream into ffmpeg and uses that to transcode the data directly into an MPEG file (without
-saving the transport stream file).
-
-Specify the channel, the duration, and the output filename to record a channel:
-
-   $ dvbt-ffrec "bbc1" spooks.mpeg 1:00 
-   
-Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
-
-* dvbt-chans
-
-Use to display the current list of tuned channels. Shows them in logical channel number order.
-
-There is also the facility of checking your config files using the -check option. This ensures that the saved channel settings do have
-valid tuning parameters (NOTE: This is mainly to ensure that the config files haven't been corrupted).
+are useable programs in themeselves). For futher details please see 'perldoc Linux::DVB::DVBT'.
 
 
 INSTALLATION

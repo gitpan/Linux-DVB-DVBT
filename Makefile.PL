@@ -16,7 +16,7 @@ $modpath =~ s%\-%/%g ;
 check_new_version() ;
 
 
-my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans);
+my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans dvbt-multirec);
 my $install_bin = 1;
 
 if ( 
@@ -96,6 +96,12 @@ dvb_lib_clean: FORCE
 ## Optional doxygen documentation 
 doxygen: FORCE
 	cd doxygen && doxygen
+
+## Author target: preview CPAN documentation
+cpandoc: FORCE
+	perl -MPod::Simple::HTMLBatch -e Pod::Simple::HTMLBatch::go . pod/batch
+	cp pod/html_files/style.css pod/batch/_black_with_blue_on_white.css
+
 ';
 }
 

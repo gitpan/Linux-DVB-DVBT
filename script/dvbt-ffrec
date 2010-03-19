@@ -10,6 +10,8 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
+our $VERSION = "1.000" ;
+
 	my ($help, $man, $DEBUG, $VERBOSE, $config) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,

@@ -326,9 +326,10 @@ static void parse_nit_desc_2(unsigned char *desc, int dlen,
 
 if (dvb_debug>2)
 	fprintf(stderr,
-		"terrestrial_delivery_system_descriptor: TSID %d freqs=%d bw=%d (%s MHz) const=%d (%s) hier=%d (%s) rate hi=%d  (%s) rate lo=%d (%s) guard=%d (%s) tr=%d (%s) : up=%d tuned=%d\n",
+		"#@f terrestrial_delivery_system_descriptor: TSID %d freq=%d (other=%d) bw=%d (%s MHz) const=%d (%s) hier=%d (%s) rate hi=%d  (%s) rate lo=%d (%s) guard=%d (%s) tr=%d (%s) : up=%d tuned=%d\n",
 		stream->tsid,
 		stream->frequency,
+		stream->other_freq,
 		mpeg_getbits(desc+i+2, 33, 2),
 		stream->bandwidth,
 		mpeg_getbits(desc+i+2, 40, 2),
@@ -343,10 +344,16 @@ if (dvb_debug>2)
 		stream->guard,
 		mpeg_getbits(desc+i+2, 54, 1),
 		stream->transmission,
-		
 		stream->updated, stream->tuned
 		);
 		
+// Test where broadcast centre freq is invalid
+#ifdef TEST_INVALID_CENTRE
+
+		// mangle the real centre freq
+		stream->frequency = stream->tsid ;
+
+#endif
 
 
 #ifdef TEST_MULTIFREQ
@@ -473,7 +480,7 @@ if (dvb_debug>1)
 	
 		    if (dvb_debug>1)
 				fprintf(stderr,
-					"LCN: service_id=%d (0x%04x)  visible=%d  lcn=%d (0x%03x)\n",
+					"#@p LCN: service_id=%d (0x%04x)  visible=%d  lcn=%d (0x%03x)\n",
 					sid, sid, visible, lcn, lcn);
 					
 			pinfo = prog_info_get(stream, sid, 1) ;
@@ -547,7 +554,7 @@ static void parse_sdt_desc(unsigned char *desc, int dlen,
 		if (verbose) fprintf(stderr,"    pnr %5d  %s\n", pr->pnr, pr->name);
 
 	    if (dvb_debug > 2)
-	    	fprintf(stderr," parse_sdt_desc() : tuned=%d : tsid=%d pid=%d name=%s [v=%d a=%d]\n",
+	    	fprintf(stderr,"#@p parse_sdt_desc() : tuned=%d : tsid=%d pnr=%d name=%s [v=%d a=%d]\n",
 	    	tuned_freq,
 	    	pr->tsid, pr->pnr, pr->name, pr->v_pid, pr->a_pid);
 	    break;

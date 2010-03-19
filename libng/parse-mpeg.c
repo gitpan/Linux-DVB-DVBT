@@ -646,6 +646,7 @@ if (dvb_debug >= 15) fprintf(stderr, "<< set freq done >>\n") ;
     program->v_pid = -1;
     program->a_pid = -1;
     program->t_pid = -1;
+    program->s_pid = -1;
     program->fd = -1;
 
     list_add_tail(&program->next,&info->programs);
@@ -1097,15 +1098,30 @@ static void parse_pmt_desc(unsigned char *desc, int dlen,
     int i,t,l;
 
     for (i = 0; i < dlen; i += desc[i+1] +2) {
-	t = desc[i];
-	l = desc[i+1];
+		t = desc[i];
+		l = desc[i+1];
 
-	switch (t) {
-	case 0x56:
-	    if (!program->t_pid)
-		program->t_pid = pid;
-	    break;
-	}
+		if (dvb_debug>5)
+	    fprintf(stderr," parse_pmt_desc() pid=%d t=0x%02x\n",pid,t);
+
+		switch (t) {
+			case 0x56:
+				if (!program->t_pid)
+					program->t_pid = pid;
+
+			    if (dvb_debug>5) {
+					fprintf_timestamp(stderr, " + t_pid=%d\n", program->t_pid) ;
+			    }
+			break;
+
+			case 0x59: /* subtitles (pmt) */
+				if (!program->s_pid)
+					program->s_pid = pid;
+
+				if (dvb_debug>5)
+					fprintf(stderr," subtitles=%3.3s\n",desc+i+2);
+			    break;
+		}
     }
 }
 
@@ -1295,35 +1311,42 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
     version = mpeg_getbits(data,42,5);
     current = mpeg_getbits(data,47,1);
     if (!current)
-	return len+4;
+    	return len+4;
     if (program->pnr == pnr && program->version == version)
-	return len+4;
+    	return len+4;
     program->version = version;
     program->updated = 1;
 
     dlen = mpeg_getbits(data,84,12);
     /* TODO: decode descriptor? */
     if (verbose>1) {
-	fprintf_timestamp(stderr,
-		"ts [pmt]: pnr %d ver %2d [%d/%d]  pcr 0x%04x  "
-		"pid 0x%04x  type %2d #",
-		pnr, version,
-		mpeg_getbits(data,48, 8),
-		mpeg_getbits(data,56, 8),
-		mpeg_getbits(data,69,13),
-		program->p_pid, program->type);
-	mpeg_dump_desc(data + 96/8, dlen);
-	fprintf(stderr,"\n");
+		fprintf_timestamp(stderr,
+			"ts [pmt]: pnr %d ver %2d [%d/%d]  pcr 0x%04x  "
+			"pid 0x%04x  type %2d #",
+			pnr, version,
+			mpeg_getbits(data,48, 8),
+			mpeg_getbits(data,56, 8),
+			mpeg_getbits(data,69,13),
+			program->p_pid, program->type);
+		mpeg_dump_desc(data + 96/8, dlen);
+		fprintf(stderr,"\n");
     }
     j = 96 + dlen*8;
     program->v_pid = 0;
     program->a_pid = 0;
     program->t_pid = 0;
+    program->s_pid = 0;
     memset(program->audio,0,sizeof(program->audio));
     while (j < len*8) {
 		type = mpeg_getbits(data,j,8);
 		pid  = mpeg_getbits(data,j+11,13);
 		dlen = mpeg_getbits(data,j+28,12);
+
+	    if (dvb_debug>1) {
+			fprintf_timestamp(stderr, " + type=%2d pid=%d (0x%04x)\n",
+				type, pid, pid) ;
+	    }
+
 		switch (type) {
 		case 1:
 		case 2:
@@ -1335,7 +1358,7 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
 		case 4:
 		    /* audio */
 		    if (!program->a_pid)
-			program->a_pid = pid;
+		    	program->a_pid = pid;
 		    lang = get_lang_tag(data + (j+40)/8, dlen);
 		    slen = strlen(program->audio);
 		    snprintf(program->audio + slen, sizeof(program->audio) - slen,
@@ -1349,9 +1372,9 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
 	
 		if (dvb_debug >= 2)
 		{
-		    fprintf(stderr, "   PROG: tsid=%d pnr=%d video=%d audio=%d text=%d (freq=%d)\n",
+		    fprintf(stderr, "   PROG: tsid=%d pnr=%d video=%d audio=%d text=%d sub=%d (freq=%d)\n",
 			    program->tsid, program->pnr, 
-			    program->v_pid, program->a_pid, program->t_pid,
+			    program->v_pid, program->a_pid, program->t_pid, program->s_pid,
 			    tuned_freq);
 		}
 		if (verbose > 2) {

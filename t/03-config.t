@@ -1,3 +1,6 @@
+#!perl
+use strict ;
+
 use Data::Dumper ;
 
 use Test::More tests => 4;
@@ -23,7 +26,7 @@ my $dvb = Linux::DVB::DVBT->new(
 isa_ok($dvb, 'Linux::DVB::DVBT') ;
 
 ## Check config read
-$expected_config_href = {
+my $expected_config_href = {
           'ts' => {
                     '8199' => {
                                 'transmission' => '2',

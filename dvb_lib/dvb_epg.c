@@ -13,6 +13,7 @@
 #include "dvb_tune.h"
 #include "dvb_epg.h"
 #include "grab-ng.h"
+#include "dvb_debug.h"
 
 /* ----------------------------------------------------------------------- */
 
@@ -273,10 +274,10 @@ static void dump_data(unsigned char *data, int len)
     int i;
 
     for (i = 0; i < len; i++) {
-	if (isprint(data[i]))
-	    fprintf(stderr,"%c", data[i]);
-	else
-	    fprintf(stderr,"0x%02x ", (int)data[i]);
+		if (isprint(data[i]))
+			fprintf(stderr,"%c", data[i]);
+		else
+			fprintf(stderr,"0x%02x ", (int)data[i]);
     }
 }
 
@@ -284,7 +285,7 @@ static void dump_data(unsigned char *data, int len)
 static void parse_eit_desc(unsigned char *desc, int dlen,
 			   struct epgitem *epg, int verbose)
 {
-    int i,j,tag,len,len2,len3;
+    int i,j,k,tag,len,len2,len3;
     int dump,slen,part,pcount;
 
     for (i = 0; i < dlen; i += desc[i+1] +2) {
@@ -295,8 +296,8 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
 
 if (verbose > 1)
 {
-fprintf(stderr," TAG 0x%02x: ", tag);
-dump=1;
+	fprintf(stderr," TAG 0x%02x: ", tag);
+	dump=1;
 }
 
 
@@ -336,135 +337,136 @@ dump=1;
 	    part   = (desc[i+2] >> 4) & 0x0f;
 	    pcount = (desc[i+2] >> 0) & 0x0f;
 	    if (verbose > 1)
-		fprintf(stderr,"eit: ext event: %d/%d\n",part,pcount);
+	    	fprintf(stderr,"eit: ext event: %d/%d\n",part,pcount);
 	    if (0 == part)
-		slen = 0;
+	    	slen = 0;
 	    epg->etext = realloc(epg->etext, slen+512);
 	    len2 = desc[i+6];     /* item list (not implemented) */
 	    len3 = desc[i+7+len2];  /* description */
 	    if (len3>0) mpeg_parse_psi_string((char*)desc+i+8+len2, len3, epg->etext+slen, 511);
 	    if (len2) {
-		if (verbose) {
-		    fprintf(stderr," [not implemented: item list (ext descr)]");
-		    dump = 1;
-		}
+			if (verbose) {
+				fprintf(stderr," [not implemented: item list (ext descr)]");
+				dump = 1;
+			}
 	    }
 	    break;
 
 	case 0x4f: /*  time shift event */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *time shift event");
-		dump = 1;
+			fprintf(stderr," *time shift event");
+			dump = 1;
 	    }
 	    break;
 
 	case 0x50: /*  component descriptor */
 	    if (verbose > 1)
-		fprintf(stderr," component=%d,%d",
-			desc[i+2] & 0x0f, desc[i+3]);
+			fprintf(stderr," component=%d,%d",
+				desc[i+2] & 0x0f, desc[i+3]);
+
 	    if (1 == (desc[i+2] & 0x0f)) {
-		/* video */
-		switch (desc[i+3]) {
-		case 0x01:
-		case 0x05:
-		    epg->flags |= EPG_FLAG_VIDEO_4_3;
-		    break;
-		case 0x02:
-		case 0x03:
-		case 0x06:
-		case 0x07:
-		    epg->flags |= EPG_FLAG_VIDEO_16_9;
-		    break;
-		case 0x09:
-		case 0x0d:
-		    epg->flags |= EPG_FLAG_VIDEO_4_3;
-		    epg->flags |= EPG_FLAG_VIDEO_HDTV;
-		    break;
-		case 0x0a:
-		case 0x0b:
-		case 0x0e:
-		case 0x0f:
-		    epg->flags |= EPG_FLAG_VIDEO_16_9;
-		    epg->flags |= EPG_FLAG_VIDEO_HDTV;
-		    break;
-		}
+			/* video */
+			switch (desc[i+3]) {
+			case 0x01:
+			case 0x05:
+				epg->flags |= EPG_FLAG_VIDEO_4_3;
+				break;
+			case 0x02:
+			case 0x03:
+			case 0x06:
+			case 0x07:
+				epg->flags |= EPG_FLAG_VIDEO_16_9;
+				break;
+			case 0x09:
+			case 0x0d:
+				epg->flags |= EPG_FLAG_VIDEO_4_3;
+				epg->flags |= EPG_FLAG_VIDEO_HDTV;
+				break;
+			case 0x0a:
+			case 0x0b:
+			case 0x0e:
+			case 0x0f:
+				epg->flags |= EPG_FLAG_VIDEO_16_9;
+				epg->flags |= EPG_FLAG_VIDEO_HDTV;
+				break;
+			}
 	    }
 	    if (2 == (desc[i+2] & 0x0f)) {
-		/* audio */
-		switch (desc[i+3]) {
-		case 0x01:
-		    epg->flags |= EPG_FLAG_AUDIO_MONO;
-		    break;
-		case 0x02:
-		    epg->flags |= EPG_FLAG_AUDIO_DUAL;
-		    break;
-		case 0x03:
-		    epg->flags |= EPG_FLAG_AUDIO_STEREO;
-		    break;
-		case 0x04:
-		    epg->flags |= EPG_FLAG_AUDIO_MULTI;
-		    break;
-		case 0x05:
-		    epg->flags |= EPG_FLAG_AUDIO_SURROUND;
-		    break;
-		}
+			/* audio */
+			switch (desc[i+3]) {
+			case 0x01:
+				epg->flags |= EPG_FLAG_AUDIO_MONO;
+				break;
+			case 0x02:
+				epg->flags |= EPG_FLAG_AUDIO_DUAL;
+				break;
+			case 0x03:
+				epg->flags |= EPG_FLAG_AUDIO_STEREO;
+				break;
+			case 0x04:
+				epg->flags |= EPG_FLAG_AUDIO_MULTI;
+				break;
+			case 0x05:
+				epg->flags |= EPG_FLAG_AUDIO_SURROUND;
+				break;
+			}
 	    }
 	    if (3 == (desc[i+2] & 0x0f)) {
-		/* subtitles / vbi */
-		epg->flags |= EPG_FLAG_SUBTITLES;
+			/* subtitles / vbi */
+			epg->flags |= EPG_FLAG_SUBTITLES;
 	    }
 	    break;
 
 	case 0x53: /*  CA descriptor */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *CA descriptor");
-		dump = 1;
+			fprintf(stderr," *CA descriptor");
+			dump = 1;
 	    }
 	    break ;
 
 	case 0x54: /*  content descriptor */
 	    if (verbose > 1) {
-		for (j = 0; j < len; j+=2) {
-		    int d = desc[i+j+2];
-		    fprintf(stderr," content=0x%02x:",d);
-		    if (content_desc[d])
-			fprintf(stderr,"%s",content_desc[d]);
-		    else
-			fprintf(stderr,"?");
-		}
+			for (j = 0; j < len; j+=2) {
+				int d = desc[i+j+2];
+				fprintf(stderr," content=0x%02x:",d);
+				if (content_desc[d])
+					fprintf(stderr,"%s",content_desc[d]);
+				else
+					fprintf(stderr,"?");
+			}
 	    }
 	    for (j = 0; j < len; j+=2) {
-		int d = desc[i+j+2];
-		int c;
-		if (!content_desc[d])
-		    continue;
-		for (c = 0; c < DIMOF(epg->cat); c++) {
-		    if (NULL == epg->cat[c])
-			break;
-		    if (content_desc[d] == epg->cat[c])
-			break;
-		}
-		if (c == DIMOF(epg->cat))
-		    continue;
-		epg->cat[c] = content_desc[d];
+			int d = desc[i+j+2];
+			int c;
+			if (!content_desc[d])
+				continue;
+			for (c = 0; c < DIMOF(epg->cat); c++) {
+				if (NULL == epg->cat[c])
+				break;
+				if (content_desc[d] == epg->cat[c])
+				break;
+			}
+			if (c == DIMOF(epg->cat))
+				continue;
+			epg->cat[c] = content_desc[d];
 	    }
 	    break;
 
 	case 0x55: /*  parental rating */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *parental rating");
-		dump = 1;
+			fprintf(stderr," *parental rating");
+			dump = 1;
 	    }
 	    break;
 
 	case 0x57: /*  telephone descriptor */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *telephone descriptor");
-		dump = 1;
+			fprintf(stderr," *telephone descriptor");
+			dump = 1;
 	    }
 	    break;
 
@@ -473,56 +475,110 @@ dump=1;
 	case 0x61:
 	    if (verbose > 1)
 		{
-		fprintf(stderr," *TAG 0x%02x", tag);
-		dump = 1;
+			fprintf(stderr," *TAG 0x%02x", tag);
+			dump = 1;
 	    }
 	    break ;
 
 	case 0x64: /*  data broadcast descriptor */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *data broadcast descriptor");
-		dump = 1;
+			fprintf(stderr," *data broadcast descriptor");
+			dump = 1;
 	    }
 	    break;
 
 	case 0x69: /*  PDC descriptor */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *PDC descriptor");
-		dump = 1;
+			fprintf(stderr," *PDC descriptor");
+			dump = 1;
 	    }
 	    break;
 
 	case 0x75: /*  TVA id descriptor */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *TVA id descriptor");
-		dump = 1;
+			fprintf(stderr," *TVA id descriptor");
+			dump = 1;
 	    }
 	    break;
 
 	case 0x76: /* TVA content descriptor */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *TVA content descriptor");
-		dump = 1;
+			fprintf(stderr," *TVA content descriptor");
+			dump = 1;
 	    }
+
+		//	content_identifier_descriptor() {
+		//		descriptor_tag 8 uimsbf
+		//		descriptor_length 8 uimsbf
+		//		for (i=0;i<N;i++) {
+		//			crid_type 6 uimsbf
+		//			crid_location 2 uimsbf
+		//			if (crid_location == '00' ) {
+		//				crid_length 8 uimsbf
+		//				for (j=0;j<crid_length;j++) {
+		//					crid_byte 8 uimsbf
+		//				}
+		//			}
+		//			if (crid_location == '01' ) {
+		//				crid_ref 16 uimsbf
+		//			}
+		//		}
+		//	}
+	    j=0;
+	    while (j < len*8) {
+	    	char crid_byte[256] = "";
+			int crid_type = mpeg_getbits(desc+i+2,  j, 6);
+			int crid_loc = mpeg_getbits(desc+i+2,  j+6, 2) ;
+			j += 8 ;
+			if (crid_loc == 0)
+			{
+				int crid_len = mpeg_getbits(desc+i+2,  j, 8) ;
+				j+=8;
+				for (k=0; (k < crid_len) && (j<len*8); j+=8, k++)
+				{
+					if (k < 254)
+					{
+						crid_byte[k] = mpeg_getbits(desc+i+2, j, 8) ;
+						crid_byte[k+1] = 0 ;
+					}
+				}
+			}
+			if (crid_loc == 1)
+			{
+				int crid_ref = mpeg_getbits(desc+i+2,  j, 16) ;
+				j+=16 ;
+			}
+
+			if (crid_type == 0x01 || crid_type == 0x31)
+			{
+				strncpy(epg->tva_prog, crid_byte, 255);
+			}
+			else if (crid_type == 0x02 || crid_type == 0x32)
+			{
+				strncpy(epg->tva_series, crid_byte, 255);
+			}
+	    }
+
+
 	    break;
 
 	case 0x7F: /* extension descriptor */
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *extension descriptor");
-		dump = 1;
+			fprintf(stderr," *extension descriptor");
+			dump = 1;
 	    }
 	    break;
 
 	default:
 	    if (verbose > 1)
 	    {
-		fprintf(stderr," *UNEXPECTED TAG 0x%02x", tag);
-		dump = 1;
+			fprintf(stderr," *UNEXPECTED TAG 0x%02x", tag);
+			dump = 1;
 	    }
 	    break;
 	}
@@ -535,7 +591,7 @@ dump=1;
 
     if (verbose > 1)
     {
-	fprintf(stderr,"\n");
+    	fprintf(stderr,"\n");
     }
 
     }
@@ -681,7 +737,7 @@ struct eit_state *eit;
 		/* keep track of the number of times round the loop between file writes */
 		++cycles ;
 
-		if (verbose>5) fprintf(stderr, " + cycle=%u : updates=%u\n", cycles, updates) ;
+		if (dvb_debug>5) fprintf(stderr, " + cycle=%u : updates=%u\n", cycles, updates) ;
 		while (to > 0) {
 			int res;
 
@@ -689,7 +745,7 @@ struct eit_state *eit;
 			ufd.fd=eit->fd;
 			ufd.events=POLLIN;
 
-			if (verbose>5) fprintf(stderr, " + + poll\n") ;
+			if (dvb_debug>5) fprintf(stderr, " + + poll\n") ;
 			res = poll(&ufd,1,1000);
 			if (0 == res) {
 				fprintf(stderr, ".");
@@ -707,11 +763,11 @@ struct eit_state *eit;
 			return (struct list_head *)0;
 		}
 
-		if (verbose>5) fprintf(stderr, " + get_section() fd=%d\n", eit->fd) ;
+		if (dvb_debug>5) fprintf(stderr, " + get_section() fd=%d\n", eit->fd) ;
 
 		if (dvb_demux_get_section(eit->fd, buf, sizeof(buf)) < 0)
 		{
-		if (verbose>5) fprintf(stderr, " + + !! failed to get_section() - request retune\n") ;
+		if (dvb_debug>5) fprintf(stderr, " + + !! failed to get_section() - request retune\n") ;
 		
 			if (--section_retries > 0)
 			{
@@ -719,7 +775,7 @@ struct eit_state *eit;
 						eit->fd , 0x12,
 						eit->sec, eit->mask,
 						0, 20);
-		if (verbose>5) fprintf(stderr, " + + retune fd=%d\n", eit->fd) ;
+		if (dvb_debug>5) fprintf(stderr, " + + retune fd=%d\n", eit->fd) ;
 			}
 			else
 			{
@@ -729,7 +785,7 @@ struct eit_state *eit;
 		}
 		else
 		{
-			if (verbose>5) fprintf(stderr, " + parse PSI\n") ;
+			if (dvb_debug>5) fprintf(stderr, " + parse PSI\n") ;
 			mpeg_parse_psi_eit(buf, eit->verbose);
 
 			/* increment number of new items if not previously seen */
@@ -744,7 +800,7 @@ struct eit_state *eit;
 				/* write file if got some new AND over cycle threshold */
 				if (cycles > CYCLES_WRITEFILE)
 				{
-					if (verbose>5) fprintf(stderr, "File dump...\n") ;
+					if (dvb_debug>5) fprintf(stderr, "File dump...\n") ;
 					updates=0;
 					cycles = 0 ;
 				}
@@ -754,7 +810,7 @@ struct eit_state *eit;
 			{
 				if (cycles > CYCLES_NOUPDATES)
 				{
-if (verbose>5)
+if (dvb_debug>5)
 {
 	fprintf(stderr,"epg complete\n") ;
 }
@@ -766,7 +822,7 @@ if (verbose>5)
 	}
 
 
-if (verbose>5)
+if (dvb_debug>5)
 {
 	fprintf(stderr,"epg end\n") ;
 }

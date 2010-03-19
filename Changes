@@ -1,5 +1,11 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.00 Fri Mar 19 12:20:00 2010
+	- Major re-write to add multiplex recording capability
+	- Added TVAnytime reqporting in epg 
+	- Added subtitle stream pid to config files
+	- Fixed bug in scan where frequency reported is less than the minimum required for DVB-T.
+
 1.09 Thu Dec 17 09:23:00 2009
 	- Fixed scan for the case where the centre frequency information is not correctly(?) transmitted by the broadcaster (i.e. Italy).
 	  Module now (attempts to!) works out the frequency based on the program information gathered.

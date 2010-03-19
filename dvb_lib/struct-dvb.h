@@ -12,10 +12,4 @@ extern char *dvb_fe_guard[];
 extern char *dvb_fe_hierarchy[];
 extern char *dvb_fe_inversion[];
 
-#if 0
-extern struct struct_desc desc_frontend_info[];
-
-extern struct ioctl_desc ioctls_dvb[256];
-#endif
-
 #endif

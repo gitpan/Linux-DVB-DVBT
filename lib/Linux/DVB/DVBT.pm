@@ -38,6 +38,9 @@ Linux::DVB::DVBT - Perl extension for DVB terrestrial recording, epg, and scanni
 	# Record 30 minute program (after setting channel using select_channel method)
 	$dvb->record('test.ts', 30*60) ;
 
+	## Release the hardware (to allow a new recording to start)
+	$dvb->dvb_close() ;
+	
 
 	# show the logical channel numbers
 	my $tuning_href = $dvb->get_tuning_info() ;
@@ -54,6 +57,8 @@ Linux::DVB::DVBT - Perl extension for DVB terrestrial recording, epg, and scanni
 			$tuning_href->{'pr'}{$chan}{'pnr'} ;
 	}
 
+
+
 =head1 DESCRIPTION
 
 B<Linux::DVB::DVBT> is a package that provides an object interface to any installed Freeview 
@@ -61,16 +66,139 @@ tuner cards fitted to a Linux PC. The package supports initial set up (i.e. freq
 searching for the latest electronic program guide (EPG), and selectign a channel for recording
 the video to disk.
 
-Example scripts have been provided in the package which illustrate the expected use of the package (and
-are useable programs in themeselves)
+=head2 Additional Modules
+
+Along with this module, the following extra modules are provided:
 
 =over 4
 
-=item dvbt-devices
+=item L<Linux::DVB::DVBT::Config|Config>
+
+Configuration files and data utilities
+
+=item L<Linux::DVB::DVBT::Utils|Utils>
+
+Miscellaneous utilities
+
+=item L<Linux::DVB::DVBT::Ffmpeg|Ffmpeg>
+
+Helper module that wraps up useful L<ffmpeg|http://ffmpeg.org/> calls to post-process recorded files. 
+
+=back
+
+
+=head2 Logical Channel Numbers (LCNs)
+
+Where broadcast, the scan function will gather the logical channel number information for all of the channels. The scan() method now stores the LCN information
+into the config files, and makes the list of channels available through the L</get_channel_list()> method. So you can now get the channel number you
+see (and enter) on any standard freeview TV or PVR.
+
+This is of most interest if you want to use the L</epg()> method to gather data to create a TV guide. Generally, you'd like the channel listings
+to be sorted in the order to which we've all become used to through TV viewing (i.e. it helps to have BBC1 appear before channel 4!). 
+
+
+=head2 TVAnytime
+
+New in this version is the gathering of TV Anytime series and program information by the epg function. Where available, you now have a 'tva_series' and 
+'tva_program' field in the epg HASH that contains the unique TV Anytime number for the series and program respectfully. This is meant to ensure that 
+you can determine the program and series uniquely and allow you to not re-record programs. In reality, I've found that some broadcasters use different
+series identifiers even when the same series is shown at a different time!
+
+At present, I use the series identifier to group recordings within a series (I then rename the series directory something more meaningful!). Within a 
+series, the program identifier seems to be useable to determine if the program has been recorded before.
+
+
+=head2 Multiplex Recording
+
+Another new feature in this version is support for multiplex recording (i.e. being able to record multiple streams/programs at the same time, as long as they are all
+in the same multiplex). As you can imagine, specifying the recording of multiple programs (many of which will be different lengths and start at 
+diffent times) can get quite involved. 
+
+To simplify these tasks in your scripts, I've written various "helpers" that handle parsing command line arguments, through to optionally running
+ffmpeg to extract the required programs. These are all in addition to the base function that adds a demux filter to the list that will be recorded
+(see L</add_demux_filter($pid, $pid_type [, $tsid])>). Feel free to use as much (or as little) of the helper functions as you like - you can always write
+your own scripts using add_demux_filter().
+
+For details of the ffmpeg helper functions, please see L<Linux::DVB::DVBT::Ffmpeg>. Obviously, you need to have ffmpeg installed on your system
+for any of the functions to work!
+
+To record multiple channels (in the same multiplex) at once, you need something like:
+
+	use Linux::DVB::DVBT;
+
+	## Parse command line
+	my @chan_spec ;
+	my $error = $dvb->multiplex_parse(\@chan_spec, @ARGV);
+	
+	## Select the channel(s)
+	my %options = (
+		'lang'		=> $lang,
+		'out'		=> $out,
+		'tsid'		=> $tsid,
+	) ;
+	$error = $dvb->multiplex_select(\@chan_spec, %options) ;
+	
+	## Get multiplex info
+	my %multiplex_info = $dvb->multiplex_info() ;
+
+	## Record
+	$dvb->multiplex_record(%multiplex_info) ;
+
+	## Release the hardware (to allow a new recording to start)
+	$dvb->dvb_close() ;
+	
+	## [OPTIONAL] Transcode the recordings (uses ffmpeg helper module)
+	$error = $dvb->multiplex_transcode(%multiplex_info) ;
+
+Note, the old L<record()|/record($file, $duration)> function has been re-written to use the same underlying multiplex functions. This means that,
+even though you are only recording a single program, you can still use the ffmpeg helper transcode functions after the 
+recording has finished. For example:
+
+	## Record
+	$dvb->record("$dir$name$ext", $duration) ;
+	
+	## Release DVB (for next recording)
+	$dvb->dvb_close() ;
+	
+	## Get multiplex info
+	my %multiplex_info = $dvb->multiplex_info() ;
+	
+	## Transcode the recordings (uses ffmpeg helper module)
+	$dvb->multiplex_transcode(%multiplex_info) ;
+	
+	## Display ffmpeg output / warnings / errors
+	foreach my $line (@{$multiplex_info{'lines'}})
+	{
+		info("[ffmpeg] $line") ;
+	}
+	
+	foreach my $line (@{$multiplex_info{'warnings'}})
+	{
+		info("[ffmpeg] WARN: $line") ;
+	}
+	
+	foreach my $line (@{$multiplex_info{'errors'}})
+	{
+		info("[ffmpeg] ERROR: $line") ;
+	}
+
+Since this is a new feature, I've left access to the original recording method but renamed it L<record_v1()|/record_v1($file, $duration)>. If, for any reason,
+you wish to use the original recording method, then you need to change your scripts to call the renamed function. But please contact me if you are
+having problems, and I will do my best to fix them. Future releases will eventually drop the old recording method.
+
+
+=head2 Example Scripts
+
+Example scripts have been provided in the package which illustrate the expected use of the package (and
+are useable programs in themeselves). To see the full man page of each script, simply run it with the '-man' option.
+
+=over 4
+
+=item L<dvbt-devices|script::dvbt-devices>
 
 Shows information about fited DVB-T tuners
 
-=item dvbt-scan
+=item L<dvbt-scan|script::dvbt-scan>
 
 Run this by providing the frequency file (usually stored in /usr/share/dvb/dvb-t). If run as root, this will set up the configuration
 files for all users. For example:
@@ -79,13 +207,24 @@ files for all users. For example:
 
 NOTE: Frequency files are provided by the 'dvb' rpm package available for most distros
 
-=item dvbt-epg
+=item L<dvbt-chans|script::dvbt-chans>
 
-When run, this grabs the latest EPG information and updates a MySql database:
+Use to display the current list of tuned channels. Shows them in logical channel number order. The latest version shows information on
+the PID numbers for the video, audio, teletext, and subtitle streams that make up each channel.
+
+It also now has the option (-multi) to display the channels grouped into their multiplexes (i.e. their transponder or TSIDs). This becomes
+really useful if you want to schedule a multiplex recording and need to check which channels you can record at the same time. 
+
+
+=item L<dvbt-epg|script::dvbt-epg>
+
+When run, this grabs the latest EPG information and prints out the program guide:
 
    $ dvbt-epg
 
-=item dvbt-record
+NOTE: This process can take quite a while (it takes around 30 minutes on my system), so please be patient.
+
+=item L<dvbt-record|script::dvbt-record>
 
 Specify the channel, the duration, and the output filename to record a channel:
 
@@ -93,7 +232,7 @@ Specify the channel, the duration, and the output filename to record a channel:
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 
-=item dvbt-ffrec
+=item L<dvbt-ffrec|script::dvbt-ffrec>
 
 Similar to dvbt-record, but pipes the transport stream into ffmpeg and uses that to transcode the data directly into an MPEG file (without
 saving the transport stream file).
@@ -104,20 +243,48 @@ Specify the channel, the duration, and the output filename to record a channel:
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 
-=item dvbt-chans
+It's worth mentioning that this relies on ffmpeg operating correctly. Some versions of ffmpeg are fine; others have failed reporting:
 
-Use to display the current list of tuned channels. Shows them in logical channel number order.
+  "error, non monotone timestamps"
+
+which appear to be related to piping the in via stdin (running ffmpeg on a saved transport stream file always seems to work) 
+
+=item L<dvbt-multirec|script::dvbt-multirec>
+
+Record multiple channels at the same time (as long as they are all in the same multiplex).
+
+Specify each recording with a filename, duration, and optional offset start time. Then specify the channel name, or a list of the pids you
+want to record. Repeat this for every file you want to record.
+
+For example, you want to record some programs starting at 13:00. The list of programs are:
+
+=over 4
+
+=item * ITV2 start 13:00, duration 0:30
+
+=item * FIVE start 13:15, duration 0:30
+
+=item * ITV1 start 13:30, duration 0:30
+
+=item * More 4 start 13:15, duration 0:05
+
+=item * E4 start 13:05, duration 0:30
+
+=item * Channel 4+1 start 13:05, duration 1:30
 
 =back
 
-=head2 Logical Channel Numbers (LCNs)
+To record these (running the script at 13:00) use:
 
-I've finally worked out how to gather the logical channel number information for all of the channels. The scan() method now stores the LCN information
-into the config files, and makes the list of channels available through the L</get_channel_list()> method. So you can now get the channel number you
-see (and enter) on any standard freeview TV or PVR.
+   $ dvbt-multirec file=itv2.mpeg ch=itv2 len=0:30  \
+   	               file=five.mpeg ch=five len=0:30 off=0:15 \
+   	               file=itv1.mpeg ch=itv1 len=0:30 off=0:30 \
+   	               file=more4.mpeg ch=more4 len=0:05 off=0:15 \
+   	               file=e4.mpeg ch=e4 len=0:30 off=0:05 \
+   	               file=ch4+1.mpeg ch='channel4+1' len=1:30 off=0:05 
+   
 
-This is of most interest if you want to use the L</epg()> method to gather data to create a TV guide. Generally, you'd like the channel listings
-to be sorted in the order to which we've all become used to through TV viewing (i.e. it helps to have BBC1 appear before channel 4!). 
+=back
 
 
 =head2 HISTORY
@@ -126,7 +293,7 @@ I started this package after being lent a Hauppauge WinTV-Nova-T usb tuner (than
 do some command line recording. After I'd failed to get most applications to even talk to the tuner I discovered
 xawtv (L<http://linux.bytesex.org/xawtv/>), started looking at it's source code and started reading the DVB-T standards.
 
-This package is the result of various experminets and is being used for my web TV listing and program
+This package is the result of various expermients and is being used for my web TV listing and program
 record scheduling software.
 
 =cut
@@ -143,6 +310,10 @@ use File::Basename ;
 use File::Path ;
 use POSIX qw(strftime);
 
+use Linux::DVB::DVBT::Config ;
+use Linux::DVB::DVBT::Utils ;
+use Linux::DVB::DVBT::Ffmpeg ;
+
 #============================================================================================
 # EXPORTER
 #============================================================================================
@@ -152,7 +323,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '1.09';
+our $VERSION = '2.00';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -215,7 +386,7 @@ By default this flag is set (so each scan merge with prvious results). Clear thi
 
 =item B<frontend_params> - Last used frontend settings 
 
-This is a HASH ref containing the parameters used in the last call to L<set_frontend(%params)> (either externally or internally by this module).
+This is a HASH ref containing the parameters used in the last call to L</set_frontend(%params)> (either externally or internally by this module).
 
 =item B<config_path> - Search path for configuration files
 
@@ -237,11 +408,12 @@ This field is only used internally by the object but can be used for debug/infor
 
 =item B<errmode> - Set error handling mode
 
-Set this field to either 'die' (the default) or 'return' and when an error occurs, the error mode action will be taken.
+Set this field to one of 'die' (the default), 'return', or 'message' and when an error occurs that error mode action will be taken.
 
 If the mode is set to 'die' then the application will terminate after printing all of the errors stored in the errors list (see L</errors> field).
-When the mode is set to 'return' then the object method returns control back to the calling application with a non-zero status. It is the
-application's responsibility to handle the errors (stored in  L</errors>)
+When the mode is set to 'return' then the object method returns control back to the calling application with a non-zero status (which is actually the 
+current count of errors logged so far). Similalrly, if the mode is set to 'message' then the object method simply returns the error message. 
+It is the application's responsibility to handle the errors (stored in  L</errors>) when setting the mode to 'return' or 'message'.
 
 =item B<timeout> - Timeout
 
@@ -275,6 +447,8 @@ my @FIELD_LIST = qw/dvb
 					_scan_freqs
 					_device_index
 					_device_info
+					_demux_filters
+					_multiplex_info
 					/ ;
 my %FIELDS = map {$_=>1} @FIELD_LIST ;
 
@@ -321,15 +495,36 @@ my %DEFAULTS = (
 	# Internal
 	
 	# scanning driven by frequency file
-	'_scan_freqs'	=> 0,
+	'_scan_freqs'		=> 0,
 	
 	# which device in the device list are we
-	'_device_index' => undef,
+	'_device_index' 	=> undef,
 	
 	# ref to this device's info from the device list
-	'_device_info'	=> undef,
+	'_device_info'		=> undef,
+	
+	# list of demux filters currently active
+	'_demux_filters'	=> [],
+	
+	# list of multiplex recordings scheduled
+	'_multiplex_info'	=> {},
 ) ;
 
+# Frequency must be at least 100 MHz
+# The Stockholm agreement of 1961 says:
+#   Band III  : 174 MHz - 230 MHz
+#   Band IV/V : 470 MHz - 826 MHz
+#
+# Current dvb-t files range: 177.5 MHz - 858 MHz
+#
+# So 100 MHz allows for country "variations"!
+#
+my $MIN_FREQ = 100000000 ;
+
+# Maximum PID value
+my $MAX_PID = 0x2000 ;
+
+# code value to use 'auto' setting
 my $AUTO = 999 ;
 
 #typedef enum fe_code_rate {
@@ -515,7 +710,7 @@ my %FE_CAPABLE = (
 
 #============================================================================================
 
-=item C<< new([%args]) >>
+=item B<new([%args])>
 
 Create a new object.
 
@@ -546,7 +741,7 @@ sub new
 
 	# Initialise hardware
 	# Special case - allow for dvb being preset (for testing)
-	unless($self->dvb)
+	unless($self->{dvb})
 	{
 		$self->hwinit() ;
 	}
@@ -573,114 +768,43 @@ sub _init
 	$self->set(%args) ;
 }
 
+
+
 #-----------------------------------------------------------------------------
 # Object destruction
 sub DESTROY
 {
 	my $self = shift ;
 
-	if (ref($self->dvb()))
-	{
-		dvb_fini($self->dvb) ;
-	}
+	$self->dvb_close() ;
 }
 
 
 #-----------------------------------------------------------------------------
 
-=item C<< hwinit() >>
+=item B<dvb_close()>
 
-I<Object internal method>
-
-Initialise the hardware (create dvb structure). Called once and sets the adpater &
-frontend number for this object.
-
-If no adapter number has been specified yet then use the first device in the list.
+Close the hardware down (for example, to allow another script access), without
+destroying the object.
 
 =cut
 
-sub hwinit
+sub dvb_close
 {
 	my $self = shift ;
 
-	my $info_aref = $self->devices() ;
+	if (ref($self->{dvb}))
+	{
+		## Close any open demux filters
+		$self->close_demux_filters() ;
 
-	# If no adapter set, use first in list
-	if (!defined($self->adapter_num))
-	{
-		# use first device found
-		if (scalar(@$info_aref))
-		{
-			$self->set(
-				'adapter_num' => $info_aref->[0]{'adapter_num'},
-				'frontend_num' => $info_aref->[0]{'frontend_num'},
-			) ;
-			$self->_device_index(0) ;
-		}
-		else
-		{
-			return $self->handle_error("Error: No adapters found to initialise") ;
-		}
+		## Free up hardware
+		dvb_fini($self->dvb) ;
+		
+		$self->{dvb} = undef ;
 	}
-	
-	# If no frontend set, use first in list
-	if (!defined($self->frontend_num))
-	{
-		# use first frontend found
-		if (scalar(@$info_aref))
-		{
-			my $adapter = $self->adapter_num ;
-			my $dev_idx=0;
-			foreach my $device_href (@$info_aref)
-			{
-				if ($device_href->{'adapter_num'} == $adapter)
-				{
-					$self->frontend_num($device_href->{'frontend_num'}) ;				
-					$self->_device_index($dev_idx) ;
-					last ;
-				}
-				++$dev_idx ;
-			}
-		}
-		else
-		{
-			return $self->handle_error("Error: No adapters found to initialise") ;
-		}
-	}
-	
-	## ensure device exists
-	if (!defined($self->_device_index))
-	{
-		my $adapter = $self->adapter_num ;
-		my $fe = $self->frontend_num ;
-		my $dev_idx=0;
-		foreach my $device_href (@$info_aref)
-		{
-			if ( ($device_href->{'adapter_num'} == $adapter) && ($device_href->{'frontend_num'} == $fe) )
-			{
-				$self->_device_index($dev_idx) ;
-				last ;
-			}
-			++$dev_idx ;
-		}
-		if (!defined($self->_device_index))
-		{
-			return $self->handle_error("Error: Specified adapter ($adapter) and frontend ($fe) does not exist") ;
-		}
-	}
-	
-	## set info ref
-	my $dev_idx = $self->_device_index() ;
-	$self->_device_info($info_aref->[$dev_idx]) ;
-	
-	# Create DVB 
-	my $dvb = dvb_init_nr($self->adapter_num, $self->frontend_num) ;
-	$self->dvb($dvb) ;
-
-	# get & set the device names
-	my $names_href = dvb_device_names($dvb) ;
-	$self->set(%$names_href) ;
 }
+
 
 
 #============================================================================================
@@ -699,7 +823,7 @@ Use as Linux::DVB::DVBT->method()
 
 #-----------------------------------------------------------------------------
 
-=item C<< debug([$level]) >>
+=item B<debug([$level])>
 
 Set new debug level. Returns setting.
 
@@ -719,7 +843,7 @@ sub debug
 
 #-----------------------------------------------------------------------------
 
-=item C<< dvb_debug([$level]) >>
+=item B<dvb_debug([$level])>
 
 Set new debug level for dvb XS code
 
@@ -734,7 +858,7 @@ sub dvb_debug
 
 #-----------------------------------------------------------------------------
 
-=item C<< verbose([$level]) >>
+=item B<verbose([$level])>
 
 Set new verbosity level. Returns setting.
 
@@ -754,7 +878,7 @@ sub verbose
 
 #-----------------------------------------------------------------------------
 
-=item C<< device_list() >>
+=item B<device_list()>
 
 Return list of available hardware as an array of hashes. Each hash entry is of the form:
 
@@ -788,11 +912,13 @@ sub device_list
 }
 
 
+
+
 #============================================================================================
 
 =back
 
-=head2 OBJECT DATA METHODS
+=head2 OBJECT METHODS
 
 =over 4
 
@@ -800,10 +926,9 @@ sub device_list
 
 #============================================================================================
 
-
 #----------------------------------------------------------------------------
 
-=item C<< set(%args) >>
+=item B<set(%args)>
 
 Set one or more settable parameter.
 
@@ -831,96 +956,9 @@ sub set
 
 }
 
-
-#============================================================================================
-
-=back
-
-=head2 OBJECT METHODS
-
-=over 4
-
-=cut
-
-#============================================================================================
-
 #----------------------------------------------------------------------------
 
-=item C<< select_channel($channel_name) >>
-
-Tune the frontend & the demux based on $channel_name. 
-
-This method uses a "fuzzy" search to match the specified channel name with the name broadcast by the network.
-The case of the name is not important, and neither is whitespace. The search also checks for both numeric and
-name instances of a number (e.g. "1" and "one").
-
-For example, the following are all equivalent and match with the broadcast channel name "BBC ONE":
-
-    bbc1
-    BbC One
-    b b c    1  
-
-Returns 0 if ok; error code otherwise
-
-=cut
-
-sub select_channel
-{
-	my $self = shift ;
-	my ($channel_name) = @_ ;
-
-	# ensure we have the tuning info
-	my $tuning_href = $self->get_tuning_info() ;
-	if (! $tuning_href)
-	{
-		return $self->handle_error("Unable to get tuning information") ;
-	}
-
-	# get the channel info	
-	my ($frontend_params_href, $demux_params_href) = Linux::DVB::DVBT::Config::find_channel($channel_name, $tuning_href) ;
-	if (! $frontend_params_href)
-	{
-		return $self->handle_error("Unable to find channel $channel_name") ;
-	}
-
-	# Tune frontend
-	if ($self->set_frontend(%$frontend_params_href, 'timeout' => $self->timeout))
-	{
-		return $self->handle_error("Unable to tune frontend") ;
-	}
-
-	# Set demux
-	if ($self->set_demux($demux_params_href->{'video'}, $demux_params_href->{'audio'}, $demux_params_href->{'teletext'}))
-	{
-		return $self->handle_error("Unable to set demux") ;
-	}
-
-	return 0 ;
-}
-	
-
-#----------------------------------------------------------------------------
-
-=item C<< log_error($error_message) >>
-
-I<Object internal method>
-
-Add the error message to the error log. Get the log as an ARRAY ref via the 'errors()' method
-
-=cut
-
-sub log_error
-{
-	my $self = shift ;
-	my ($error_message) = @_ ;
-	
-	push @{$self->errors()}, $error_message ;
-	
-}
-
-#----------------------------------------------------------------------------
-
-=item C<< handle_error($error_message) >>
+=item B<handle_error($error_message)>
 
 Add the error message to the error log and then handle the error depending on the setting of the 'errmode' field. 
 
@@ -944,6 +982,11 @@ sub handle_error
 		# return number of errors logged so far
 		return scalar(@{$self->errors()}) ;
 	}	
+	elsif ($mode =~ m/message/i)
+	{
+		# return this error message
+		return $error_message ;
+	}	
 	elsif ($mode =~ m/die/i)
 	{
 		# Die showing all logged errors
@@ -951,551 +994,22 @@ sub handle_error
 	}	
 }
 
-#----------------------------------------------------------------------------
 
-=item C<< set_frontend(%params) >>
+#============================================================================================
 
-Tune the frontend to the specified frequency etc. HASH %params contains:
+=back
 
-    'frequency'
-    'inversion'
-    'bandwidth'
-    'code_rate_high'
-    'code_rate_low'
-    'modulation'
-    'transmission'
-    'guard_interval'
-    'hierarchy'
-    'timeout'
+=head3 SCANNING
 
-(If you don't know what these parameters should be set to, then I recommend you just use the L<select_channel($channel_name)> method)
-
-Returns 0 if ok; error code otherwise
+=over 4
 
 =cut
 
-sub set_frontend
-{
-	my $self = shift ;
-	my (%params) = @_ ;
-
-	# Set up the frontend
-	my $rc = dvb_tune($self->{dvb}, {%params}) ;
-	
-	# If tuning went ok, then save params
-	if ($rc == 0)
-	{
-		$self->frontend_params( {%params} ) ;
-	}
-	
-	return $rc ;
-}
-	
-#----------------------------------------------------------------------------
-
-=item C<< set_demux($video_pid, $audio_pid, $teletext_pid) >>
-
-Selects a particular video/audio stream (and optional teletext stream) and sets the
-demultiplexer to those streams (ready for recording).
-
-(If you don't know what these parameters should be set to, then I recommend you just use the L<select_channel($channel_name)> method)
-
-Returns 0 for success; error code otherwise.
-
-=cut
-
-sub set_demux
-{
-	my $self = shift ;
-	my ($video_pid, $audio_pid, $teletext_pid) = @_ ;
-
-print STDERR "set_demux( <$video_pid>, <$audio_pid>, <$teletext_pid> )\n" if $DEBUG ;
-
-	$teletext_pid ||= 0 ;
-
-	return dvb_set_demux($self->{dvb}, $video_pid, $audio_pid, $teletext_pid, $self->{'timeout'}) ;
-}
-
+#============================================================================================
 
 #----------------------------------------------------------------------------
 
-=item C<< epg() >>
-
-Gathers the EPG information into a HASH using the previously tuned frontend and 
-returns the EPG info. If the frontend is not yet tuned then the method attempts
-to use the tuning information (either from a previous scan or from reading the config
-files) to set up the frontend.
-
-Note that you can safely run this method while recording; the EPG scan does not affect
-the demux or the frontend (once it has been set)
-
-Returns an array:
-
-	[0] = EPG HASH
-	[1] = Dates HASH
-
-EPG HASH format is:
-
-    $channel_name =>
-       $pid => {
-		'pid'		=> program unique id
-		'channel'	=> channel name
-		
-		'date'		=> date
-		'start'		=> start time
-		'end'		=> end time
-		'duration'	=> duration
-		
-		'title'		=> title string
-		'text'		=> synopsis string
-		'etext'		=> extra text (not usually used)
-		'genre'		=> genre string
-		
-		'repeat'	=> repeat count
-		'episode'	=> episode number
-		'num_episodes' => number of episodes
-	}
-
-i.e. The information is keyed on channel name and program id (pid)
-
-The genre string is formatted as:
-
-    "Major category|genre/genre..."
-
-For example:
-
-    "Film|movie/drama (general)"
-
-This allows for a simple regexp to extract the information (e.g. in a TV listings application 
-you may want to only use the major category in the main view, then show the extra genre information in
-a more detailed view)
-
-Dates HASH format is:
-
-    $channel_name => {
-		'start_date'	=> date of first program for this channel 
-		'start'			=> start time of first program for this channel
-		
-		'end_date'		=> date of last program for this channel 
-		'end'			=> end time of last program for this channel
-	}
-
-i.e. The information is keyed on channel name
-
-The dates HASH is created so that an existing EPG database can be updated by removing existing information for a channel between the indicated dates.
-
-=cut
-
-
-sub epg
-{
-	my $self = shift ;
-	my ($section) = @_ ;		# debug only!
-	
-	$section ||= 0 ;
-
-	my %epg ;
-	my %dates ;
-
-	# Get tuning information
-	my $tuning_href = $self->get_tuning_info() ;
-
-	# Create a lookup table to convert [tsid-pnr] values into channel names & channel numbers 
-	my $channel_lookup_href ;
-	my $channels_aref = $self->get_channel_list() ;
-	if ( $channels_aref && $tuning_href )
-	{
-#print STDERR "creating chan lookup\n" ;
-#prt_data("Channels=", $channels_aref) ;
-#prt_data("Tuning=", $tuning_href) ;
-		$channel_lookup_href = {} ;
-		foreach my $chan_href (@$channels_aref)
-		{
-			my $channel = $chan_href->{'channel'} ;
-
-#print STDERR "CHAN: $channel\n" ;
-			if (exists($tuning_href->{'pr'}{$channel}))
-			{
-#print STDERR "created CHAN: $channel for $tuning_href->{pr}{$channel}{tsid} -  for $tuning_href->{pr}{$channel}{pnr}\n" ;
-				# create the lookup
-				$channel_lookup_href->{"$tuning_href->{'pr'}{$channel}{tsid}-$tuning_href->{'pr'}{$channel}{pnr}"} = {
-					'channel' => $channel,
-					'channel_num' => $tuning_href->{'pr'}{$channel}{'lcn'} || $chan_href->{'channel_num'},
-				} ;
-			}
-		}
-	}	
-prt_data("Lookup=", $channel_lookup_href) if $DEBUG >= 2 ;
-
-
-	## check for frontend tuned
-	
-	# list of carrier frequencies to tune to
-	my @next_freq ;
-	
-	# if not tuned yet, tune to all station freqs (assumes scan has been performed)
-	if (!$self->frontend_params())
-	{
-		# Grab first channel settings & attempt to set frontend
-		if ($tuning_href)
-		{
-			@next_freq = values %{$tuning_href->{'ts'}} ;
-			my $params_href = shift @next_freq ;
-prt_data("Set frontend : params=", $params_href) if $DEBUG >= 2 ;
-			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
-		}
-	}
-
-	# start with a cleared list
-	dvb_clear_epg() ;
-	
-	# collect all the EPG data from all carriers
-	my $params_href ;
-	my $epg_data ;
-	do
-	{		
-		# if not tuned by now then we have to raise an error
-		if (!$self->frontend_params())
-		{
-			# Raise an error
-			return $self->handle_error("Frontend must be tuned before gathering EPG data (have you run scan() yet?)") ;
-		}
-	
-		# Gather EPG information into a list of HASH refs (collects all previous runs)
-		$epg_data = dvb_epg($self->{dvb}, $VERBOSE, $DEBUG, $section) ;
-
-		# tune to next carrier in the list (if any are left)
-		$params_href = undef ;
-		if (@next_freq)
-		{
-			$params_href = shift @next_freq ;
-prt_data("Retune params=", $params_href)  if $DEBUG >= 2 ;
-			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
-		}
-	}
-	while ($params_href) ;
-
-prt_data("EPG data=", $epg_data) if $DEBUG ;
-
-	# ok to clear down the low-level list now
-	dvb_clear_epg() ;
-		
-	# Analyse EPG info
-	foreach my $epg_entry (@$epg_data)
-	{
-		my $tsid = $epg_entry->{'tsid'} ;
-		my $pnr = $epg_entry->{'pnr'} ;
-
-		my $chan = "$tsid-$pnr" ;		
-		my $channel_num = $chan ;
-		
-		if ($channel_lookup_href)
-		{
-			# Replace channel name with the text name (rather than tsid/pnr numbers) 
-			$channel_num = $channel_lookup_href->{$chan}{'channel_num'} || $chan ;
-			$chan = $channel_lookup_href->{$chan}{'channel'} || $chan ;
-		}
-		
-prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG ;
-		
-		# {chan}
-		#	{pid}
-		#              date => 18-09-2008,
-		#              start => 23:15,
-		#              end => 03:20,
-		#              duration => 04:05,
-		#
-		#              title => Personal Services,
-		#              text => This is a gently witty, if curiously coy, attempt by director
-		#              genre => Film,
-		#              
-		#              episode => 1
-		#			   num_episodes => 2
-		#              repeat => 0
-		#
-
-		my @start_localtime =  localtime($epg_entry->{'start'}) ;
-		my $start = strftime "%H:%M:%S", @start_localtime ;
-		my $date  = strftime "%Y-%m-%d", @start_localtime ;
-
-		my $pid_date = strftime "%Y%m%d", @start_localtime ;
-		my $pid = "$epg_entry->{'id'}-$channel_num-$pid_date" ;	# id is reused on different channels 
-		
-		my @end_localtime =  localtime($epg_entry->{'stop'}) ;
-		my $end = strftime "%H:%M:%S", @end_localtime ;
-		my $end_date  = strftime "%Y-%m-%d", @end_localtime ;
-
-
-		# keep track of dates
-		$dates{$chan} ||= {
-			'start_min'	=> $epg_entry->{'start'},
-			'end_max'	=> $epg_entry->{'stop'},
-			
-			'start_date'	=> $date,
-			'start'			=> $start,
-			'end_date'		=> $end_date,
-			'end'			=> $end,
-		} ;
-
-		if ($epg_entry->{'start'} < $dates{$chan}{'start_min'})
-		{
-			$dates{$chan}{'start_min'} = $epg_entry->{'start'} ;
-			$dates{$chan}{'start_date'} = $date ;
-			$dates{$chan}{'start'} = $start ;
-		}
-		if ($epg_entry->{'stop'} > $dates{$chan}{'end_max'})
-		{
-			$dates{$chan}{'end_max'} = $epg_entry->{'stop'} ;
-			$dates{$chan}{'end_date'} = $end_date ;
-			$dates{$chan}{'end'} = $end ;
-		}
-
-
-		my $duration = Linux::DVB::DVBT::Utils::duration($start, $end) ;
-		
-		my $title = Linux::DVB::DVBT::Utils::text($epg_entry->{'name'}) ;
-		my $synopsis = Linux::DVB::DVBT::Utils::text($epg_entry->{'stext'}) ;
-		my $etext = Linux::DVB::DVBT::Utils::text($epg_entry->{'etext'}) ;
-		
-		my $episode ;
-		my $num_episodes ;
-		my %flags ;
-		
-		Linux::DVB::DVBT::Utils::fix_title(\$title, \$synopsis) ;
-		Linux::DVB::DVBT::Utils::fix_episodes(\$title, \$synopsis, \$episode, \$num_episodes) ;
-		Linux::DVB::DVBT::Utils::fix_audio(\$title, \$synopsis, \%flags) ;
-			
-
-		$epg{$chan}{$pid} = {
-			'pid'		=> $pid,
-			'channel'	=> $chan,
-			
-			'date'		=> $date,
-			'start'		=> $start,
-			'end'		=> $end,
-			'duration'	=> $duration,
-			
-			'title'		=> $title,
-			'text'		=> $synopsis,
-			'etext'		=> $etext,
-			'genre'		=> $epg_entry->{'genre'},
-			
-			'repeat'	=> '',
-			'episode'	=> $episode,
-			'num_episodes' => $num_episodes,
-		} ;
-
-prt_data("EPG final entry ($chan) $pid=", $epg{$chan}{$pid}) if $DEBUG ;
-
-	}
-		
-	return (\%epg, \%dates) ;
-}
-
-
-
-
-
-
-#----------------------------------------------------------------------------
-
-=item C<< scan_from_file($freq_file) >>
-
-Reads the DVBT frequency file (usually stored in /usr/share/dvb/dvb-t) and uses the contents to
-set the frontend to the initial frequency. Then starts a channel scan using that tuning.
-
-$freq_file must be the full path to the file. The file contents should be something like:
-
-   # Oxford
-   # T freq bw fec_hi fec_lo mod transmission-mode guard-interval hierarchy
-   T 578000000 8MHz 2/3 NONE QAM64 2k 1/32 NONE
-
-NOTE: Frequency files are provided by the 'dvb' rpm package available for most distros
-
-Returns the discovered channel information as a HASH (see L</scan()>)
-
-=cut
-
-# TODOs
-#
-# 1. Pass freq info back up here
-# 2. Don't re-scan previously seen freqs
-# 3. Use prog TSID + prog freq to determine Transponders
-#
-sub scan_from_file
-{
-	my $self = shift ;
-	my ($freq_file) = @_ ;
-
-	return $self->handle_error( "Error: No frequency file specified") unless $freq_file ;
-
-	print STDERR "scan_from_file() : Linux::DVB::DVBT version $VERSION\n\n" if $DEBUG ;
-
-	my @tuning_list ;
-
-	# device info
-	my $dev_info_href = $self->_device_info ;
-	my $capabilities_href = $dev_info_href->{'capabilities'} ;
-
-prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBUG>=2 ;
-
-
-	## parse file
-	open my $fh, "<$freq_file" or return $self->handle_error( "Error: Unable to read frequency file $freq_file : $!") ;
-	my $line ;
-	while (defined($line=<$fh>))
-	{
-		chomp $line ;
-		## # T freq      bw   fec_hi fec_lo mod   transmission-mode guard-interval hierarchy
-		##   T 578000000 8MHz 2/3    NONE   QAM64 2k                1/32           NONE
-
-		if ($line =~ m%^\s*T\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)%i)
-		{
-			my $freq = $1 ;
-
-			## setting all params doesn't necessarily work since the freq file is quite often out of date!				
-			my %params = (
-				bandwidth => $2,
-				code_rate_high => $3,
-				code_rate_low => $4,
-				modulation => $5,
-				transmission => $6,
-				guard_interval => $7,
-				hierarchy => $8,
-			) ;
-			
-			# convert file entry into a frontend param
-			my %tuning_params ;
-			foreach my $param (keys %params)
-			{
-				## convert freq file value into VDR format
-				if (exists($FE_PARAMS{$param}{$params{$param}}))
-				{
-					$tuning_params{$param} = $FE_PARAMS{$param}{$params{$param}} ;
-				}				
-			}
-			$tuning_params{'frequency'} = $freq ;
-
-prt_data("Tuning params=", \%tuning_params) if $DEBUG>=2 ;
-
-			## add to tuning list
-			push @tuning_list, \%tuning_params ;
-		}
-	}
-	close $fh ;
-	
-	# exit on failure
-	return $self->handle_error( "Error: No tuning parameters found") unless @tuning_list ;
-
-	## prep for scan
-	dvb_scan_new($self->{dvb}, $VERBOSE) ;
-
-	## tune into each frequency & perform the scan
-	my $freqs_href = {} ;
-	my $saved_merge = $self->merge ;
-	while (@tuning_list)
-	{
-		my $tuned = 0 ;
-
-print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
-		
-		while (!$tuned)
-		{
-			my $tuning_params_href = shift @tuning_list ;
-
-			# convert file entry into a frontend param
-			my %tuning_params ;
-			foreach my $param (keys %$tuning_params_href)
-			{
-				next unless exists($FE_CAPABLE{$param}) ;
-print STDERR " +check param $param\n" if $DEBUG>=2 ;
-
-				## check to see if we are capable of using auto
-				unless ($capabilities_href->{$FE_CAPABLE{$param}})
-				{
-					# can't use auto so we have to set it
-					$tuning_params{$param} = $tuning_params_href->{$param} ;
-				}
-			}
-			$tuning_params{'frequency'} = $tuning_params_href->{'frequency'} ;
-			
-			# set tuning
-			print STDERR "Setting frequency: $tuning_params{frequency} Hz\n" if $self->verbose ;
-#			my $rc = $self->set_frontend(%tuning_params, 'timeout' => $self->timeout) ;
-			my $rc = dvb_scan_tune($self->{dvb}, {%tuning_params}) ;
-			
-			# If tuning went ok, then save params
-			if ($rc == 0)
-			{
-				$self->frontend_params( {%tuning_params} ) ;
-				$tuned = 1 ;
-			}
-			else
-			{
-				print STDERR "    Failed to set the DVB-T tuner to $tuning_params{frequency} Hz ... skipping\n" ;
-
-				# try next frequency
-				last unless @tuning_list ;			
-			}
-
-print STDERR "Attempt tune: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
-
-		}
-		
-		last if !$tuned ;
-	
-		# Scan
-		$self->_scan_freqs(1) ;
-		$self->scan() ;
-		$self->_scan_freqs(0) ;
-		
-		# ensure next results are merged in
-		$self->merge(1) ;
-		
-		# update frequency list
-		my $tuning_href = $self->tuning ;
-		$freqs_href = $tuning_href->{'freqs'} if exists($tuning_href->{'freqs'}) ;
-		
-		# update frequencies
-		my %freq_list ;
-		foreach my $href (@tuning_list)
-		{
-			$freq_list{$href->{'frequency'}} = 1 ;
-		}
-		foreach my $freq (keys %$freqs_href)
-		{
-			next if $freqs_href->{$freq}{'seen'} ;
-			if (!exists($freq_list{$freq}) )
-			{
-				push @tuning_list, {
-					'frequency'		=> $freq,
-					%{$freqs_href->{$freq}},
-				} ;
-print STDERR " + adding freq $freq\n" if $DEBUG>=2 ;
-			}
-		} 
-
-prt_data("Loop end Tuning list=", \@tuning_list) if $DEBUG>=2 ;
-
-print STDERR "Loop end: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
-
-	}
-
-	## restore flag
-	$self->merge($saved_merge) ;
-
-	## clear ready for next scan
-	dvb_scan_new($self->{dvb}, $VERBOSE) ;
-
-
-	## return tuning settings	
-	return $self->tuning() ;
-}
-
-
-#----------------------------------------------------------------------------
-
-=item C<< scan() >>
+=item B<scan()>
 
 Starts a channel scan using previously set tuning. On successful completion of a scan,
 saves the results into the configuration files.
@@ -1551,6 +1065,13 @@ sub scan
 	my $tuning_href = $self->get_tuning_info() ;
 
 prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
+
+	# hardware closed
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
 
 	# if not tuned by now then we have to raise an error
 	if (!$self->frontend_params())
@@ -1646,6 +1167,26 @@ prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 	#    	...
 	#    }
 	#
+	#  lcn =>
+	#    { # HASH(0x83d2608)
+	#      $tsid =>
+	#        { # HASH(0x8442524)
+	#          $pnr =>
+	#            { # HASH(0x8442578)
+	#              lcn => 20,
+	#              service_type => 2,
+	#              visible => 1,
+	#            },
+	#        },
+	#      16384 =>
+	#        { # HASH(0x8442af4)
+	#          18496 =>
+	#            { # HASH(0x8442b48)
+	#              lcn => 700,
+	#              service_type => 4,
+	#              visible => 1,
+	#            },
+	#        },
 	# 
 	my $raw_scan_href = dvb_scan($self->{dvb}, $VERBOSE) ;
 
@@ -1664,149 +1205,67 @@ print STDERR "process raw...\n" if $DEBUG>=5 ;
 		'lcn' 	=> {},
 	} ;
 
-	# create hash of frequencies/channel names for the programs
-	my %programs ;
+	## Collect together LCN info and map TSIDs to transponder settings
+	my %tsids ;
+	foreach my $ts_href (@{$raw_scan_href->{'ts'}})
+	{
+		my $tsid = $ts_href->{'tsid'} ;
+		
+		# handle LCN
+		my $lcn_href = delete $ts_href->{'lcn'} ;
+		foreach my $pnr (keys %$lcn_href)
+		{
+			$scan_href->{'lcn'}{$tsid}{$pnr} = $lcn_href->{$pnr} ;
+		}
+
+		# set TSID
+		$tsids{$tsid} = $ts_href ;
+		$tsids{$tsid}{'frequency'} = undef ;
+	}	
+
+	## Use program info to map TSID to freq (choose strongest signal where necessary)
 	foreach my $prog_href (@{$raw_scan_href->{'pr'}})
 	{
-		my $chan = $prog_href->{'name'} ;
+		my $tsid = $prog_href->{'tsid'} ;
+		my $name = $prog_href->{'name'} ;
+		my $pnr = $prog_href->{'pnr'} ;
 		
-		# create a program entry for each frequency
 		my $freqs_aref = delete $prog_href->{'freqs'} ;
-		foreach my $freq (@$freqs_aref)
-		{
-			$programs{$freq}{$chan} = $prog_href ;
-		}
-	}
-prt_data("Programs=", \%programs) if $DEBUG>=5 ;
-
-	# process each freq/channel
-	my %tsids ;
-	foreach my $freq (keys %programs)
-	{
-		# process progs
-		foreach my $chan (keys %{$programs{$freq}})
-		{
-			# map tsid to freq(s)
-			my $tsid = $programs{$freq}{$chan}{'tsid'} ;
-			$tsids{$tsid}{$freq} = 1 ;
-			
-			## add to processed hash 
-
-			# see if there are more than 1
-			my $overwrite = 1 ;
-			$scan_href->{'pr'} ||= {} ;
-			if (exists($scan_href->{'pr'}{$chan}))
-			{	
-				my $existing_freq = $scan_href->{'pr'}{$chan}{'tuned_freq'} ;
-
-print STDERR " + found 2 progs \"$chan\" : existing $existing_freq Hz ($raw_scan_href->{'freqs'}{$existing_freq}{'strength'}) -> new $freq Hz ($raw_scan_href->{'freqs'}{$freq}{'strength'})\n" if $DEBUG>=5 ;
-				
-				# use channel associated with strongest transponder
-				$overwrite=0;
-				if ($raw_scan_href->{'freqs'}{$freq}{'strength'} > $raw_scan_href->{'freqs'}{$existing_freq}{'strength'})
-				{
-					my $new_strength = $raw_scan_href->{'freqs'}{$freq}{'strength'} * 100 / 65535 ;
-					my $old_strength = $raw_scan_href->{'freqs'}{$existing_freq}{'strength'} * 100 / 65535 ;
-					
-					print STDERR "  Found 2 programs \"$chan\" : using new signal $new_strength % (old $old_strength %)\n" if $VERBOSE ;
-					
-					$overwrite = 1 ;
-print STDERR " + + using new\n" if $DEBUG>=5 ;
-				}
-			}
-			if ($overwrite)
-			{		
-				$scan_href->{'pr'}{$chan} = $programs{$freq}{$chan} ;
-			}
-		}
-	}
-prt_data("TSIDs=", \%tsids) if $DEBUG>=5 ;
-
-print STDERR "process raw streams...\n" if $DEBUG>=5 ;
-	
-	## Process the results for transponders
-	my %transponders ;
-	foreach my $stream_href (@{$raw_scan_href->{'ts'}})
-	{
-		# map tsid+freq to a transponder
-		my $tsid = $stream_href->{'tsid'} ;
-		my $centre_freq = $stream_href->{'frequency'} ;
-		$transponders{"$centre_freq-$tsid"} = $stream_href ;
-	}
-prt_data("Transponders=", \%transponders) if $DEBUG>=5 ;
-
-	## If we have no results, use the program info
-	if (! keys %transponders)
-	{
-prt_data("FREQS=", $raw_scan_href->{'freqs'}) if $DEBUG>=5 ;
-		foreach my $tsid (keys %tsids)
-		{
-print STDERR "tsid=$tsid\n"  if $DEBUG>=5 ;	
+		next unless @$freqs_aref ;
+		my $freq = @{$freqs_aref}[0] ;
 		
-			# can only do this for a single frequency
-			if (scalar(keys %{$tsids{$tsid}}) == 1)
+		# handle multiple freqs
+		if (@$freqs_aref >= 2)
+		{
+			foreach my $new_freq (@$freqs_aref)
 			{
-				my $freq = (keys %{$tsids{$tsid}})[0] ;
-print STDERR "tsid=$tsid freq=$freq\n" if $DEBUG>=5 ;			
-				if (exists($raw_scan_href->{'freqs'}{$freq}))
+				if ($new_freq != $freq)
 				{
-					my $transponder_href = $raw_scan_href->{'freqs'}{$freq} ;
-					$transponders{"$freq-$tsid"} = $transponder_href if $transponder_href->{'tuned'};
+					# check strengths
+					my $new_strength = $raw_scan_href->{'freqs'}{$freq}{'strength'} ;
+					my $old_strength = $raw_scan_href->{'freqs'}{$new_freq}{'strength'} ;
+					if ($new_strength > $old_strength)
+					{
+						print STDERR "  Program \"$name\" ($pnr) with multiple freqs : using new signal $new_strength (old $old_strength) change freq from $freq to $new_freq\n" if $VERBOSE ;
+						$freq = $new_freq ;
+					}
 				}
 			}
 		}
-prt_data("Interpreted Transponders=", \%transponders) if $DEBUG>=5 ;
-	}
-
-
-print STDERR "process tsids...\n" if $DEBUG>=5 ;
-
-	foreach my $tsid (keys %tsids)
-	{
-		my @freqs = keys %{$tsids{$tsid}} ;
-		my $freq = $freqs[0] ;
 		
-		# see if we have more than one
-		if (@freqs > 1)
+		# save program data
+		$scan_href->{'pr'}{$name} = $prog_href ;
+		if (exists($scan_href->{'lcn'}{$tsid}) && exists($scan_href->{'lcn'}{$tsid}{$pnr}))
 		{
-print STDERR " + found more than 1 transponder providing $tsid\n" if $DEBUG>=5 ;
-			# use best signal
-			foreach my $f2 (@freqs)
-			{
-				next unless $freq == $f2 ;
-
-				my $new_strength = $raw_scan_href->{'freqs'}{$freq}{'strength'} * 100 / 65535 ;
-				my $old_strength = $raw_scan_href->{'freqs'}{$f2}{'strength'} * 100 / 65535 ;
-				
-				print STDERR "  Found 2 transponders TSID $tsid : using new signal $new_strength % (old $old_strength %)\n" if $VERBOSE ;
-
-print STDERR " + + compare $freq Hz ($raw_scan_href->{'freqs'}{$freq}{'strength'}) -> $f2 Hz ($raw_scan_href->{'freqs'}{$f2}{'strength'})\n" ;
-				if ($raw_scan_href->{'freqs'}{$f2}{'strength'} > $raw_scan_href->{'freqs'}{$freq}{'strength'})
-				{
-					$freq = $f2 ;
-				}
-			}
+			$scan_href->{'pr'}{$name}{'lcn'} = $scan_href->{'lcn'}{$tsid}{$pnr}{'lcn'} ;
 		}
-print STDERR " + tsid $tsid => $freq Hz\n" if $DEBUG>=5 ;
 		
-		# keep best transponder iff it is valid
-		if (exists($transponders{"$freq-$tsid"}))
-		{
-			# get the transponder info
-			$scan_href->{'ts'}{$tsid} = $transponders{"$freq-$tsid"} ;
-			
-			# move this transponder's lcn info into lcn hash
-			if (exists($scan_href->{'ts'}{$tsid}{'lcn'}))
-			{
-				my $lcn_href = delete $scan_href->{'ts'}{$tsid}{'lcn'} ;
-				$scan_href->{'lcn'}{$tsid} = $lcn_href ;
-			}
-			
-			# add signal strength
-			$scan_href->{'ts'}{$tsid}{'strength'} = $raw_scan_href->{'freqs'}{$freq}{'strength'} ;
-		}
+		# Set transponder freq
+		$tsids{$tsid}{'frequency'} = $freq ; 
+		$scan_href->{'ts'}{$tsid} = $tsids{$tsid} ;
 	}
 	
+
 prt_data("Scan results=", $scan_href) if $DEBUG>=5 ;
 print STDERR "process rest...\n" if $DEBUG>=5 ;
 	
@@ -1987,14 +1446,385 @@ print STDERR "DONE\n" if $DEBUG>=5 ;
 
 #----------------------------------------------------------------------------
 
-=item C<< get_tuning_info() >>
+=item B<scan_from_file($freq_file)>
 
-I<Object internal method>
+Reads the DVBT frequency file (usually stored in /usr/share/dvb/dvb-t) and uses the contents to
+set the frontend to the initial frequency. Then starts a channel scan using that tuning.
+
+$freq_file must be the full path to the file. The file contents should be something like:
+
+   # Oxford
+   # T freq bw fec_hi fec_lo mod transmission-mode guard-interval hierarchy
+   T 578000000 8MHz 2/3 NONE QAM64 2k 1/32 NONE
+
+NOTE: Frequency files are provided by the 'dvb' rpm package available for most distros
+
+Returns the discovered channel information as a HASH (see L</scan()>)
+
+=cut
+
+sub scan_from_file
+{
+	my $self = shift ;
+	my ($freq_file) = @_ ;
+
+	## Need a file
+	return $self->handle_error( "Error: No frequency file specified") unless $freq_file ;
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	print STDERR "scan_from_file() : Linux::DVB::DVBT version $VERSION\n\n" if $DEBUG ;
+
+	my @tuning_list ;
+
+	# device info
+	my $dev_info_href = $self->_device_info ;
+	my $capabilities_href = $dev_info_href->{'capabilities'} ;
+
+prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBUG>=2 ;
+
+
+	## parse file
+	open my $fh, "<$freq_file" or return $self->handle_error( "Error: Unable to read frequency file $freq_file : $!") ;
+	my $line ;
+	while (defined($line=<$fh>))
+	{
+		chomp $line ;
+		## # T freq      bw   fec_hi fec_lo mod   transmission-mode guard-interval hierarchy
+		##   T 578000000 8MHz 2/3    NONE   QAM64 2k                1/32           NONE
+
+		if ($line =~ m%^\s*T\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)%i)
+		{
+			my $freq = $1 ;
+
+			## setting all params doesn't necessarily work since the freq file is quite often out of date!				
+			my %params = (
+				bandwidth => $2,
+				code_rate_high => $3,
+				code_rate_low => $4,
+				modulation => $5,
+				transmission => $6,
+				guard_interval => $7,
+				hierarchy => $8,
+			) ;
+			
+			# convert file entry into a frontend param
+			my %tuning_params ;
+			foreach my $param (keys %params)
+			{
+				## convert freq file value into VDR format
+				if (exists($FE_PARAMS{$param}{$params{$param}}))
+				{
+					$tuning_params{$param} = $FE_PARAMS{$param}{$params{$param}} ;
+				}				
+			}
+			$tuning_params{'frequency'} = $freq ;
+
+prt_data("Tuning params=", \%tuning_params) if $DEBUG>=2 ;
+
+			## add to tuning list
+			push @tuning_list, \%tuning_params ;
+		}
+	}
+	close $fh ;
+	
+	# exit on failure
+	return $self->handle_error( "Error: No tuning parameters found") unless @tuning_list ;
+
+	## prep for scan
+	dvb_scan_new($self->{dvb}, $VERBOSE) ;
+
+	## tune into each frequency & perform the scan
+	my $freqs_href = {} ;
+	my $saved_merge = $self->merge ;
+	while (@tuning_list)
+	{
+		my $tuned = 0 ;
+
+print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
+		
+		while (!$tuned)
+		{
+			my $rc = -1 ;
+			my %tuning_params ;
+			my $tuning_params_href = shift @tuning_list ;
+			
+			# make sure frequency is valid
+			if ($tuning_params_href->{'frequency'} >= $MIN_FREQ)
+			{
+
+				# convert file entry into a frontend param
+				foreach my $param (keys %$tuning_params_href)
+				{
+					next unless exists($FE_CAPABLE{$param}) ;
+	print STDERR " +check param $param\n" if $DEBUG>=2 ;
+	
+					## check to see if we are capable of using auto
+					unless ($capabilities_href->{$FE_CAPABLE{$param}})
+					{
+						# can't use auto so we have to set it
+						$tuning_params{$param} = $tuning_params_href->{$param} ;
+					}
+				}
+				$tuning_params{'frequency'} = $tuning_params_href->{'frequency'} ;
+				
+				# set tuning
+				print STDERR "Setting frequency: $tuning_params{frequency} Hz\n" if $self->verbose ;
+				$rc = dvb_scan_tune($self->{dvb}, {%tuning_params}) ;
+			}
+			
+			## If tuning went ok, then save params
+			if ($rc == 0)
+			{
+				$self->frontend_params( {%tuning_params} ) ;
+				$tuned = 1 ;
+			}
+			else
+			{
+				my $freq = $tuning_params{'frequency'} || "0" ;
+				print STDERR "    Failed to set the DVB-T tuner to $freq Hz ... skipping\n" ;
+
+				# try next frequency
+				last unless @tuning_list ;			
+			}
+
+print STDERR "Attempt tune: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
+
+		}
+		
+		last if !$tuned ;
+	
+		# Scan
+		$self->_scan_freqs(1) ;
+		$self->scan() ;
+		$self->_scan_freqs(0) ;
+		
+		# ensure next results are merged in
+		$self->merge(1) ;
+		
+		# update frequency list
+		my $tuning_href = $self->tuning ;
+		$freqs_href = $tuning_href->{'freqs'} if exists($tuning_href->{'freqs'}) ;
+		
+		# update frequencies
+		my %freq_list ;
+		foreach my $href (@tuning_list)
+		{
+			$freq_list{$href->{'frequency'}} = 1 ;
+		}
+		foreach my $freq (keys %$freqs_href)
+		{
+			next if $freqs_href->{$freq}{'seen'} ;
+			if (!exists($freq_list{$freq}) )
+			{
+				push @tuning_list, {
+					'frequency'		=> $freq,
+					%{$freqs_href->{$freq}},
+				} ;
+print STDERR " + adding freq $freq\n" if $DEBUG>=2 ;
+			}
+		} 
+
+prt_data("Loop end Tuning list=", \@tuning_list) if $DEBUG>=2 ;
+
+print STDERR "Loop end: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
+
+	}
+
+	## restore flag
+	$self->merge($saved_merge) ;
+
+	## clear ready for next scan
+	dvb_scan_new($self->{dvb}, $VERBOSE) ;
+
+
+	## return tuning settings	
+	return $self->tuning() ;
+}
+
+
+
+
+#============================================================================================
+
+=back
+
+=head3 TUNING
+
+=over 4
+
+=cut
+
+#============================================================================================
+
+#----------------------------------------------------------------------------
+
+=item B<set_frontend(%params)>
+
+Tune the frontend to the specified frequency etc. HASH %params contains:
+
+    'frequency'
+    'inversion'
+    'bandwidth'
+    'code_rate_high'
+    'code_rate_low'
+    'modulation'
+    'transmission'
+    'guard_interval'
+    'hierarchy'
+    'timeout'
+    'tsid'
+
+(If you don't know what these parameters should be set to, then I recommend you just use the L</select_channel($channel_name)> method)
+
+Returns 0 if ok; error code otherwise
+
+=cut
+
+sub set_frontend
+{
+	my $self = shift ;
+	my (%params) = @_ ;
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	# Set up the frontend
+	my $rc = dvb_tune($self->{dvb}, {%params}) ;
+	
+	# If tuning went ok, then save params
+	if ($rc == 0)
+	{
+		$self->frontend_params( {%params} ) ;
+	}
+	
+	return $rc ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<set_demux($video_pid, $audio_pid, $subtitle_pid, $teletext_pid)>
+
+Selects a particular video/audio stream (and optional subtitle and/or teletext streams) and sets the
+demultiplexer to those streams (ready for recording).
+
+(If you don't know what these parameters should be set to, then I recommend you just use the L</select_channel($channel_name)> method)
+
+Returns 0 for success; error code otherwise.
+
+=cut
+
+sub set_demux
+{
+	my $self = shift ;
+	my ($video_pid, $audio_pid, $subtitle_pid, $teletext_pid) = @_ ;
+
+print STDERR "set_demux( <$video_pid>, <$audio_pid>, <$teletext_pid> )\n" if $DEBUG ;
+
+	my $error = 0 ;
+	if ($video_pid && !$error)
+	{
+		$error = $self->add_demux_filter($video_pid, "video") ;
+	}
+	if ($audio_pid && !$error)
+	{
+		$error = $self->add_demux_filter($audio_pid, "audio") ;
+	}
+	if ($teletext_pid && !$error)
+	{
+		$error = $self->add_demux_filter($teletext_pid, "teletext") ;
+	}
+	if ($subtitle_pid && !$error)
+	{
+		$error = $self->add_demux_filter($subtitle_pid, "subtitle") ;
+	}
+	return $error ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<select_channel($channel_name)>
+
+Tune the frontend & the demux based on $channel_name. 
+
+This method uses a "fuzzy" search to match the specified channel name with the name broadcast by the network.
+The case of the name is not important, and neither is whitespace. The search also checks for both numeric and
+name instances of a number (e.g. "1" and "one").
+
+For example, the following are all equivalent and match with the broadcast channel name "BBC ONE":
+
+    bbc1
+    BbC One
+    b b c    1  
+
+Returns 0 if ok; error code otherwise
+
+=cut
+
+sub select_channel
+{
+	my $self = shift ;
+	my ($channel_name) = @_ ;
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	# ensure we have the tuning info
+	my $tuning_href = $self->get_tuning_info() ;
+	if (! $tuning_href)
+	{
+		return $self->handle_error("Unable to get tuning information") ;
+	}
+
+	# get the channel info	
+	my ($frontend_params_href, $demux_params_href) = Linux::DVB::DVBT::Config::find_channel($channel_name, $tuning_href) ;
+	if (! $frontend_params_href)
+	{
+		return $self->handle_error("Unable to find channel $channel_name") ;
+	}
+
+	# Tune frontend
+	if ($self->set_frontend(%$frontend_params_href, 'timeout' => $self->timeout))
+	{
+		return $self->handle_error("Unable to tune frontend") ;
+	}
+
+	## start with clean slate
+	$self->multiplex_close() ;	
+
+	# Set demux
+	if ($self->set_demux($demux_params_href->{'video'}, $demux_params_href->{'audio'}))
+	{
+		return $self->handle_error("Unable to set demux") ;
+	}
+
+	return 0 ;
+}
+	
+#----------------------------------------------------------------------------
+
+=item B<get_tuning_info()>
 
 Check to see if 'tuning' information has been set. If not, attempts to read from the config
 search path.
 
-Returns a HASH ref of tuning information (see L</scan()> method for format); otherwise returns undef
+Returns a HASH ref of tuning information - i.e. it contains the complete information on all
+transponders (under the 'ts' field), and all programs (under the 'pr' field). [see L</scan()> method for format].
+
+Otherwise returns undef if no information is available.
 
 =cut
 
@@ -2019,9 +1849,7 @@ sub get_tuning_info
 
 #----------------------------------------------------------------------------
 
-=item C<< get_channel_list() >>
-
-I<Object internal method>
+=item B<get_channel_list()>
 
 Checks to see if 'channel_list' information has been set. If not, attempts to create a list based
 on the scan information.
@@ -2109,9 +1937,23 @@ sub get_channel_list
 
 
 
+#============================================================================================
+
+=back
+
+=head3 RECORDING
+
+=over 4
+
+=cut
+
+#============================================================================================
+
 #----------------------------------------------------------------------------
 
-=item C<< record($file, $duration) >>
+=item B<record($file, $duration)>
+
+(New version that uses the underlying multiplex recording methods).
 
 Streams the selected channel information (see L</select_channel($channel_name)>) into the file $file for $duration.
 
@@ -2127,24 +1969,80 @@ sub record
 	my $self = shift ;
 	my ($file, $duration) = @_ ;
 
-	# Default to 30mins
-	my $seconds = 30*60 ;
+print STDERR "record($file, $duration)" if $DEBUG ;
+
+	## need filename
+	return $self->handle_error("No valid filename specified") unless ($file) ;
+
+	## need valid duration
+	my $seconds = Linux::DVB::DVBT::Utils::time2secs($duration) ;
+	return $self->handle_error("No valid duration specified") unless ($seconds) ;
+
+	## Set up the multiplex info for this single file
+
+	# get entry for this file (or create it)
+	my $href = $self->_multiplex_file_href($file) ;
 	
-	# Convert duration to seconds
-	if ($duration =~ m/^(\d+)$/)
+	# set time
+	$href->{'duration'} = $seconds ;
+	
+	# set total length
+	$self->{_multiplex_info}{'duration'} = $seconds ;
+			
+	# set demux filter info
+	push @{$href->{'demux'}}, @{$self->{_demux_filters}};
+
+	# get tsid
+	my $frontend_href = $self->frontend_params() ;
+	my $tsid = $frontend_href->{'tsid'} ;
+	
+	## ensure pid lists match the demux list
+	$self->_update_multiplex_info($tsid) ;
+
+
+	## Now record
+#	my %multiplex_info = $self->multiplex_info() ;
+Linux::DVB::DVBT::prt_data("multiplex_info=", $self->{'_multiplex_info'}) if $DEBUG>=10 ;
+
+	return $self->multiplex_record(%{$self->{'_multiplex_info'}}) ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<record_v1($file, $duration)>
+
+Old version 1.xxx style recording. Kept in case newer version does something that you weren't
+expecting. Note that this version will be phased out and removed in future releases. 
+
+Streams the selected channel information (see L</select_channel($channel_name)>) into the file $file for $duration.
+
+The duration may be specified either as an integer number of minutes, or in HH:MM format (for hours & minutes), or in
+HH:MM:SS format (for hours, minutes, seconds).
+
+Note that (if possible) the method creates the directory path to the file if it doersn't already exist.
+
+=cut
+
+sub record_v1
+{
+	my $self = shift ;
+	my ($file, $duration) = @_ ;
+
+	## need filename
+	return $self->handle_error("No valid filename specified") unless ($file) ;
+
+	## need valid duration
+	my $seconds = Linux::DVB::DVBT::Utils::time2secs($duration) ;
+	return $self->handle_error("No valid duration specified") unless ($seconds) ;
+
+	# hardware closed?
+	if ($self->dvb_closed())
 	{
-		$seconds = 60 * $1 ;
-	}
-	elsif ($duration =~ m/^(\d+):(\d+):(\d+)$/)
-	{
-		$seconds = (60*60 * $1) + (60 * $2) + $3 ;
-	}
-	elsif ($duration =~ m/^(\d+):(\d+)$/)
-	{
-		$seconds = (60*60 * $1) + (60 * $2) ;
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
 	}
 
-	# ensure directory is present
+	## ensure directory is present
 	my $dir = dirname($file) ;
 	if (! -d $dir)
 	{
@@ -2163,6 +2061,1464 @@ sub record
 
 
 
+#============================================================================================
+
+=back
+
+=head3 EPG
+
+=over 4
+
+=cut
+
+#============================================================================================
+
+
+#----------------------------------------------------------------------------
+
+=item B<epg()>
+
+Gathers the EPG information into a HASH using the previously tuned frontend and 
+returns the EPG info. If the frontend is not yet tuned then the method attempts
+to use the tuning information (either from a previous scan or from reading the config
+files) to set up the frontend.
+
+Note that you can safely run this method while recording; the EPG scan does not affect
+the demux or the frontend (once it has been set)
+
+Returns an array:
+
+	[0] = EPG HASH
+	[1] = Dates HASH
+
+EPG HASH format is:
+
+    $channel_name =>
+       $pid => {
+		'pid'			=> program unique id (= $pid)
+		'channel'		=> channel name
+		
+		'date'			=> date
+		'start'			=> start time
+		'end'			=> end time
+		'duration'		=> duration
+		
+		'title'			=> title string
+		'text'			=> synopsis string
+		'etext'			=> extra text (not usually used)
+		'genre'			=> genre string
+		
+		'episode'		=> episode number
+		'num_episodes' => number of episodes
+
+		'subtitle'		=> this is a short program name (useful for saving as a filename)
+		
+		'tva_prog'		=> TV Anytime program id
+		'tva_series'	=> TV Anytime series id
+	}
+
+i.e. The information is keyed on channel name and program id (pid)
+
+The genre string is formatted as:
+
+    "Major category|genre/genre..."
+
+For example:
+
+    "Film|movie/drama (general)"
+
+This allows for a simple regexp to extract the information (e.g. in a TV listings application 
+you may want to only use the major category in the main view, then show the extra genre information in
+a more detailed view)
+
+Dates HASH format is:
+
+    $channel_name => {
+		'start_date'	=> date of first program for this channel 
+		'start'			=> start time of first program for this channel
+		
+		'end_date'		=> date of last program for this channel 
+		'end'			=> end time of last program for this channel
+	}
+
+i.e. The information is keyed on channel name
+
+The dates HASH is created so that an existing EPG database can be updated by removing existing information for a channel between the indicated dates.
+
+=cut
+
+
+sub epg
+{
+	my $self = shift ;
+	my ($section) = @_ ;		# debug only!
+	
+	$section ||= 0 ;
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	my %epg ;
+	my %dates ;
+
+	# Get tuning information
+	my $tuning_href = $self->get_tuning_info() ;
+
+	# Create a lookup table to convert [tsid-pnr] values into channel names & channel numbers 
+	my $channel_lookup_href ;
+	my $channels_aref = $self->get_channel_list() ;
+	if ( $channels_aref && $tuning_href )
+	{
+#print STDERR "creating chan lookup\n" ;
+#prt_data("Channels=", $channels_aref) ;
+#prt_data("Tuning=", $tuning_href) ;
+		$channel_lookup_href = {} ;
+		foreach my $chan_href (@$channels_aref)
+		{
+			my $channel = $chan_href->{'channel'} ;
+
+#print STDERR "CHAN: $channel\n" ;
+			if (exists($tuning_href->{'pr'}{$channel}))
+			{
+#print STDERR "created CHAN: $channel for $tuning_href->{pr}{$channel}{tsid} -  for $tuning_href->{pr}{$channel}{pnr}\n" ;
+				# create the lookup
+				$channel_lookup_href->{"$tuning_href->{'pr'}{$channel}{tsid}-$tuning_href->{'pr'}{$channel}{pnr}"} = {
+					'channel' => $channel,
+					'channel_num' => $tuning_href->{'pr'}{$channel}{'lcn'} || $chan_href->{'channel_num'},
+				} ;
+			}
+		}
+	}	
+prt_data("Lookup=", $channel_lookup_href) if $DEBUG >= 2 ;
+
+
+	## check for frontend tuned
+	
+	# list of carrier frequencies to tune to
+	my @next_freq ;
+	
+	# if not tuned yet, tune to all station freqs (assumes scan has been performed)
+	if (!$self->frontend_params())
+	{
+		# Grab first channel settings & attempt to set frontend
+		if ($tuning_href)
+		{
+			@next_freq = values %{$tuning_href->{'ts'}} ;
+			my $params_href = shift @next_freq ;
+prt_data("Set frontend : params=", $params_href) if $DEBUG >= 2 ;
+			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
+		}
+	}
+
+	# start with a cleared list
+	dvb_clear_epg() ;
+	
+	# collect all the EPG data from all carriers
+	my $params_href ;
+	my $epg_data ;
+	do
+	{		
+		# if not tuned by now then we have to raise an error
+		if (!$self->frontend_params())
+		{
+			# Raise an error
+			return $self->handle_error("Frontend must be tuned before gathering EPG data (have you run scan() yet?)") ;
+		}
+	
+		# Gather EPG information into a list of HASH refs (collects all previous runs)
+		$epg_data = dvb_epg($self->{dvb}, $VERBOSE, $DEBUG, $section) ;
+
+		# tune to next carrier in the list (if any are left)
+		$params_href = undef ;
+		if (@next_freq)
+		{
+			$params_href = shift @next_freq ;
+prt_data("Retune params=", $params_href)  if $DEBUG >= 2 ;
+			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
+		}
+	}
+	while ($params_href) ;
+
+prt_data("EPG data=", $epg_data) if $DEBUG ;
+
+	# ok to clear down the low-level list now
+	dvb_clear_epg() ;
+		
+	# Analyse EPG info
+	foreach my $epg_entry (@$epg_data)
+	{
+		my $tsid = $epg_entry->{'tsid'} ;
+		my $pnr = $epg_entry->{'pnr'} ;
+
+		my $chan = "$tsid-$pnr" ;		
+		my $channel_num = $chan ;
+		
+		if ($channel_lookup_href)
+		{
+			# Replace channel name with the text name (rather than tsid/pnr numbers) 
+			$channel_num = $channel_lookup_href->{$chan}{'channel_num'} || $chan ;
+			$chan = $channel_lookup_href->{$chan}{'channel'} || $chan ;
+		}
+		
+prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG ;
+		
+		# {chan}
+		#	{pid}
+		#              date => 18-09-2008,
+		#              start => 23:15,
+		#              end => 03:20,
+		#              duration => 04:05,
+		#
+		#              title => Personal Services,
+		#              text => This is a gently witty, if curiously coy, attempt by director
+		#              genre => Film,
+		#              
+		#              episode => 1
+		#			   num_episodes => 2
+		#
+
+		my @start_localtime =  localtime($epg_entry->{'start'}) ;
+		my $start = strftime "%H:%M:%S", @start_localtime ;
+		my $date  = strftime "%Y-%m-%d", @start_localtime ;
+
+		my $pid_date = strftime "%Y%m%d", @start_localtime ;
+		my $pid = "$epg_entry->{'id'}-$channel_num-$pid_date" ;	# id is reused on different channels 
+		
+		my @end_localtime =  localtime($epg_entry->{'stop'}) ;
+		my $end = strftime "%H:%M:%S", @end_localtime ;
+		my $end_date  = strftime "%Y-%m-%d", @end_localtime ;
+
+
+		# keep track of dates
+		$dates{$chan} ||= {
+			'start_min'	=> $epg_entry->{'start'},
+			'end_max'	=> $epg_entry->{'stop'},
+			
+			'start_date'	=> $date,
+			'start'			=> $start,
+			'end_date'		=> $end_date,
+			'end'			=> $end,
+		} ;
+
+		if ($epg_entry->{'start'} < $dates{$chan}{'start_min'})
+		{
+			$dates{$chan}{'start_min'} = $epg_entry->{'start'} ;
+			$dates{$chan}{'start_date'} = $date ;
+			$dates{$chan}{'start'} = $start ;
+		}
+		if ($epg_entry->{'stop'} > $dates{$chan}{'end_max'})
+		{
+			$dates{$chan}{'end_max'} = $epg_entry->{'stop'} ;
+			$dates{$chan}{'end_date'} = $end_date ;
+			$dates{$chan}{'end'} = $end ;
+		}
+
+
+		my $duration = Linux::DVB::DVBT::Utils::duration($start, $end) ;
+		
+		my $title = Linux::DVB::DVBT::Utils::text($epg_entry->{'name'}) ;
+		my $synopsis = Linux::DVB::DVBT::Utils::text($epg_entry->{'stext'}) ;
+		my $etext = Linux::DVB::DVBT::Utils::text($epg_entry->{'etext'}) ;
+		
+		my $episode ;
+		my $num_episodes ;
+		my %flags ;
+		
+		Linux::DVB::DVBT::Utils::fix_title(\$title, \$synopsis) ;
+		Linux::DVB::DVBT::Utils::fix_episodes(\$title, \$synopsis, \$episode, \$num_episodes) ;
+		Linux::DVB::DVBT::Utils::fix_audio(\$title, \$synopsis, \%flags) ;
+			
+
+		$epg{$chan}{$pid} = {
+			'pid'		=> $pid,
+			'channel'	=> $chan,
+			
+			'date'		=> $date,
+			'start'		=> $start,
+			'end'		=> $end,
+			'duration'	=> $duration,
+			
+			'title'		=> $title,
+			'subtitle'	=> Linux::DVB::DVBT::Utils::subtitle($synopsis),
+			'text'		=> $synopsis,
+			'etext'		=> $etext,
+			'genre'		=> $epg_entry->{'genre'},
+
+			'episode'	=> $episode,
+			'num_episodes' => $num_episodes,
+			
+			'tva_prog'	=> $epg_entry->{'tva_prog'} || '',
+			'tva_series'=> $epg_entry->{'tva_series'} || '',
+		} ;
+
+prt_data("EPG final entry ($chan) $pid=", $epg{$chan}{$pid}) if $DEBUG ;
+
+	}
+		
+	return (\%epg, \%dates) ;
+}
+
+
+#============================================================================================
+
+=back
+
+=head3 MULTIPLEX RECORDING
+
+=over 4
+
+=cut
+
+#============================================================================================
+
+
+
+#----------------------------------------------------------------------------
+
+=item B<add_demux_filter($pid, $pid_type [, $tsid])>
+
+Adds a demultiplexer filter for the specified PID to allow that stream to be recorded.
+
+Internally keeps track of the list of filters created (see L</demux_filter_list()> for format of the
+list entries)
+
+$pid_type is a string and should be one of:
+
+	"video"
+	"audio"
+	"teletext"
+	"subtitle"
+	"other"
+
+Optionally a tsid may be specified. This will be used if to tune the frontend if it has not yet been tuned.
+
+Returns 0 for success; error code otherwise.
+
+=cut
+
+sub add_demux_filter
+{
+	my $self = shift ;
+	my ($pid, $pid_type, $tsid) = @_ ;
+
+printf STDERR "add_demux_filter($pid, $pid_type)\n", $pid if $DEBUG ;
+
+	## valid pid?
+	if ( ($pid <= 0) || ($pid > $MAX_PID) )
+	{
+		return $self->handle_error("Invalid PID ($pid)") ;
+	}
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	## start with current tuning params
+	my $frontend_href = $self->frontend_params() ;
+	if (!$frontend_href)
+	{
+print STDERR " frontend not yet tuned...\n" if $DEBUG >= 5 ;
+		## if we've got a tsid, then use that to get the parameters and tune the frontend
+		if ($tsid)
+		{
+print STDERR " + got tsid=$tsid, attempting tune\n" if $DEBUG >= 5 ;
+			# ensure we have the tuning info
+			my $tuning_href = $self->get_tuning_info() ;
+			if (! $tuning_href)
+			{
+				return $self->handle_error("Unable to get tuning information") ;
+			}
+			
+			# get frontend params
+			$frontend_href = Linux::DVB::DVBT::Config::tsid_params($tsid, $tuning_href) ;
+			if (! $frontend_href)
+			{
+				return $self->handle_error("Unable to get frontend parameters for specified TSID ($tsid)") ;
+			}
+			
+			# Tune frontend
+			if ($self->set_frontend(%$frontend_href, 'timeout' => $self->timeout))
+			{
+				return $self->handle_error("Unable to tune frontend") ;
+			}
+print STDERR " + frontend tuned to tsid=$tsid\n" if $DEBUG >= 5 ;
+		}
+	}
+
+	## final check
+	if (!$frontend_href)
+	{
+		# Raise an error
+		return $self->handle_error("Frontend must be tuned before setting demux filter (have you run scan() yet?)") ;
+	}
+
+	## next try setting the filter
+	my $fd = dvb_add_demux($self->{dvb}, $pid) ;
+
+	if ($fd <= 0)
+	{
+		# Raise an error
+		return $self->handle_error("Unable to create demux filter for pid $pid") ;
+	}
+
+printf STDERR "added demux filter : PID = 0x%03x ( fd = $fd )\n", $pid if $DEBUG ;
+
+	## Create filter information
+	if (exists($frontend_href->{'tsid'}))
+	{
+		# frontend set during normal operation via internal routines
+		$tsid = $frontend_href->{'tsid'} ;
+	}
+	else
+	{
+		# Someone has called the frontend setup routine directly, so update TSID to match!
+		my $tuning_href = $self->get_tuning_info() ;
+		$tsid = Linux::DVB::DVBT::Config::find_tsid($frontend_href->{'frequency'}, $tuning_href) ;
+
+		# save tsid
+		$frontend_href->{'tsid'} = $tsid ;
+	}
+	my $filter_href = {
+		'fd'	=> $fd,
+		'tsid'	=> $tsid,
+		'pid'	=> $pid,
+		'type'	=> $pid_type,
+	} ;
+
+	push @{$self->{_demux_filters}}, $filter_href ;
+
+	return 0 ;
+}
+
+
+#----------------------------------------------------------------------------
+
+=item B<demux_filter_list()>
+
+Return the list of currently active demux filters.
+
+Each filter entry in the list consists of a HASH ref of the form:
+
+	'fd'	=> file handle for this filter
+	'tsid'	=> Transponder ID
+	'pid'	=> Stream PID
+	'type'	=> $pid_type,
+
+=cut
+
+sub demux_filter_list
+{
+	my $self = shift ;
+	return $self->{_demux_filters} ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<close_demux_filters()>
+
+Closes any currently open demux filters (basically tidies up after finished recording)
+
+=cut
+
+sub close_demux_filters
+{
+	my $self = shift ;
+
+#prt_data("close_demux_filters() dvb=", $self->{dvb}, "Demux filters=", $self->{_demux_filters}) ;
+
+	# hardware closed?
+	unless ($self->dvb_closed())
+	{
+		foreach my $filter_href (@{$self->{_demux_filters}} )
+		{
+			dvb_del_demux($self->{dvb}, $filter_href->{fd}) ;
+		}
+	}
+	$self->{_demux_filters} = [] ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<multiplex_close()>
+
+Clears out the list of recordings for a multiplex. Also releases any demux filters.
+
+=cut
+
+
+# clear down any records
+sub multiplex_close
+{
+	my $self = shift ;
+
+	$self->close_demux_filters() ;
+	$self->{_multiplex_info} = {
+		'duration' 	=> 0,
+		'tsid'	 	=> 0,
+		'files'		=> {},
+	} ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<multiplex_parse($chan_spec_aref, @args)>
+
+Helper function intended to be used to parse a program's arguments list (@ARGV). The arguments
+are parsed into the provided ARRAY ref ($chan_spec_aref) that can then be passed to L</multiplex_select($chan_spec_aref, %options)>
+(see that method for a description of the $chan_spec_aref ARRAY).
+
+The arguments define the set of streams (all from the same multiplex, or transponder) that are to be recorded
+at the same time into each file. 
+
+Each stream definition must start with a filename, followed by either channel names or pid numbers. Also, 
+you must specify the duration of the stream. Finally, an offset time can be specified that delays the start of 
+the stream (for example, if the start time of the programs to be recorded are staggered).
+
+A file defined by channel name(s) may optionally also contain a language spec and an output spec: 
+
+The output spec determines which type of streams are included in the recording. By default, "video" and "audio" tracks are recorded. You can
+override this by specifying the output spec. For example, if you also want the subtitle track to be recorded, then you need to
+specify the output includes video, audio, and subtitles. This can be done either by specifying the types in full or by just their initials.
+
+For example, any of the following specs define video, audio, and subtitles:
+
+	"audio, video, subtitle"
+	"a, v, s"
+	"avs"
+
+Note that, if the file format explicitly defines the type of streams required, then there is no need to specify an output spec. For example,
+specifying that the file format is mp3 will ensure that only the audio is recorded.
+
+In a similar fashion, the language spec determines the audio streams to be recorded in the program. Normally, the default audio stream is included 
+in the recorded file. If you want either an alternative audio track, or additional audio tracks, then you use the language spec to 
+define them. The spec consists of a space seperated list of language names. If the spec contains a '+' then the audio streams are 
+added to the default; otherwise the default audio is B<excluded> and only those other audio tracks in the spec are recorded. Note that
+the specification order is important, audio streams from the language spec are matched with the audio details in the specified order. Once a 
+stream has been skipped there is no back tracking (see the examples below for clarification).
+
+For example, if a channel has the audio details: eng:601 eng:602 fra:603 deu:604 (i.e. 2 English tracks, 1 French track, 1 German) then
+
+=over 4
+
+=item lang="+eng"
+
+Results in the default audio (pid 601) and the next english track (pid 602) recorded
+
+=item lang="fra"
+
+Results in just the french track (pid 603) recorded
+
+=item lang="eng fra"
+
+Results in the B<second> english (pid 602) and the french track (pid 603) recorded
+
+=item lang="fra eng"
+
+Results in an error. The english tracks have already been skipped to match the french track, and so will not be matched again.
+
+=back
+
+Note that the output spec overrides the language spec. If the output does not include audio, then the language spec is ignored.
+
+
+Example valid sets of arguments are:
+
+=over 4
+
+=item file=f1.mpeg chan=bbc1 out=avs lang=+eng len=1:00 off=0:10
+
+Record channel BBC1 into file f1.mpeg, include subtitles, add second English audio track, record for 1 hour, start recording 10 minutes from now
+
+=item file=f2.mp3 chan=bbc2 len=0:30
+
+Record channel BBC2 into file f2.mp3, audio only, record for 30 minutes
+
+=item file=f3.ts pid=600 pid=601 len=0:30
+
+Record pids 600 & 601 into file f3.ts, record for 30 minutes
+
+=back
+
+=cut
+
+my %multiplex_params = (
+	'^f'				=> 'file',
+	'^c'				=> 'chan',
+	'^p'				=> 'pid',
+	'^lan'				=> 'lang',
+	'^out'				=> 'out',
+	'^(len|duration)'	=> 'duration',
+	'^off'				=> 'offset',
+	'^title'			=> 'title',
+) ;
+sub multiplex_parse
+{
+	my $self = shift ;
+	my ($chan_spec_aref, @args) = @_ ;
+
+	## work through the args
+	my $current_file_href ;
+	my $current_chan_href ;
+	foreach my $arg (@args)
+	{
+		## skip non-valid
+		
+		# strip off any extra quotes
+		if ($arg =~ /(\S+)\s*=\s*([\'\"]{0,1})([^\2]*)\2/)
+		{
+			my ($var, $value, $valid) = (lc $1, lc $3, 0) ;
+
+			# allow fuzzy input - convert to known variable names
+			foreach my $regexp (keys %multiplex_params)
+			{
+				if ($var =~ /$regexp/)
+				{
+					$var = $multiplex_params{$regexp} ;
+					++$valid ;
+					last ;
+				}
+			}
+			
+			# check we know this var
+			if (!$valid)
+			{
+				return $self->handle_error("Unexpected variable \"$var = $value\"") ;
+			}
+			
+			# new file
+			if ($var eq 'file')
+			{
+				$current_chan_href = undef ;
+				$current_file_href = {
+					'file'		=> $value,
+					'chans'		=> [],
+					'pids'		=> [],
+				} ;
+				push @$chan_spec_aref, $current_file_href ;
+				next ;
+			}
+			else
+			{
+				# check file has been set before moving on
+				return $self->handle_error("Variable \"$var = $value\" defined before specifying the filename") 
+					unless defined($current_file_href) ;
+			}
+
+			# duration / offset
+			my $handled ;
+			foreach my $genvar (qw/duration offset/)
+			{
+				if ($var eq $genvar)
+				{
+					$current_file_href->{$genvar} = $value ;
+					++$handled ;
+					last ;
+				}
+			}
+			next if $handled ;
+			
+			# new pid
+			if ($var eq 'pid')
+			{
+				push @{$current_file_href->{'pids'}}, $value ;
+				next ;
+			}
+			
+			# new chan
+			if ($var eq 'chan')
+			{
+				$current_chan_href = {
+					'chan'	=> $value,
+				} ;
+				push @{$current_file_href->{'chans'}}, $current_chan_href ;
+				next ;
+			}
+			else
+			{
+				# check chan has been set before moving on
+				return $self->handle_error("Variable \"$var = $value\" defined before specifying the channel") 
+					unless defined($current_chan_href) ;
+			}
+			
+			# lang / out - requires chan
+			foreach my $chvar (qw/lang out/)
+			{
+				if ($var eq $chvar)
+				{
+					$current_chan_href->{$chvar} = $value ;
+					last ;
+				}
+			}
+			
+		}
+		else
+		{
+			return $self->handle_error("Unexpected arg \"$arg\"") ;
+		}
+	}	
+	
+	## Check entries for required information
+	foreach my $spec_href (@$chan_spec_aref)
+	{
+		my $file = $spec_href->{'file'} ;
+		if (!$spec_href->{'duration'})
+		{
+			return $self->handle_error("File \"$file\" has no duration specified") ;
+		}
+		if (! @{$spec_href->{'pids'}} && ! @{$spec_href->{'chans'}})
+		{
+			return $self->handle_error("File \"$file\" has no channels/pids specified") ;
+		}
+		if (@{$spec_href->{'pids'}} && @{$spec_href->{'chans'}})
+		{
+			return $self->handle_error("File \"$file\" has both channels and pids specified at the same time") ;
+		}
+	}
+		
+	return 0 ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<multiplex_select($chan_spec_aref, %options)>
+
+Selects a set of streams based on the definitions in the chan spec ARRAY ref. The array 
+contains hashes of:
+
+	{
+		'file'		=> filename
+		'chans'		=> [ 
+			{ 'chan' => channel name, 'lang' => lang spec, 'out' => output },
+			... 
+		]
+		'pids'		=> [ stream pid, ... ]
+		'offset'	=> time
+		'duration'	=> time
+	}
+
+Each entry must contain a target filename, a recording duration, and either channel definitions or pid definitions.
+The channel definition list consists of HASHes containing a channel name, a language spec, and an output spec. 
+
+The language and output specs are as described in L</multiplex_parse($chan_spec_aref, @args)>
+
+The optional options hash consists of:
+
+	{
+		'tsid'	=> tsid
+		'lang'	=> default lang spec
+		'out'	=> default output spec
+	}
+
+The TSID definition defines the transponder (multiplex) to use. Use this when pids define the streams rather than 
+channel names and the pid value(s) may occur in multiple TSIDs.
+
+If you define default language or output specs, these will be used in all file definitions unless that file definition
+has it's own output/language spec. For example, if you want all files to include subtitles you can specify it once as
+the default rather than for every file.
+
+The method sets up the DVB demux filters to record each of the required streams. It also sets up a HASH of the settings,
+which may be read using L</multiplex_info()>. This hash being used in L</multiplex_record(%multiplex_info)>.
+
+=cut
+
+
+sub multiplex_select
+{
+	my $self = shift ;
+	my ($chan_spec_aref, %options) = @_ ;
+	
+	my $error = 0 ;
+
+	## ensure we have the tuning info
+	my $tuning_href = $self->get_tuning_info() ;
+	if (! $tuning_href)
+	{
+		return $self->handle_error("Unable to get tuning information from config file (have you run scan() yet?)") ;
+	}
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	## start with clean slate
+	$self->multiplex_close() ;	
+
+	my %files ;
+
+	## Defaults
+	my $def_lang = $options{'lang'} || "" ;
+	my $def_out = $options{'out'} || "" ;
+
+	## start with TSID option
+	my $tsid = $options{'tsid'} ;
+	
+	## process each entry
+	foreach my $spec_href (@$chan_spec_aref)
+	{
+		my $file = $spec_href->{'file'} ;
+		if ($file)
+		{
+			## get entry for this file (or create it)
+			my $href = $self->_multiplex_file_href($file) ;
+			
+			# keep track of file settings
+			$files{$file} ||= {'chans'=>0, 'pids'=>0} ;
+
+			# add error if already got pids for this file
+			if ( $files{$file}{'pids'} )
+			{
+				return $self->handle_error("Cannot mix chan definitions with pid definitions for file \"$file\"") ;
+			}
+
+			# set time
+			$href->{'offset'} ||= Linux::DVB::DVBT::Utils::time2secs($spec_href->{'offset'} || 0) ;
+			$href->{'duration'} ||= Linux::DVB::DVBT::Utils::time2secs($spec_href->{'duration'} || 0) ;
+
+			# beta: title
+			$href->{'title'} ||= $spec_href->{'title'} ;
+			
+			# calc total length
+			my $period = $href->{'offset'} + $href->{'duration'} ;
+			$self->{_multiplex_info}{'duration'}=$period if ($self->{_multiplex_info}{'duration'} < $period) ;
+			
+			# chans
+			$spec_href->{'chans'} ||= [] ;
+			foreach my $chan_href (@{$spec_href->{'chans'}})
+			{
+				my $channel_name = $chan_href->{'chan'} ;
+				my $lang = $chan_href->{'lang'}  || $def_lang ;
+				my $out = $chan_href->{'out'} || $def_out ;
+				
+				# find channel
+				my ($frontend_params_href, $demux_params_href) = Linux::DVB::DVBT::Config::find_channel($channel_name, $tuning_href) ;
+				if (! $frontend_params_href)
+				{
+					return $self->handle_error("Unable to find channel $channel_name") ;
+				}
+
+				# check in same multiplex
+				$tsid ||= $frontend_params_href->{'tsid'} ;
+				if ($tsid != $frontend_params_href->{'tsid'})
+				{
+					return $self->handle_error("Channel $channel_name (on $frontend_params_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
+				}
+				
+				# Ensure the combination of file format, output spec, and language spec are valid. They get adjusted as required
+				my $dest_file = $file ;
+				$error = Linux::DVB::DVBT::Ffmpeg::sanitise_options(\$dest_file, \$out, \$lang,
+					$href->{'errors'}, $href->{'warnings'}) ;
+				return $self->handle_error($error) if $error ;
+
+				# save settings
+				$href->{'dest_file'} = $dest_file ;
+				$href->{'out'} = $out ;
+				$href->{'lang'} = $lang ;
+
+				# Handle output specification to get a list of pids
+				my @pids ;
+				$error = Linux::DVB::DVBT::Config::out_pids($demux_params_href, $out, $lang, \@pids) ;
+				return $self->handle_error($error) if $error ;
+				
+				# add filters
+				foreach my $pid_href (@pids)
+				{
+					# add filter
+					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'type'}, $tsid) ;
+					return $self->handle_error($error) if $error ;
+					
+					# keep demux filter info
+					push @{$href->{'demux'}}, $self->{_demux_filters}[-1] ;
+					
+					++$files{$file}{'chans'} ;
+				}
+			}
+			
+
+			# pids
+			$spec_href->{'pids'} ||= [] ;
+			foreach my $pid (@{$spec_href->{'pids'}})
+			{
+				# add error if already got pids for this file
+				if ( $files{$file}{'chans'} )
+				{
+					return $self->handle_error("Cannot mix chan definitions with pid definitions for file \"$file\"") ;
+				}
+
+				# array of: { 'type'=>$type, 'tsid' => $tsid, ... } for this pid value
+				my @pid_info = Linux::DVB::DVBT::Config::pid_info($pid, $tuning_href) ;
+				my $pid_href ;
+				if (! @pid_info)
+				{
+					# can't find pid
+					if ($options{'no-pid-check'})
+					{
+						# create a simple entry if we allow any pids
+						$pid_href = {
+							'type' 	=> 'data',
+							'tsid'	=> $tsid,
+						} ;
+					}
+					else
+					{
+						return $self->handle_error("Unable to find PID $pid in the known list stored in your config file") ;
+					}
+				}
+				elsif (@pid_info > 1)
+				{
+					# if we haven't already got a tsid, use the first
+					if (!$tsid)
+					{
+						$pid_href = $pid_info[0] ;
+					}
+					else
+					{
+						# find entry with matching TSID
+						foreach (@pid_info)
+						{
+							if ($_->{'tsid'} == $tsid)
+							{
+								$pid_href = $_ ;
+								last ;
+							}
+						}
+					}
+
+					# error if none match
+					if (!$pid_href)
+					{
+						return $self->handle_error("Multiple multiplexes contain pid $pid, please specify the multiplex number (tsid)") ;
+					}
+				}
+				else
+				{
+					# found a single one
+					$pid_href = $pid_info[0] ;
+				}
+				
+				# set filter
+				if ($pid_href)
+				{
+					# check multiplex
+					$tsid ||= $pid_href->{'tsid'} ;
+					if ($tsid != $pid_href->{'tsid'})
+					{
+						return $self->handle_error("PID $pid (on $pid_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
+					}
+					
+					# add a filter
+					$error = $self->add_demux_filter($pid, $pid_href->{'type'}, $tsid) ;
+					return $self->handle_error($error) if $error ;
+					
+					# keep demux filter info
+					push @{$href->{'demux'}}, $self->{_demux_filters}[-1] ;
+					
+					$files{$file}{'pids'}++ ;
+				}
+			}
+		}		
+	}
+	
+	## ensure pid lists match the demux list
+	$self->_update_multiplex_info($tsid) ;
+
+	return $error ;
+}	
+
+#----------------------------------------------------------------------------
+
+=item B<multiplex_record_duration()>
+
+Returns the total recording duration (in seconds) of the currently spricied multiplex recordings.
+
+Used for informational purposes.
+
+=cut
+
+sub multiplex_record_duration
+{
+	my $self = shift ;
+	
+	return $self->{_multiplex_info}{'duration'} ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<multiplex_info()>
+
+Returns HASH of the currently defined multiplex filters. HASH is of the form:
+
+  files => {
+	$file => {
+		'pids'	=> [
+			{
+				'pid'	=> Stream PID
+				'type'	=> pid type (i.e. 'audio', 'video', 'subtitle')
+			},
+			...
+		]
+		'offset' => offset time for this file
+		'duration' => duration for this file
+
+		'destfile'	=> final written file name (set by L</multiplex_transcode(%multiplex_info)>)
+		'warnings'	=> [
+			ARRAY ref of list of warnings (set by L</multiplex_transcode(%multiplex_info)>)
+		],
+		'errors'	=> [
+			ARRAY ref of list of errors (set by L</multiplex_transcode(%multiplex_info)>)
+		],
+		'lines'	=> [
+			ARRAY ref of lines of output from the transcode/demux operation(s) (set by L</multiplex_transcode(%multiplex_info)>)
+		],
+	},
+  },
+  duration => maximum recording duration in seconds
+  tsid => the multiplex id
+
+where there is an entry for each file, each entry containing a recording duration (in seconds),
+an offset time (in seconds), and an array of pids that define the streams required for the file.
+
+=cut
+
+sub multiplex_info
+{
+	my $self = shift ;
+	
+	return %{$self->{_multiplex_info}} ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<multiplex_record(%multiplex_info)>
+
+Records the selected streams into their files. Note that the recorded files will
+be the specified name, but with the extension set to '.ts'. You can optionally then
+call L</multiplex_transcode(%multiplex_info)> to transcode the files into the requested file format.
+
+=cut
+
+sub multiplex_record
+{
+	my $self = shift ;
+	my (%multiplex_info) = @_ ;
+	
+	my $error = 0 ;
+
+Linux::DVB::DVBT::prt_data("multiplex_record() : multiplex_info=", \%multiplex_info) if $DEBUG>=10 ;
+
+	# process information ready for C code 
+	my @multiplex_info ;
+	foreach my $file (keys %{$multiplex_info{'files'}} )
+	{
+		my $href = {
+			'pids'		=> [],
+		} ;
+
+		# sneaky bit: if file type is .ts, then leave everything; otherwise save the requested file name
+		# and change destination filename to .ts
+		my ($name, $destdir, $suffix) = fileparse($multiplex_info{'files'}{$file}{'destfile'}, '\..*');
+print STDERR " + dest=$multiplex_info{'files'}{$file}{'destfile'} : name=$name dir=$destdir ext=$suffix\n" if $DEBUG>=10 ;
+		if (lc $suffix ne '.ts')
+		{
+			# keep original
+			$multiplex_info{'files'}{$file}{'_destfile'} = $multiplex_info{'files'}{$file}{'destfile'} ;
+			$multiplex_info{'files'}{$file}{'destfile'} = "$destdir$name.ts" ;
+print STDERR " + + mod extension\n" if $DEBUG>=10 ;
+		}
+
+		# copy scalars
+		foreach (qw/offset duration destfile/)
+		{
+			$href->{$_} = $multiplex_info{'files'}{$file}{$_} ;
+		}
+		
+		# fill in the pid info
+		foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
+		{
+			push @{$href->{'pids'}}, $pid_href->{'pid'} ;
+		}
+		push @multiplex_info, $href ;
+		
+		# check directory exists
+		if (! -d $destdir) 
+		{
+			mkpath([$destdir], $DEBUG, 0755) or return $self->handle_error("Error: unable to create directory \"$destdir\" : $!") ;
+		}
+		
+		# make sure we can write file
+		my $destfile = $href->{'destfile'} ;
+		open my $fh, ">$destfile" or return $self->handle_error("Error: unable to write to file \"$destfile\" : $!") ;
+		close $fh ;
+	}
+
+Linux::DVB::DVBT::prt_data(" + info=", \@multiplex_info) if $DEBUG>=10 ;
+
+	## do the recordings
+	$error = dvb_record_demux($self->{dvb}, \@multiplex_info) ;
+	return $self->handle_error($error) if $error ;
+	
+	return $error ;
+}
+
+
+#----------------------------------------------------------------------------
+
+=item B<multiplex_transcode(%multiplex_info)>
+
+Transcodes the recorded files into the requested formats (uses ffmpeg helper module).
+
+Sets the following fields in the %multiplex_info HASH:
+
+	$file => {
+
+		...
+
+		'destfile'	=> final written file name
+		'warnings'	=> [
+			ARRAY ref of list of warnings
+		],
+		'errors'	=> [
+			ARRAY ref of list of errors
+		],
+		'lines'	=> [
+			ARRAY ref of lines of output from the transcode/demux operation(s)
+		],
+	}
+
+See L<Linux::DVB::DVBT::Ffmpeg::ts_transcode()|Ffmpeg::ts_transcode($srcfile, $destfile, $multiplex_info_href, [$written_files_href])> for further details.
+
+=cut
+
+sub multiplex_transcode
+{
+	my $self = shift ;
+	my (%multiplex_info) = @_ ;
+
+Linux::DVB::DVBT::prt_data("multiplex_transcode() : multiplex_info=", \%multiplex_info) if $DEBUG>=10 ;
+	
+	my $error = 0 ;
+	my @errors ;
+	
+	## keep track of each filename as it is written, so we don't overwrite anything
+	my %written_files ;
+	
+	## process each file
+	foreach my $file (keys %{$multiplex_info{'files'}})
+	{
+		# run ffmpeg (or just do video duration check)
+		$error = Linux::DVB::DVBT::Ffmpeg::ts_transcode(
+			$multiplex_info{'files'}{$file}{'destfile'}, 
+			$multiplex_info{'files'}{$file}{'_destfile'}, 
+			$multiplex_info{'files'}{$file}, 
+			\%written_files) ;
+		
+		# collect all errors together
+		if ($error)
+		{
+			push @errors, "FILE: $file" ;
+			push @errors, @{$multiplex_info{'files'}{$file}{'errors'}} ;
+		}
+	}
+	
+	# handle all errors in one go
+	if (@errors)
+	{
+		$error = join "\n", @errors ;
+		return $self->handle_error($error) ;
+	}
+	return $error ;
+}
+
+
+
+#============================================================================================
+
+=back
+
+=head3 DEBUG UTILITIES
+
+=over 4
+
+=cut
+
+#============================================================================================
+
+
+=item B<prt_data(@list)>
+
+Print out each item in the list, showing HASH hierarchies. Handles scalars, 
+hashes (as an array), arrays, ref to scalar, ref to hash, ref to array, object.
+
+Useful for debugging.
+
+=cut
+
+
+#=====================================================================
+# MODULE USAGE
+#=====================================================================
+#
+
+
+#---------------------------------------------------------------------
+sub _setup_modules
+{
+	# Attempt to load Debug object
+	if (_load_module('Debug::DumpObj'))
+	{
+		# Create local function
+		*prt_data = sub {print STDERR Debug::DumpObj::prtstr_data(@_)} ;
+	}
+	else
+	{
+		# See if we've got Data Dummper
+		if (_load_module('Data::Dumper'))
+		{
+			# Create local function
+			*prt_data = sub {print STDERR Data::Dumper->Dump([@_])} ;
+		}	
+		else
+		{
+			# Create local function
+			*prt_data = sub {print STDERR @_, "\n"} ;
+		}
+	}
+
+}
+
+#---------------------------------------------------------------------
+sub _load_module
+{
+	my ($mod) = @_ ;
+	
+	my $ok = 1 ;
+
+	# see if we can load up the package
+	if (eval "require $mod") 
+	{
+		$mod->import() ;
+	}
+	else 
+	{
+		# Can't load package
+		$ok = 0 ;
+	}
+	return $ok ;
+}
+
+
+# ============================================================================================
+BEGIN {
+	# Debug only
+	_setup_modules() ;
+}
+
+
+#============================================================================================
+
+=back
+
+=head3 INTERNAL METHODS
+
+=over 4
+
+=cut
+
+#============================================================================================
+
+
+#-----------------------------------------------------------------------------
+
+=item B<hwinit()>
+
+I<Object internal method>
+
+Initialise the hardware (create dvb structure). Called once and sets the adpater &
+frontend number for this object.
+
+If no adapter number has been specified yet then use the first device in the list.
+
+=cut
+
+sub hwinit
+{
+	my $self = shift ;
+
+	my $info_aref = $self->devices() ;
+
+	# If no adapter set, use first in list
+	if (!defined($self->adapter_num))
+	{
+		# use first device found
+		if (scalar(@$info_aref))
+		{
+			$self->set(
+				'adapter_num' => $info_aref->[0]{'adapter_num'},
+				'frontend_num' => $info_aref->[0]{'frontend_num'},
+			) ;
+			$self->_device_index(0) ;
+		}
+		else
+		{
+			return $self->handle_error("Error: No adapters found to initialise") ;
+		}
+	}
+	
+	# If no frontend set, use first in list
+	if (!defined($self->frontend_num))
+	{
+		# use first frontend found
+		if (scalar(@$info_aref))
+		{
+			my $adapter = $self->adapter_num ;
+			my $dev_idx=0;
+			foreach my $device_href (@$info_aref)
+			{
+				if ($device_href->{'adapter_num'} == $adapter)
+				{
+					$self->frontend_num($device_href->{'frontend_num'}) ;				
+					$self->_device_index($dev_idx) ;
+					last ;
+				}
+				++$dev_idx ;
+			}
+		}
+		else
+		{
+			return $self->handle_error("Error: No adapters found to initialise") ;
+		}
+	}
+	
+	## ensure device exists
+	if (!defined($self->_device_index))
+	{
+		my $adapter = $self->adapter_num ;
+		my $fe = $self->frontend_num ;
+		my $dev_idx=0;
+		foreach my $device_href (@$info_aref)
+		{
+			if ( ($device_href->{'adapter_num'} == $adapter) && ($device_href->{'frontend_num'} == $fe) )
+			{
+				$self->_device_index($dev_idx) ;
+				last ;
+			}
+			++$dev_idx ;
+		}
+		if (!defined($self->_device_index))
+		{
+			return $self->handle_error("Error: Specified adapter ($adapter) and frontend ($fe) does not exist") ;
+		}
+	}
+	
+	## set info ref
+	my $dev_idx = $self->_device_index() ;
+	$self->_device_info($info_aref->[$dev_idx]) ;
+	
+	# Create DVB 
+	my $dvb = dvb_init_nr($self->adapter_num, $self->frontend_num) ;
+	$self->dvb($dvb) ;
+
+	# get & set the device names
+	my $names_href = dvb_device_names($dvb) ;
+	$self->set(%$names_href) ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<log_error($error_message)>
+
+I<Object internal method>
+
+Add the error message to the error log. Get the log as an ARRAY ref via the 'errors()' method
+
+=cut
+
+sub log_error
+{
+	my $self = shift ;
+	my ($error_message) = @_ ;
+	
+	push @{$self->errors()}, $error_message ;
+	
+}
+
+#-----------------------------------------------------------------------------
+
+=item B<dvb_closed()>
+
+Returns true if the DVB tuner has been closed (or failed to open).
+
+=cut
+
+sub dvb_closed
+{
+	my $self = shift ;
+
+	return !$self->{dvb} ;
+}
+
+
+#-----------------------------------------------------------------------------
+# return current (or create new) file entry in multiplex_info
+sub _multiplex_file_href
+{
+	my $self = shift ;
+	my ($file) = @_ ;
+	
+	$self->{_multiplex_info}{'files'}{$file} ||= {
+
+		# start with this being the same as the requested filename
+		'destfile'	=> $file,
+		
+		# init
+		'offset' 	=> 0,
+		'duration' 	=> 0,
+		'title' 	=> '',
+		'warnings'	=> [],
+		'errors'	=> [],
+		'lines'		=> [],
+		'demux'		=> [],
+
+		# beta: title
+		'title' 	=> '',
+	} ;
+	my $href = $self->{_multiplex_info}{'files'}{$file} ;
+
+	return $href ;
+}
+
+#-----------------------------------------------------------------------------
+# Ensure that the multiplex_info HASH is up to date (pids match the demux list)
+sub _update_multiplex_info
+{
+	my $self = shift ;
+	my ($tsid) = @_ ;
+
+	$self->{_multiplex_info}{'tsid'} ||= $tsid ;
+	
+	foreach my $file (keys %{$self->{_multiplex_info}{'files'}})
+	{
+		$self->{_multiplex_info}{'files'}{$file}{'pids'} = [] ;
+		
+		# fill in the pid info
+		foreach my $demux_href (@{$self->{_multiplex_info}{'files'}{$file}{'demux'}})
+		{
+			push @{$self->{_multiplex_info}{'files'}{$file}{'pids'}}, {
+				'pid'	=> $demux_href->{'pid'},
+				'type'	=> $demux_href->{'type'},
+			} ;
+		}
+	}
+}
 
 # ============================================================================================
 
@@ -2209,956 +3565,6 @@ sub AUTOLOAD
 }
 
 
-#=====================================================================
-# MODULE USAGE
-#=====================================================================
-#
-
-#---------------------------------------------------------------------
-sub setup_modules
-{
-	# Attempt to load Debug object
-	if (load_module('Debug::DumpObj'))
-	{
-		# Create local function
-		*prt_data = sub {print STDERR Debug::DumpObj::prtstr_data(@_)} ;
-	}
-	else
-	{
-		# See if we've got Data Dummper
-		if (load_module('Data::Dumper'))
-		{
-			# Create local function
-			*prt_data = sub {print STDERR Data::Dumper->Dump([@_])} ;
-		}	
-		else
-		{
-			# Create local function
-			*prt_data = sub {print STDERR @_, "\n"} ;
-		}
-	}
-
-}
-
-#---------------------------------------------------------------------
-sub load_module
-{
-	my ($mod) = @_ ;
-	
-	my $ok = 1 ;
-
-	# see if we can load up the packages for thumbnail support
-	if (eval "require $mod") 
-	{
-		$mod->import() ;
-	}
-	else 
-	{
-		# Can't load package
-		$ok = 0 ;
-	}
-	return $ok ;
-}
-
-BEGIN {
-	# Debug only
-	setup_modules() ;
-}
-
-
-
-# ============================================================================================
-# END OF PACKAGE
-
-# ============================================================================================
-# Utilities
-# ============================================================================================
-package Linux::DVB::DVBT::Utils ;
-
-our %CONTENT_DESC = (
-    0x10 => "Film|movie/drama (general)",
-    0x11 => "Film|detective/thriller",
-    0x12 => "Film|adventure/western/war",
-    0x13 => "Film|science fiction/fantasy/horror",
-    0x14 => "Film|comedy",
-    0x15 => "Film|soap/melodrama/folkloric",
-    0x16 => "Film|romance",
-    0x17 => "Film|serious/classical/religious/historical movie/drama",
-    0x18 => "Film|adult movie/drama",
-
-    0x20 => "News|news/current affairs (general)",
-    0x21 => "News|news/weather report",
-    0x22 => "News|news magazine",
-    0x23 => "News|documentary",
-    0x24 => "News|discussion/interview/debate",
-
-    0x30 => "Show|show/game show (general)",
-    0x31 => "Show|game show/quiz/contest",
-    0x32 => "Show|variety show",
-    0x33 => "Show|talk show",
-
-    0x40 => "Sports|sports (general)",
-    0x41 => "Sports|special events (Olympic Games, World Cup etc.)",
-    0x42 => "Sports|sports magazines",
-    0x43 => "Sports|football/soccer",
-    0x44 => "Sports|tennis/squash",
-    0x45 => "Sports|team sports (excluding football)",
-    0x46 => "Sports|athletics",
-    0x47 => "Sports|motor sport",
-    0x48 => "Sports|water sport",
-    0x49 => "Sports|winter sports",
-    0x4A => "Sports|equestrian",
-    0x4B => "Sports|martial sports",
-
-    0x50 => "Children|children's/youth programmes (general)",
-    0x51 => "Children|pre-school children's programmes",
-    0x52 => "Children|entertainment programmes for 6 to 14",
-    0x53 => "Children|entertainment programmes for 10 to 16",
-    0x54 => "Children|informational/educational/school programmes",
-    0x55 => "Children|cartoons/puppets",
-
-    0x60 => "Music|music/ballet/dance (general)",
-    0x61 => "Music|rock/pop",
-    0x62 => "Music|serious music/classical music",
-    0x63 => "Music|folk/traditional music",
-    0x64 => "Music|jazz",
-    0x65 => "Music|musical/opera",
-    0x66 => "Music|ballet",
-
-    0x70 => "Arts|arts/culture (without music, general)",
-    0x71 => "Arts|performing arts",
-    0x72 => "Arts|fine arts",
-    0x73 => "Arts|religion",
-    0x74 => "Arts|popular culture/traditional arts",
-    0x75 => "Arts|literature",
-    0x76 => "Arts|film/cinema",
-    0x77 => "Arts|experimental film/video",
-    0x78 => "Arts|broadcasting/press",
-    0x79 => "Arts|new media",
-    0x7A => "Arts|arts/culture magazines",
-    0x7B => "Arts|fashion",
-
-    0x80 => "Social|social/political issues/economics (general)",
-    0x81 => "Social|magazines/reports/documentary",
-    0x82 => "Social|economics/social advisory",
-    0x83 => "Social|remarkable people",
-
-    0x90 => "Education|education/science/factual topics (general)",
-    0x91 => "Education|nature/animals/environment",
-    0x92 => "Education|technology/natural sciences",
-    0x93 => "Education|medicine/physiology/psychology",
-    0x94 => "Education|foreign countries/expeditions",
-    0x95 => "Education|social/spiritual sciences",
-    0x96 => "Education|further education",
-    0x97 => "Education|languages",
-
-    0xA0 => "Leisure|leisure hobbies (general)",
-    0xA1 => "Leisure|tourism/travel",
-    0xA2 => "Leisure|handicraft",
-    0xA3 => "Leisure|motoring",
-    0xA4 => "Leisure|fitness & health",
-    0xA5 => "Leisure|cooking",
-    0xA6 => "Leisure|advertizement/shopping",
-    0xA7 => "Leisure|gardening",
-
-    0xB0 => "Special|original language",
-    0xB1 => "Special|black & white",
-    0xB2 => "Special|unpublished",
-    0xB3 => "Special|live broadcast",
-);
-
-our %AUDIO_FLAGS = (
-  'AD' => 'is_audio_described',
-  'S'  => 'is_subtitled',
-  'SL' => 'is_deaf_signed',
-);
-
-
-#----------------------------------------------------------------------
-# Convert text
-#
-#
-sub text
-{
-	my ($text) = @_ ;
-
-	if ($text)
-	{
-		$text =~ s/\\x([\da-fA-F]{2})/chr hex $1/ge ;
-	}	
-	return $text ;
-}
-
-#----------------------------------------------------------------------
-# Convert category code into genre string
-#
-#
-sub genre
-{
-	my ($cat) = @_ ;
-
-	my $genre = "" ;
-	if ($cat && exists($CONTENT_DESC{$cat}))
-	{
-		$genre = $CONTENT_DESC{$cat} ;
-	}
-		
-	return $genre ;
-}
-
-
-#----------------------------------------------------------------------
-sub fix_title
-{
-	my ($title_ref, $synopsis_ref) = @_ ;
-
-	return unless ($$title_ref && $$synopsis_ref) ;
-
-	# fix title when title is Julian Fellowes Investigates...
-	# and synopsis is ...a Most Mysterious Murder. The Case of etc.
-	if ($$synopsis_ref =~ s/^\.\.\. ?//) 
-	{
-		$$title_ref =~ s/\.\.\.//;
-		$$synopsis_ref =~ s/^(.+?)\. //;
-		if ($1) 
-		{
-			$$title_ref .= ' ' . $1;
-			$$title_ref =~ s/ {2,}/ /;
-		}
-	}
-
-	# Followed by ...
-	$$synopsis_ref =~ s/Followed by .*// ;
-	
-}
-
-#----------------------------------------------------------------------
-sub fix_episodes
-{
-	my ($title_ref, $synopsis_ref, $episode_ref, $num_episodes_ref) = @_ ;
-
-	# Series: "1/7"
-	$$synopsis_ref ||= "" ;
-	if ($$synopsis_ref =~ s%(\d+)/(\d+)[\:\.\s]+%%) 
-	{
-		$$episode_ref = $1;
-		$$num_episodes_ref = $2;
-	}
-						
-	# "Episode 1 of 7."
-	if ($$synopsis_ref =~ s/\s*Episode (\d+) of (\d+)[\:\.\s]*//i) 
-	{
-		$$episode_ref = $1;
-		$$num_episodes_ref = $2;
-	}
-						
-}
-
-#----------------------------------------------------------------------
-sub fix_audio
-{
-	my ($title_ref, $synopsis_ref, $flags_href) = @_ ;
-
-    # extract audio described / subtitled / deaf_signed from synopsis
-	$$synopsis_ref ||= "" ;
-	return unless $$synopsis_ref =~ s/\[([A-Z,]+)\][\.\s]*//;
-	
-	my $flags = $1;
-    foreach my $flag (split ",", $flags) 
-    {
-	    my $method = $AUDIO_FLAGS{$flag} || next; # bad data
-	    $flags_href->{$method} = 1;
-    }
-}
-
-
-
-#---------------------------------------------------------------------------------------------------
-# Convert time (in HH:MM format) into minutes
-#
-sub time2mins
-{
-#	my $this = shift ;
-
-	my ($time) = @_ ;
-	my $mins=0;
-	if ($time =~ m/(\d+)\:(\d+)/)
-	{
-		$mins = 60*$1 + $2 ;
-	}
-	return $mins ;
-}
-
-#---------------------------------------------------------------------------------------------------
-# Convert minutes into time (in HH:MM format)
-#
-sub mins2time
-{
-#	my $this = shift ;
-
-	my ($mins) = @_ ;
-	my $hours = int($mins/60) ;
-	$mins = $mins % 60 ;
-	my $time = sprintf "%02d:%02d", $hours, $mins ;
-	return $time ;
-}
-
-#---------------------------------------------------------------------------------------------------
-# Calculate duration in minutes between start and end times
-#
-sub duration
-{
-#	my $this = shift ;
-
-	my ($start, $end) = @_ ;
-	my $start_mins = time2mins($start) ;
-	my $end_mins = time2mins($end) ;
-	$end_mins += 24*60 if ($end_mins < $start_mins) ;
-	my $duration_mins = $end_mins - $start_mins ;
-	my $duration = mins2time($duration_mins) ;
-
-#print STDERR "duration($start ($start_mins), $end ($end_mins)) = $duration ($duration_mins)\n" if $this->debug() ;
-
-	return $duration ;
-}
-
-# ============================================================================================
-# END OF PACKAGE
-
-# ============================================================================================
-# Config file
-# ============================================================================================
-package Linux::DVB::DVBT::Config ;
-
-use File::Path ;
-use File::Spec ;
-
-my %FILES = (
-	'ts'	=> "dvb-ts",
-	'pr'	=> "dvb-pr",
-) ;
-
-my %NUMERALS = (
-	'one'	=> 1,
-	'two'	=> 2,
-	'three'	=> 3,
-	'four'	=> 4,
-	'five'	=> 5,
-	'six'	=> 6,
-	'seven'	=> 7,
-	'eight'	=> 8,
-	'nine'	=> 9,
-) ;
-
-#----------------------------------------------------------------------
-# Given a channel name, so a "fuzzy" search and return params if possible
-#
-sub find_channel
-{
-	my ($channel_name, $tuning_href) = @_ ;
-	
-	my ($frontend_params_href, $demux_params_href) ;
-
-	## Look for channel info
-	print STDERR "find $channel_name ...\n" if $DEBUG ;
-	
-	# start by just seeing if it's the correct name...
-	if (exists($tuning_href->{'pr'}{$channel_name}))
-	{
-		$demux_params_href = $tuning_href->{'pr'}{$channel_name} ;
-		print STDERR " + found $channel_name\n" if $DEBUG ;
-	}
-	else
-	{
-
-		## Otherwise, try finding variations on the channel name
-		my %search ;
-
-		$channel_name = lc $channel_name ;
-		
-		# lower-case, no spaces
-		my $srch = $channel_name ;
-		$srch =~ s/\s+//g ;
-		$search{$srch}=1 ;
-
-		# lower-case, replaced words with numbers, no spaces
-		$srch = $channel_name ;
-		foreach my $num (keys %NUMERALS)
-		{
-			$srch =~ s/\b($num)\b/$NUMERALS{$num}/ge ;
-		}
-		$srch =~ s/\s+//g ;
-		$search{$srch}=1 ;
-
-		# lower-case, replaced numbers with words, no spaces
-		$srch = $channel_name ;
-		foreach my $num (keys %NUMERALS)
-		{
-print STDERR " -- $srch - replace $NUMERALS{$num} with $num..\n" if $DEBUG>3 ;
-			$srch =~ s/($NUMERALS{$num})\b/$num/ge ;
-print STDERR " -- -- $srch\n" if $DEBUG>3 ;
-		}
-		$srch =~ s/\s+//g ;
-		$search{$srch}=1 ;
-
-		print STDERR " + Searching tuning info [", keys %search, "]...\n" if $DEBUG>2 ;
-		
-		foreach my $chan (keys %{$tuning_href->{'pr'}})
-		{
-			my $srch_chan = lc $chan ;
-			$srch_chan =~ s/\s+//g ;
-			
-			foreach my $search (keys %search)
-			{
-				print STDERR " + + checking $search against $srch_chan \n" if $DEBUG>2 ;
-				if ($srch_chan eq $search)
-				{
-					$demux_params_href = $tuning_href->{'pr'}{$chan} ;
-					print STDERR " + found $channel_name\n" if $DEBUG ;
-					last ;
-				}
-			}
-			
-			last if $demux_params_href ;
-		}
-	}
-	
-	## If we've got the channel, look up it's frontend settings
-	if ($demux_params_href)
-	{
-		my $tsid = $demux_params_href->{'tsid'} ;
-		$frontend_params_href = $tuning_href->{'ts'}{$tsid} ;
-	}
-
-	return ($frontend_params_href, $demux_params_href) ;
-}
-
-#----------------------------------------------------------------------
-# Read tuning information
-#
-#
-sub read
-{
-	my ($search_path) = @_ ;
-	
-	my $href ;
-	my $dir = read_dir($search_path) ;
-	if ($dir)
-	{
-		$href = {} ;
-		foreach my $region (keys %FILES)
-		{
-		no strict "refs" ;
-			my $fn = "read_dvb_$region" ;
-			$href->{$region} = &$fn("$dir/$FILES{$region}") ;
-		}
-		
-		print STDERR "Read config from $dir\n" if $DEBUG ;
-		
-	}
-	return $href ;
-}
-
-#----------------------------------------------------------------------
-# Write tuning information
-#
-#
-sub write
-{
-	my ($search_path, $href) = @_ ;
-
-	my $dir = write_dir($search_path) ;
-	if ($dir && $href)
-	{
-		foreach my $region (keys %FILES)
-		{
-		no strict "refs" ;
-			my $fn = "write_dvb_$region" ;
-			&$fn("$dir/$FILES{$region}", $href->{$region}) ;
-		}
-
-		print STDERR "Written config to $dir\n" if $DEBUG ;
-	}
-}
-
-#----------------------------------------------------------------------
-# Merge tuning information - overwrites previous with new
-#
-#	region: 'ts' => 
-#		section: '4107' =>
-#			field: name = Oxford/Bexley
-#
-sub merge
-{
-	my ($new_href, $old_href) = @_ ;
-
-	if ($old_href && $new_href)
-	{
-		foreach my $region (keys %FILES)
-		{
-			foreach my $section (keys %{$new_href->{$region}})
-			{
-				foreach my $field (keys %{$new_href->{$region}{$section}})
-				{
-					$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
-				}
-			}
-		}
-	}
-
-	$old_href = $new_href if (!$old_href) ;
-	
-	return $old_href ;
-}
-
-#----------------------------------------------------------------------
-# Merge tuning information - checks to ensure new program info has the 
-# best strength, and that new program has all of it's settings
-#
-#	'pr' =>
-#	      BBC ONE => 
-#	        {
-#	          pnr => 4171,
-#	          tsid => 4107,
-#	          tuned_freq => 57800000,
-#	          ...
-#	        },
-#	'ts' => 
-#	      4107 =>
-#	        { 
-#	          tsid => 4107,   
-#			  frequency => 57800000,            
-#	          ...
-#	        },
-#	'freqs' => 
-#	      57800000 =>
-#	        { 
-#	          strength => aaaa,               
-#	          snr => bbb,               
-#	          ber => ccc,               
-#	          ...
-#	        },
-#
-#
-sub merge_scan_freqs
-{
-	my ($new_href, $old_href, $verbose) = @_ ;
-
-#print STDERR "merge_scan_freqs()\n" ;
-
-	if ($old_href && $new_href)
-	{
-		foreach my $region (keys %$new_href)
-		{
-			foreach my $section (keys %{$new_href->{$region}})
-			{
-				## merge programs/streams differently if they already exist
-				my $overwrite = 1 ;
-				if ( (($region eq 'pr')||($region eq 'ts')) && exists($old_href->{$region}{$section}) )
-				{
-#	print STDERR " + found 2 instances of {$region}{$section}\n" ;
-					# check for signal quality to compare
-					my ($new_freq, $old_freq) ;
-					foreach (qw/frequency tuned_freq/)
-					{
-						$new_freq = $new_href->{$region}{$section}{$_} if exists($new_href->{$region}{$section}{$_}) ;	
-						$old_freq = $old_href->{$region}{$section}{$_} if exists($old_href->{$region}{$section}{$_}) ;	
-					}
-					if ($new_freq && $old_freq)
-					{
-						# just compare signal strength (for now!)
-						my ($new_strength, $old_strength) ;
-						foreach my $href ($new_href, $old_href)
-						{
-							$new_strength = $href->{'freqs'}{$new_freq}{'strength'} if exists($href->{'freqs'}{$new_freq}{'strength'} ) ;	
-							$old_strength = $href->{'freqs'}{$old_freq}{'strength'} if exists($href->{'freqs'}{$old_freq}{'strength'} ) ;	
-						}
-						if ($new_strength && $old_strength)
-						{
-#	print STDERR " + checking $region $section  : Strength NEW=$new_strength  OLD=$old_strength\n" ;
-							if ($old_strength >= $new_strength)
-							{
-#	print STDERR " + + keep stronger signal (OLD)\n" ;
-
-								$new_strength = $new_strength * 100 / 65535 ;
-								$old_strength = $old_strength * 100 / 65535 ;
-								
-								print STDERR "  Found 2 \"$section\" : keeping old signal $old_freq Hz $old_strength % (new $new_freq Hz $new_strength %)\n" if $verbose ;
-
-								$overwrite = 0 ;
-							}
-						}
-					}
-				}
-				
-				if ($overwrite)
-				{
-					## Just overwrite
-					foreach my $field (keys %{$new_href->{$region}{$section}})
-					{
-						$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
-					}
-				}
-			}
-		}
-	}
-
-	$old_href = $new_href if (!$old_href) ;
-	
-#print STDERR "merge_scan_freqs() - DONE\n" ;
-	
-	return $old_href ;
-}
-
-
-#----------------------------------------------------------------------
-# Split the search path & expand all the directories to absolute paths
-#
-sub _expand_search_path
-{
-	my ($search_path) = @_ ;
-
-	my @dirs = split /:/, $search_path ;
-	foreach my $d (@dirs)
-	{
-		# Replace any '~' with $HOME
-		$d =~ s/~/\$HOME/g ;
-		
-		# Now replace any vars with values from the environment
-		$d =~ s/\$(\w+)/$ENV{$1}/ge ;
-		
-		# Ensure path is clean
-		$d = File::Spec->rel2abs($d) ;
-	}
-	
-	return @dirs ;
-}
-
-#----------------------------------------------------------------------
-# Find directory to read from
-#
-#
-sub read_dir
-{
-	my ($search_path) = @_ ;
-	
-	my @dirs = _expand_search_path($search_path) ;
-	my $dir ;
-	
-	foreach my $d (@dirs)
-	{
-		my $found=1 ;
-		foreach my $region (keys %FILES)
-		{
-			$found=0 if (! -f  "$d/$FILES{$region}") ;
-		}
-		
-		if ($found)
-		{
-			$dir = $d ;
-			last ;
-		}
-	}
-
-	print STDERR "Searched $search_path : read dir=".($dir?$dir:"")."\n" if $DEBUG ;
-		
-	return $dir ;
-}
-
-#----------------------------------------------------------------------
-# Find directory to write to
-#
-#
-sub write_dir
-{
-	my ($search_path) = @_ ;
-
-	my @dirs = _expand_search_path($search_path) ;
-	my $dir ;
-
-	print STDERR "Find dir to write to from $search_path ...\n" if $DEBUG ;
-	
-	foreach my $d (@dirs)
-	{
-		my $found=1 ;
-
-		print STDERR " + processing $d\n" if $DEBUG ;
-
-		# See if dir exists
-		if (!-d $d)
-		{
-			# See if this user can create the dir
-			eval {
-				mkpath([$d], $DEBUG, 0755) ;
-			};
-			$found=0 if $@ ;
-
-			print STDERR " + $d does not exist - attempt to mkdir=$found\n" if $DEBUG ;
-		}		
-
-		if (-d $d)
-		{
-			print STDERR " + $d does exist ...\n" if $DEBUG ;
-
-			# See if this user can write to the dir
-			foreach my $region (keys %FILES)
-			{
-				if (open my $fh, ">>$d/$FILES{$region}")
-				{
-					close $fh ;
-
-					print STDERR " + + Write to $d/$FILES{$region} succeded\n" if $DEBUG ;
-				}
-				else
-				{
-					print STDERR " + + Unable to write to $d/$FILES{$region} - aborting this dir\n" if $DEBUG ;
-
-					$found = 0;
-					last ;
-				}
-			}
-		}		
-		
-		if ($found)
-		{
-			$dir = $d ;
-			last ;
-		}
-	}
-
-	print STDERR "Searched $search_path : write dir=".($dir?$dir:"")."\n" if $DEBUG ;
-	
-	return $dir ;
-}
-
-
-
-#----------------------------------------------------------------------
-# Read dvb-ts - station information
-#
-#[4107]
-#name = Oxford/Bexley
-#frequency = 578000000
-#bandwidth = 8
-#modulation = 16
-#hierarchy = 0
-#code_rate_high = 34
-#code_rate_low = 34
-#guard_interval = 32
-#transmission = 2
-#
-#
-sub read_dvb_ts
-{
-	my ($fname) = @_ ;
-
-	my %dvb_ts ;
-	open my $fh, "<$fname" or die "Error: Unable to read $fname : $!" ;
-	
-	my $line ;
-	my $tsid ;
-	while(defined($line=<$fh>))
-	{
-		chomp $line ;
-		next if $line =~ /^\s*#/ ; # skip comments
-		 
-		if ($line =~ /\[(\d+)\]/)
-		{
-			$tsid=$1;
-		}
-		elsif ($line =~ /(\S+)\s*=\s*(\S+)/)
-		{
-			if ($tsid)
-			{
-				$dvb_ts{$tsid}{$1} = $2 ;
-			}
-		}
-		elsif ($line =~ /(\S+)\s*=/)
-		{
-			# skip empty entries
-		}
-		else
-		{
-			$tsid = undef ;
-		}
-	}	
-	close $fh ;
-	
-	return \%dvb_ts ;
-}
-
-#----------------------------------------------------------------------
-# Read dvb-pr - channel information
-#
-#[4107-4171]
-#video = 600
-#audio = 601
-#audio_details = eng:601 eng:602
-#type = 1
-#net = BBC
-#name = BBC ONE
-#
-#
-sub read_dvb_pr
-{
-	my ($fname) = @_ ;
-
-	my %dvb_pr ;
-	open my $fh, "<$fname" or die "Error: Unable to read $fname : $!"  ;
-	
-	my $line ;
-	my $pnr ;
-	my $tsid ;
-	while(defined($line=<$fh>))
-	{
-		chomp $line ;
-		next if $line =~ /^\s*#/ ; # skip comments
-		 
-		if ($line =~ /\[([\d]+)\-([\d]+)\]/)
-		{
-			($tsid, $pnr)=($1,$2);
-		}
-		elsif ($line =~ /(\S+)\s*=\s*(\S+.*)/)
-		{
-			if ($pnr && $tsid)
-			{
-				$dvb_pr{"$tsid-$pnr"}{$1} = $2 ;
-				
-				# ensure tsid & pnr are in the hash
-				$dvb_pr{"$tsid-$pnr"}{'tsid'} = $tsid ;
-				$dvb_pr{"$tsid-$pnr"}{'pnr'} = $pnr ;
-			}
-		}
-		elsif ($line =~ /(\S+)\s*=/)
-		{
-			# skip empty entries
-		}
-		else
-		{
-			$pnr = undef ;
-			$tsid = undef ;
-		}
-	}	
-	close $fh ;
-	
-	# Make channel name the first key
-	my %chans ;
-	foreach (keys %dvb_pr)
-	{
-		# handle chans with no name
-		my $name = $dvb_pr{$_}{'name'} || $_ ; 
-		$chans{$name} = $dvb_pr{$_} ; 
-	}
-	
-	return \%chans ;
-}
-
-
-#----------------------------------------------------------------------
-# Write config information
-#
-#	'ts' => 
-#	      4107 =>
-#	        { # HASH(0x83241b8)
-#	          bandwidth => 8,
-#	          code_rate_hp => 34,         code_rate_high
-#	          code_rate_lp => 34,         code_rate_low
-#	          constellation => 16,        modulation
-#	          frequency => 578000000,
-#	          guard => 32,                guard_interval
-#	          hierarchy => 0,
-#	          net => Oxford/Bexley,
-#	          transmission => 2,
-#	          tsid => 4107,               
-#	        },
-#	
-#[4107]
-#name = Oxford/Bexley
-#frequency = 578000000
-#bandwidth = 8
-#modulation = 16
-#hierarchy = 0
-#code_rate_high = 34
-#code_rate_low = 34
-#guard_interval = 32
-#transmission = 2
-#
-#
-sub write_dvb_ts
-{
-	my ($fname, $href) = @_ ;
-
-	open my $fh, ">$fname" or die "Error: Unable to write $fname : $!" ;
-	
-	foreach my $section (keys %$href)
-	{
-		print $fh "[$section]\n" ;
-		foreach my $field (keys %{$href->{$section}})
-		{
-			my $val = $href->{$section}{$field} ;
-			if ($val =~ /\S+/)
-			{
-				print $fh "$field = $val\n" ;
-			} 
-		}
-		print $fh "\n" ;
-	}
-	
-	close $fh ;
-}
-
-#----------------------------------------------------------------------
-# Write config information
-#
-#	'pr' =>
-#	      BBC ONE => 
-#	        { # HASH(0x8327848)
-#	          a_pid => 601,                   audio
-#	          audio => eng:601 eng:602,       audio_details
-#	          ca => 0,
-#	          name => "BBC ONE",
-#	          net => BBC,
-#	          p_pid => 4171,                  -N/A-
-#	          pnr => 4171,
-#	          running => 4,
-#	          t_pid => 0,                     teletext
-#	          tsid => 4107,
-#	          type => 1,
-#	          v_pid => 600,                   video
-#	          version => 26,                  -N/A-
-#	        },
-#
-#[4107-4171]
-#video = 600
-#audio = 601
-#audio_details = eng:601 eng:602
-#type = 1
-#net = BBC
-#name = BBC ONE
-#
-sub write_dvb_pr
-{
-	my ($fname, $href) = @_ ;
-
-	open my $fh, ">$fname" or die "Error: Unable to write $fname : $!" ;
-	
-	foreach my $section (keys %$href)
-	{
-		print $fh "[$href->{$section}{tsid}-$href->{$section}{pnr}]\n" ;
-		foreach my $field (keys %{$href->{$section}})
-		{
-			my $val = $href->{$section}{$field} ;
-			if ($val =~ /\S+/)
-			{
-				print $fh "$field = $val\n" ;
-			} 
-		}
-		print $fh "\n" ;
-	}
-	
-	close $fh ;
-}
-
 
 # ============================================================================================
 # END OF PACKAGE
@@ -3193,7 +3599,44 @@ Please report bugs using L<http://rt.cpan.org>.
 
 =head1 BUGS
 
-None (known) at the moment...
+Even though I support the selection & recording of the subtitle pid, ffmpeg does not recognise the dvbsub stream in the written .ts file. I'm currently looking into this, but it
+may take some time wading through all the specifications! (If anyone has any suggestions then please contact me). 
+
+
+=head1 FEATURES
+
+The current release supports:
+
+=over 4
+
+=item *
+
+Tuning to a channel based on "fuzzy" channel name (i.e. you can specify a channel with/without spaces, in any case, and with
+numerals or number names)  
+
+=item *
+
+Transport stream recording (i.e. program record) with large file support
+
+=item *
+
+Electronic program guide. Builds the TV/radio listings as a HASH structure (which you can then store into a database, file etc and use
+to schedule your recordings)
+
+=item *
+
+Option to record all/any of the audio streams for a program (e.g. allows for descriptive audio for visually impaired)
+
+=item *
+
+Recording of any streams within a multiplex at the same time (i.e. multi-channel recording using a single DVB device)
+
+=item *
+
+Additional module providing wrappers to ffmpeg as "helper" programs to extract the appropriate streams recorded during
+multiplex recording. 
+
+=back
 
 
 =head1 FUTURE
@@ -3201,6 +3644,10 @@ None (known) at the moment...
 Subsequent releases will include:
 
 =over 4
+
+=item *
+
+I'm looking into the option of writing the files directly as mpeg. Assuming I can work my way through the mpeg2 specification! 
 
 =item *
 

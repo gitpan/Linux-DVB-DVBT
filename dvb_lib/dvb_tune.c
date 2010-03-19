@@ -520,12 +520,12 @@ int dvb_frontend_open(struct dvb_state *h, int write)
     *fd = open(h->frontend, (write ? O_RDWR : O_RDONLY) | O_NONBLOCK);
 
     if (-1 == *fd) {
-	fprintf(stderr,"dvb fe: open %s: %s\n",
-		h->frontend,strerror(errno));
-	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
-	return -10;
+		fprintf(stderr,"dvb fe: open %s: %s\n", h->frontend,strerror(errno));
+		if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -10) ;
+		return -10;
     }
-	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Created fd=%d\n", *fd);}
+
+    if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Created fd=%d\n", *fd);}
 	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return 0;
 }
@@ -755,11 +755,13 @@ if ( (dvb_debug>=10) && (i%10==0) ) fprintf(stderr, ">>> tuning status == 0x%04x
 /* ======================================================================= */
 /* handle dvb demux                                                        */
 
+
+#if 0
 /* ----------------------------------------------------------------------- */
 void dvb_demux_filter_setup(struct dvb_state *h, int video, int audio)
 {
 	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
-	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "vidfeo=%d, audio=%d\n", video, audio); }
+	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "video=%d, audio=%d\n", video, audio); }
 
 	h->video.filter.pid      = video;
     h->video.filter.input    = DMX_IN_FRONTEND;
@@ -863,6 +865,49 @@ void dvb_demux_filter_release(struct dvb_state *h)
 	close(h->video.fd);
 	h->video.fd = -1;
     }
+}
+#endif
+
+
+/* ----------------------------------------------------------------------- */
+int dvb_demux_add_filter(struct dvb_state *h, unsigned int pid)
+{
+int fd;
+struct dmx_pes_filter_params f;
+
+	fd = open(h->demux, O_RDONLY);
+	if (fd == -1) {
+		perror("cannot open demux device");
+		return -1;
+	}
+
+	memset(&f, 0, sizeof(f));
+	f.pid = (uint16_t) pid;
+	f.input = DMX_IN_FRONTEND;
+	f.output = DMX_OUT_TS_TAP;
+	f.pes_type = DMX_PES_OTHER;
+	f.flags   = DMX_IMMEDIATE_START;
+
+	if (xioctl(fd, DMX_SET_PES_FILTER, &f, 0) == -1) {
+		perror("DMX_SET_PES_FILTER");
+		return -2;
+	}
+
+	if (dvb_debug) fprintf(stderr, "set filter for PID 0x%04x on fd %d\n", pid, fd);
+
+	return fd ;
+}
+
+/* ----------------------------------------------------------------------- */
+int dvb_demux_remove_filter(struct dvb_state *h, int fd)
+{
+    if (-1 != fd) {
+		xioctl(fd,DMX_STOP,NULL,0);
+		close(fd);
+		fd = -1;
+    }
+
+	return fd ;
 }
 
 
@@ -973,7 +1018,11 @@ void dvb_fini(struct dvb_state *h)
 
     dvb_frontend_release(h, /* write=1 */ 1);
     dvb_frontend_release(h, /* read=0 */  0);
-    dvb_demux_filter_release(h);
+
+//Now handled by Perl
+//    dvb_demux_filter_release(h);
+
+
     dvb_dvr_release(h);
     free(h);
 
@@ -984,41 +1033,51 @@ void dvb_fini(struct dvb_state *h)
 struct dvb_state* dvb_init(char *adapter, int frontend)
 {
 struct dvb_state *h;
+int rc = 0 ;
 
 	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
     h = malloc(sizeof(*h));
-    if (NULL == h)
-	goto oops;
+    if (NULL == h) {
+    	rc = -1 ;
+    	goto oops;
+    }
     memset(h,0,sizeof(*h));
     h->fdro     = -1;
     h->fdwr     = -1;
     h->dvro     = -1;
-    h->audio.fd = -1;
-    h->video.fd = -1;
+//    h->audio.fd = -1;
+//    h->video.fd = -1;
 
     snprintf(h->frontend, sizeof(h->frontend),"%s/frontend%d", adapter, frontend);
     snprintf(h->demux,    sizeof(h->demux),   "%s/demux%d",    adapter, frontend);
     snprintf(h->dvr,      sizeof(h->demux),   "%s/dvr%d",      adapter, frontend);
 
-    if (0 != dvb_frontend_open(h, /* read=0 */ 0))
-	goto oops;
+    if (0 != dvb_frontend_open(h, /* read=0 */ 0)) {
+    	rc = -2 ;
+    	if (dvb_debug) fprintf(stderr, "dvb init: frontend failed to open : fdro=%d, fdwr=%d\n", h->fdro, h->fdwr);
+    	goto oops;
+    }
 
     if (-1 == xioctl(h->fdro, FE_GET_INFO, &h->info, 0)) {
-	perror("dvb fe: ioctl FE_GET_INFO");
-	goto oops;
+    	rc = -3 ;
+		if (dvb_debug) fprintf(stderr, "dvb init: xiotcl FE_GET_INFO failed\n");
+		perror("dvb init: ioctl FE_GET_INFO");
+		goto oops;
     }
 
     /* hacking DVB-S without hardware ;) */
     if (-1 != dvb_type_override)
-	h->info.type = dvb_type_override;
-	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
+    	h->info.type = dvb_type_override;
+
+    if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return h;
 
  oops:
     if (h)
-	dvb_fini(h);
-	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
+    	dvb_fini(h);
+
+    if (dvb_debug>1) _fn_end((char *)__FUNCTION__, rc) ;
     return NULL;
 }
 
@@ -1109,6 +1168,10 @@ struct dvb_frontend_parameters info ;
 }
 
 
+#if 0
+
+// Now using dvb_wait_tune called by dvb_tune. Also changed demux setup
+
 /* ----------------------------------------------------------------------- */
 int dvb_finish_tune(struct dvb_state *h, int timeout)
 {
@@ -1139,4 +1202,4 @@ int rc = 0 ;
 	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return 0;
 }
-
+#endif

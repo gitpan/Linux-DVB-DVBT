@@ -1,3 +1,6 @@
+#!perl
+use strict ;
+
 use Data::Dumper ;
 
 use Test::More tests => 23;
@@ -64,7 +67,7 @@ my $pr5_href =
           'type' => "1",
           'video' => "203",
         } ;
-        
+
 my $tsid1_href =
         { 
           'bandwidth' => "8",
@@ -76,6 +79,7 @@ my $tsid1_href =
           'modulation' => "64",
           'net' => "Oxford/Bexley",
           'transmission' => "2",
+          'tsid' => "16384",
         } ;
 my $tsid5r_href =
         { 
@@ -88,6 +92,7 @@ my $tsid5r_href =
           'modulation' => "64",
           'net' => "Oxford/Bexley1",
           'transmission' => "1",
+          'tsid' => "5678",
         } ;
 my $tsid5_href =
         { 
@@ -100,6 +105,7 @@ my $tsid5_href =
           'modulation' => "64",
           'net' => "Oxford/Bexley1",
           'transmission' => "1",
+          'tsid' => "6789",
         } ;
 
 my %tuning = (

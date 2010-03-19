@@ -9,6 +9,9 @@ typemap
 fallback/const-c.inc
 fallback/const-xs.inc
 lib/Linux/DVB/DVBT.pm
+lib/Linux/DVB/DVBT/Config.pm
+lib/Linux/DVB/DVBT/Utils.pm
+lib/Linux/DVB/DVBT/Ffmpeg.pm
 dvb_lib/Makefile
 dvb_lib/dvb.h
 dvb_lib/dvb_epg.h
@@ -44,13 +47,24 @@ script/dvbt-record
 script/dvbt-ffrec
 script/dvbt-devices
 script/dvbt-chans
+script/dvbt-multirec
+script/run-scan
 doxygen/Doxyfile
 t/01-basic.t
 t/02-channel.t
 t/03-config.t
 t/07-pod.t
+t/30-utils.t
+t/40-config.outpid.t
+t/40-config.pidinfo.t
+t/50-multi.parse.t
+t/60-ffmpeg.utils.t
 t/config/dvb-pr
 t/config/dvb-ts
+t/config-ox/dvb-pr
+t/config-ox/dvb-ts
+t/config-Oxford/dvb-pr
+t/config-Oxford/dvb-ts
 
 
 META.yml                                 Module meta-data (added by MakeMaker)

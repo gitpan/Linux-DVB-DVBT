@@ -7,15 +7,19 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $check, $noprune) ;
-	GetOptions('v|verbose=s' => \$VERBOSE,
-			   'debug=s' => \$DEBUG,
+our $VERSION = "1.000" ;
+
+
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $check, $noprune, $adap) ;
+	GetOptions('v|verbose=i' => \$VERBOSE,
+			   'debug=i' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'clean' => \$clean,
 			   'cfg=s' => \$config,
 			   'noprune' => \$noprune,
 			   'check' => \$check,
+			   'a=s' => \$adap,
 			   ) or pod2usage(2) ;
 
 	# force checking on
@@ -39,7 +43,9 @@ $VERBOSE ||= 1 ;
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
-	my $dvb = Linux::DVB::DVBT->new() ;
+	my $dvb = Linux::DVB::DVBT->new(
+		'adapter_num'	=> $adap,
+	) ;
 	
 	$dvb->set('prune_channels' => 0) if $noprune ;
 	$dvb->config_path($config) if $config ;

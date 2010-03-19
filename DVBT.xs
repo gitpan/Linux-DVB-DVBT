@@ -13,8 +13,13 @@
 #include "dvb_lib/dvb_struct.h"
 #include "dvb_lib/dvb_lib.h"
 
-#define DVBT_VERSION		"1.006"
+#define DVBT_VERSION		"1.11"
 #define DEFAULT_TIMEOUT		900
+
+// If large file support is not included, then make the value do nothing
+#ifndef O_LARGEFILE
+#define O_LARGEFILE	0
+#endif
 
 /*---------------------------------------------------------------------------------------------------*/
 
@@ -51,6 +56,9 @@
   	  if (DVBT_DEBUG) fprintf(stderr, " set %s = %d\n", #var, var); \
   	} \
   }
+
+#define HVF(hv, var)	hv_fetch (hv, #var, sizeof (#var) - 1, 0)
+
 
 /* get the HASH ref using the specified key. If not currently set, then create a new HASH and add it to the parent */
 #define GET_HREF(hv, key, var)                                \
@@ -325,6 +333,7 @@ dvb_clear_epg();
 
  # /*---------------------------------------------------------------------------------------------------*/
  # /* Use the specified parameters (or AUTO) to tune the frontend */
+ 
 int
 dvb_tune (DVB *dvb, HV *parameters)
     INIT:
@@ -368,7 +377,7 @@ dvb_tune (DVB *dvb, HV *parameters)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, " DVBT.xs::dvb_tune() : tuning freq=%d Hz, inv=(%d) "
+	fprintf(stderr, "#@f DVBT.xs::dvb_tune() : tuning freq=%d Hz, inv=(%d) "
 		"bandwidth=(%d) code_rate=(%d - %d) constellation=(%d) "
 		"transmission=(%d) guard=(%d) hierarchy=(%d)\n",
 		frequency,
@@ -446,7 +455,7 @@ dvb_scan_tune (DVB *dvb, HV *parameters)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, " DVBT.xs::dvb_tune() : tuning freq=%d Hz, inv=(%d) "
+	fprintf(stderr, "#@f DVBT.xs::dvb_tune() : tuning freq=%d Hz, inv=(%d) "
 		"bandwidth=(%d) code_rate=(%d - %d) constellation=(%d) "
 		"transmission=(%d) guard=(%d) hierarchy=(%d)\n",
 		frequency,
@@ -479,22 +488,40 @@ dvb_scan_tune (DVB *dvb, HV *parameters)
         RETVAL
 
 
+
  # /*---------------------------------------------------------------------------------------------------*/
- # /* Set the DEMUX to the specified streams */
+ # /* Remove the demux filter (specified via the file handle) */
 int
-dvb_set_demux (DVB *dvb, int vpid, int apid, int tpid, int timeout)
+dvb_del_demux (DVB *dvb, int fd)
 
 	CODE:
-		if (!timeout) timeout = DEFAULT_TIMEOUT ;
+		if (fd > 0)
+		{
+			// delete demux filter
+			RETVAL = dvb_demux_remove_filter(dvb, fd) ;
+		}
+		else
+		{
+			RETVAL = -1 ;
+		}
 		
-		// Initialise the demux filter
-		dvb_demux_filter_setup(dvb, vpid, apid) ;
+	OUTPUT:
+       RETVAL
 
+
+
+ # /*---------------------------------------------------------------------------------------------------*/
+ # /* Set the DEMUX to add a new stream specified by it's pid. Returns file handle or negative if fail */
+int
+dvb_add_demux (DVB *dvb, unsigned int pid)
+
+	CODE:
 		// set demux
-		RETVAL = dvb_finish_tune(dvb, timeout) ;
+		RETVAL = dvb_demux_add_filter(dvb, pid) ;
 
 	OUTPUT:
        RETVAL
+
 
 
  # /*---------------------------------------------------------------------------------------------------*/
@@ -602,7 +629,7 @@ dvb_scan(DVB *dvb, int verbose)
 		
  if (DVBT_DEBUG >= 10)
  {
-		fprintf(stderr, "FREQ: %d Hz seen=%d tuned=%d (Strength=%d)\n",
+		fprintf(stderr, "#@f FREQ: %d Hz seen=%d tuned=%d (Strength=%d)\n",
 			freqi->frequency,
 			freqi->flags.seen,
 			freqi->flags.tuned,
@@ -647,7 +674,7 @@ dvb_scan(DVB *dvb, int verbose)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, "  stream: TSID %d freq = %d Hz [%d Hz] : tuned=%d updated=%d\n",
+	fprintf(stderr, "#@f  stream: TSID %d freq = %d Hz [%d Hz] : tuned=%d updated=%d\n",
 		stream->tsid,
 		stream->frequency,
 		frequency,
@@ -657,8 +684,6 @@ dvb_scan(DVB *dvb, int verbose)
  }
  
 
-		if (stream->tuned)
-		{
 			/*
 			//    	  int                  tsid;
 			//
@@ -719,8 +744,9 @@ dvb_scan(DVB *dvb, int verbose)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, "  + LCN: %d type=%d visible=%d\n",
+	fprintf(stderr, "#@p  + LCN: %d (pnr %d) type=%d visible=%d\n",
 		pinfo->lcn,
+		pinfo->service_id,
 		pinfo->service_type,
 		pinfo->visible
 	) ;
@@ -729,7 +755,7 @@ dvb_scan(DVB *dvb, int verbose)
 				if (pinfo->lcn > 0)
 				{
 					/*			
-					int 				 service_id ;
+					int 				 service_id ; # same as pnr
 					int 				 service_type ;
 					int					 visible ;
 					int					 lcn ;
@@ -746,7 +772,6 @@ dvb_scan(DVB *dvb, int verbose)
 
 			av_push(streams, newRV((SV *)rh));
 			
-		}
 	}
 
 	/* store program info */
@@ -783,7 +808,7 @@ dvb_scan(DVB *dvb, int verbose)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, "PROG %d-%d: %s\n",
+	fprintf(stderr, "#@p PROG %d-%d: %s\n",
 		program->tsid,
 		program->pnr,
 		program->name
@@ -802,7 +827,7 @@ dvb_scan(DVB *dvb, int verbose)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, " + PID %d  Video=%d Audio=%d Teletext=%d (type=%d)\n",
+	fprintf(stderr, "#@p + PID %d  Video=%d Audio=%d Teletext=%d (type=%d)\n",
 		program->p_pid,
 		program->v_pid,
 		program->a_pid,
@@ -818,6 +843,7 @@ dvb_scan(DVB *dvb, int verbose)
 			HVSN_I(rh, program, v_pid, 	video) ;
 			HVSN_I(rh, program, a_pid,	audio) ;
 			HVSN_I(rh, program, t_pid,	teletext) ;
+			HVSN_I(rh, program, s_pid,	subtitle) ;
 			HVSN_S(rh, program, audio,	audio_details) ;
 			HVS_S(rh, program, net) ;
 			HVS_S(rh, program, name) ;
@@ -832,7 +858,7 @@ dvb_scan(DVB *dvb, int verbose)
 		        
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, " + + freq = %d Hz [%d Hz]\n",
+	fprintf(stderr, "#@f + + freq = %d Hz [%d Hz]\n",
 		finfo->frequency, frequency
 	) ;
  }
@@ -948,6 +974,14 @@ dvb_epg(DVB *dvb, int verbose, int alive, int section)
 			{
 				hv_store(rh, "genre", sizeof("genre")-1, newSVpv(_to_string(epg->cat[0]), 0), 0) ;
 			}
+			if (epg->tva_prog[0])
+			{
+				HVS_STRING(rh, epg, tva_prog);
+			}
+			if (epg->tva_series[0])
+			{
+				HVS_STRING(rh, epg, tva_series);
+			}
 
 			av_push(results, newRV((SV *)rh));
 	   }
@@ -988,6 +1022,163 @@ dvb_signal_quality(DVB *dvb)
     RETVAL = newRV((SV *)results);
   OUTPUT:
     RETVAL
+
+ # /*---------------------------------------------------------------------------------------------------*/
+ # /* Record a multiplex */
+ #
+ #	struct multiplex_file_struct {
+ #		int								file;
+ #		time_t 							start;
+ #		time_t 							end;
+ #	    unsigned int                    done;
+ #	} ;
+ #	
+ #	struct multiplex_pid_struct {
+ #	    struct multiplex_file_struct	 *file_info ;
+ #	    unsigned int                     pid;
+ #	} ;
+ #
+
+int
+dvb_record_demux (DVB *dvb, SV *multiplex_aref)
+
+  INIT:
+	unsigned 		num_entries ;
+	int				i ;
+	SV				**item ;
+	SV 				**val;
+	HV				*href ;
+	char			*str ;
+
+    AV 				*pid_array;
+	unsigned 		num_pids ;
+	int				j ;
+	SV				**piditem ;
+	
+	struct multiplex_file_struct	*file_info ;
+	struct multiplex_pid_struct		*pid_list ;
+	unsigned						pid_list_length ;
+	unsigned						pid_index;
+	
+	time_t 		now, start, end;
+	int			file ;
+	int rc ;
+
+  CODE:
+
+	if ((!SvROK(multiplex_aref))
+	|| (SvTYPE(SvRV(multiplex_aref)) != SVt_PVAV))
+	{
+	 	croak("Linux::DVB::DVBT::dvb_record_demux requires a valid array ref") ;
+	}
+ 
+    // av_len returns -1 for empty. Returns maximum index number otherwise
+	num_entries = av_len( (AV *)SvRV(multiplex_aref) ) + 1 ;
+	if (num_entries <= 0)
+	{
+	 	croak("Linux::DVB::DVBT::dvb_record_demux requires a list of multiplex hashes") ;
+	}
+
+	// count number of entries (and check structure)
+	pid_list_length = 0 ;
+
+	for (i=0; i <= num_entries ; i++) 
+	{ 
+		if ((item = av_fetch((AV *)SvRV(multiplex_aref), i, 0)) && SvOK (*item)) 
+		{
+  			if ( SvTYPE(SvRV(*item)) != SVt_PVHV )
+  			{
+ 			 	croak("Linux::DVB::DVBT::dvb_record_demux requires a list of multiplex hashes") ;
+ 			}
+ 			href = (HV *)SvRV(*item) ;
+
+ 			// get pids
+ 			val = HVF(href, pids) ;
+ 			pid_array = (AV *) SvRV (*val); 
+ 			num_pids = av_len(pid_array) + 1 ;
+
+			pid_list_length += num_pids ;
+		}
+	}
+
+	// create arrays
+	now = time(NULL);
+ 	pid_list = (struct multiplex_pid_struct *)safemalloc( sizeof(struct multiplex_pid_struct) * pid_list_length); 
+ 	file_info = (struct multiplex_file_struct *)safemalloc( sizeof(struct multiplex_file_struct) * num_entries );
+
+	for (i=0, pid_index=0; i <= num_entries ; i++) 
+	{ 
+		if ((item = av_fetch((AV *)SvRV(multiplex_aref), i, 0)) && SvOK (*item)) 
+		{
+ 			href = (HV *)SvRV(*item) ;
+
+ 			val = HVF(href, destfile) ;
+ 			str = (char *)SvPV(*val, SvLEN(*val)) ;
+			file = open(str, O_WRONLY | O_TRUNC | O_CREAT | O_LARGEFILE, 0666);
+		    if (-1 == file) {
+		    
+				fprintf(stderr,"open %s: %s\n",str,strerror(errno));
+				croak("Linux::DVB::DVBT::dvb_record_demux failed to write to file") ;
+		    }
+			
+			// create file info struct
+		 	file_info[i].file = file ;
+
+ 			val = HVF(href, offset) ;
+		 	file_info[i].start = now + SvIV (*val) ;
+
+ 			val = HVF(href, duration) ;
+		 	file_info[i].end = file_info[i].start + SvIV (*val) ;
+
+
+ 			// get pids
+ 			val = HVF(href, pids) ;
+ 			pid_array = (AV *) SvRV (*val); 
+ 			num_pids = av_len(pid_array) + 1 ;
+ 			
+ 			for (j=0; j < num_pids ; j++, ++pid_index) 
+ 			{ 
+ 				if ((piditem = av_fetch(pid_array, j, 0)) && SvOK (*piditem)) 
+ 				{
+ 					pid_list[pid_index].file_info = &file_info[i] ;
+ 					pid_list[pid_index].pid  = SvIV (*piditem) ;
+ 					pid_list[pid_index].done = 0 ;
+ 					pid_list[pid_index].pkts = 0 ;
+ 				}
+ 			}			
+
+		}
+	}
+
+ 	// open dvr first
+ 	RETVAL = dvb_dvr_open(dvb) ;
+ 
+     // save stream
+ 	if (RETVAL == 0)
+ 	{
+ 		RETVAL = write_stream_demux(dvb, pid_list, pid_index) ;
+ 
+ 		// close dvr
+ 		dvb_dvr_release(dvb) ;
+ 	}
+
+ 	// free up
+ 	for (i=0; i < num_entries ; i++) 
+ 	{ 
+ 		if (file_info[i].file > 0)
+ 		{
+ 			close(file_info[i].file) ;
+ 		}
+ 	}
+ 	safefree(pid_list) ;
+ 	safefree(file_info) ;
+	
+
+  OUTPUT:
+    RETVAL
+
+
+
 
  # /*---------------------------------------------------------------------------------------------------*/
 

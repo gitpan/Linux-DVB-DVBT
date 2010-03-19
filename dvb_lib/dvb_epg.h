@@ -36,6 +36,9 @@ struct epgitem {
     char                *cat[4];
     uint64_t            flags;
 
+    char				tva_prog[256] ;
+    char				tva_series[256] ;
+
     /* for the epg store */
     int                 row;
     int                 playing;

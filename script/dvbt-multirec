@@ -1,0 +1,340 @@
+#!/usr/bin/perl
+use strict ;
+use Pod::Usage ;
+use Getopt::Long qw/:config no_ignore_case/ ;
+
+++$! ;
+
+# Script illustrating the use of the Linux::DVB::DVBT package for recording channels
+
+use Linux::DVB::DVBT ;
+
+our $VERSION = "1.000" ;
+
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $adap, $anypid, $info) ;
+	my ($tsid, $lang, $keep) ;
+	my $out = 'av' ;
+
+	GetOptions('v|verbose=s' => \$VERBOSE,
+			   'debug=s' => \$DEBUG,
+			   'h|help' => \$help,
+			   'man' => \$man,
+			   'cfg=s' => \$config,
+			   'a|adap|dvb=i' => \$adap,
+			   
+			   'keep'		=> \$keep,
+			   'out=s'		=> \$out,
+			   'lang=s'		=> \$lang,
+			   'tsid=i'		=> \$tsid,
+			   'anypid'		=> \$anypid,
+			   'info'		=> \$info,
+			   
+			   ) or pod2usage(2) ;
+
+
+    pod2usage(1) if $help;
+    pod2usage(-verbose => 2) if $man;
+    pod2usage("$0: No arguments given.")  if (@ARGV == 0) && !$tsid ;
+
+	Linux::DVB::DVBT->debug($DEBUG) ;
+	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
+	Linux::DVB::DVBT->verbose($VERBOSE) ;
+
+	my $error ;
+	
+	## Create dvb (use first found adapter). 
+	## NOTE: With default object settings, the application will
+	## die on *any* error, so there is no error checking in this script
+	##
+	my $dvb = Linux::DVB::DVBT->new(
+		'adapter_num'	=> $adap,
+	) ;
+	$dvb->config_path($config) if $config ;
+
+
+	## Parse command line
+	my @chan_spec ;
+	my $error ;
+	$error = $dvb->multiplex_parse(\@chan_spec, @ARGV);
+	
+	## Select the channel(s)
+	my %options = (
+		'lang'			=> $lang,
+		'out'			=> $out,
+		'tsid'			=> $tsid,
+		'no-pid-check'	=> $anypid,
+	) ;
+	$error = $dvb->multiplex_select(\@chan_spec, %options) ;
+
+	
+	## Get multiplex info
+	my %multiplex_info = $dvb->multiplex_info() ;
+
+	#display summary of recording settings
+	print<<"HEAD";
+Recording Summary
+=================
+
+Total record duration: $multiplex_info{'duration'} seconds
+
+TSID: $multiplex_info{'tsid'}
+
+Files
+-----
+
+HEAD
+
+	foreach my $file (sort keys %{$multiplex_info{'files'}})
+	{
+		my $href = $multiplex_info{'files'}{$file} ;
+		print "  $file\n" ;
+		foreach my $pid_href (@{$href->{'demux'}})
+		{
+			printf "    PID %5d [$pid_href->{'type'}]\n", $pid_href->{'pid'} ;
+		}
+		print "\n" ;
+	}
+
+
+	exit 0 if $info ;
+	
+	
+	## Record
+	$dvb->multiplex_record(%multiplex_info) ;
+
+	## Release the hardware (to allow a new recording to start)
+	$dvb->dvb_close() ;
+	
+	## Transcode the recordings (uses ffmpeg helper module)
+	$error = $dvb->multiplex_transcode(%multiplex_info) ;
+
+
+	
+
+#=================================================================================
+# END
+#=================================================================================
+__END__
+
+=head1 NAME
+
+dvbt-multirec - Record streams from a multiplex
+
+=head1 SYNOPSIS
+
+dvbt-record [options] [recording specification]
+
+Options:
+
+       -debug level         set debug level
+       -verbose level       set verbosity level
+       -help                brief help message
+       -man                 full documentation
+       -out outspec         set default output spec
+       -lang langspec       set default language spec
+       -tsid value          specify multiplex tsid
+       -anypid              allow any pid value
+       -info                display recording details
+      
+=head1 OPTIONS
+
+=over 8
+
+=item B<-help>
+
+Print a brief help message and exits.
+
+=item B<-man>
+
+Prints the manual page and exits.
+
+=item B<-verbose>
+
+Set verbosity level. Higher values show more information.
+
+=item B<-debug>
+
+Set debug level. Higher levels show more debugging information (only really of any interest to developers!)
+
+=item B<-out>
+
+Set the default output spec (normally "audio video"). See description for further details of output spec.
+
+=item B<-lang>
+
+Set the default language spec (normally just the default audio track). See description for further details of language spec.
+
+
+=item B<-tsid>
+
+The TSID definition defines the transponder (multiplex) to use. Use this when pids define the streams rather than 
+channel names and the pid value(s) may occur in multiple TSIDs.
+
+=item B<-anypid>
+
+Allows specification of any pid number, skipping checks that the pid is valid for the multiplex.
+
+=item B<-info>
+
+Display recording information based on the specified options, then exit without recording. Useful to quickly get a list of pids for a channel.
+
+=back
+
+=head1 DESCRIPTION
+
+Script that uses the perl Linux::DVB::DVBT package to record multiple programs at the same time (as long as they are within the same multiplex - use L<dvbt-chans|script::dvbt-chans> with -multi option to get
+the list of programs grouped by multiplex).
+
+=head2 Arguments
+
+The arguments define the set of streams (all from the same multiplex, or transponder) that are to be recorded
+at the same time into each file. 
+
+Each stream definition must start with a filename, followed by either channel names or pid numbers. Also, 
+you must specify the duration of the stream. Finally, an offset time can be specified that delays the start of 
+the stream (for example, if the start time of the programs to be recorded are staggered).
+
+A file defined by channel name(s) may optionally also contain a language spec and an output spec: 
+
+The output spec determines which type of streams are included in the recording. By default, "video" and "audio" tracks are recorded. You can
+override this by specifying the output spec. For example, if you also want the subtitle track to be recorded, then you need to
+specify the output includes video, audio, and subtitles. This can be done either by specifying the types in full or by just their initials.
+
+For example, any of the following specs define video, audio, and subtitles:
+
+	"audio, video, subtitle"
+	"a, v, s"
+	"avs"
+
+Note that, if the file format explicitly defines the type of streams required, then there is no need to specify an output spec. For example,
+specifying that the file format is mp3 will ensure that only the audio is recorded.
+
+In a similar fashion, the language spec determines the audio streams to be recorded in the program. Normally, the default audio stream is included 
+in the recorded file. If you want either an alternative audio track, or additional audio tracks, then you use the language spec to 
+define them. The spec consists of a space seperated list of language names. If the spec contains a '+' then the audio streams are 
+added to the default; otherwise the default audio is B<excluded> and only those other audio tracks in the spec are recorded. Note that
+the specification order is important, audio streams from the language spec are matched with the audio details in the specified order. Once a 
+stream has been skipped there is no back tracking (see the examples below for clarification).
+
+For example, if a channel has the audio details: eng:601 eng:602 fra:603 deu:604 (i.e. 2 English tracks, 1 French track, 1 German) then
+
+=over 4
+
+=item lang="+eng"
+
+Results in the default audio (pid 601) and the next english track (pid 602) recorded
+
+=item lang="fra"
+
+Results in just the french track (pid 603) recorded
+
+=item lang="eng fra"
+
+Results in the B<second> english (pid 602) and the french track (pid 603) recorded
+
+=item lang="fra eng"
+
+Results in an error. The english tracks have already been skipped to match the french track, and so will not be matched again.
+
+=back
+
+Note that the output spec overrides the language spec. If the output does not include audio, then the language spec is ignored.
+
+
+Example valid sets of arguments are:
+
+=over 4
+
+=item file=f1.mpeg chan=bbc1 out=avs lang=+eng len=1:00 off=0:10
+
+Record channel BBC1 into file f1.mpeg, include subtitles, add second English audio track, record for 1 hour, start recording 10 minutes from now
+
+=item file=f2.mp3 chan=bbc2 len=0:30
+
+Record channel BBC2 into file f2.mp3, audio only, record for 30 minutes
+
+=item file=f3.ts pid=600 pid=601 len=0:30
+
+Record pids 600 & 601 into file f3.ts, record for 30 minutes
+
+=back
+
+
+The TSID definition defines the transponder (multiplex) to use. Use this when pids define the streams rather than 
+channel names and the pid value(s) may occur in multiple TSIDs.
+
+If you define default language or output specs, these will be used in all file definitions unless that file definition
+has it's own output/language spec. For example, if you want all files to include subtitles you can specify it once as
+the default rather than for every file.
+
+The files are recorded as .ts files. If you specify one of the supported file extensions, then the .ts file will be transcoded using the <Linux::DVB::DVBT::Ffmpeg> helper module (which
+requires ffmpeg to be installed). Supported extensions are:
+
+
+=over 4
+
+=item B<.mpeg> - mpeg2 video / audio / subtitles
+
+=item B<.mp4> - mpeg4 video / audio
+
+The mp4 settings are configured to ensure that the file is compatible with playback on the PS3
+(server by Twonky media server).
+
+Note: if you use this then be prepared for a long wait! On my system, a 2 hour film can take 13 hours to transcode.
+
+=item B<.m2v> - mpeg2 video
+
+=item B<.mp2> - mpeg2 audio
+
+=item B<.mp3> - mpeg3 audio
+
+You may notice ffmpeg reports the error:
+
+	lame: output buffer too small
+	
+Apparently (accoriding to the ffmpeg developers) this is perfectly fine. For further details see (http://howto-pages.org/ffmpeg/#basicaudio).
+
+=back
+
+=head2 Example Usage
+
+For example, you want to record some programs starting at 13:00. The list of programs are:
+
+=over 4
+
+=item * ITV2 start 13:00, duration 0:30
+
+=item * FIVE start 13:15, duration 0:30
+
+=item * ITV1 start 13:30, duration 0:30
+
+=item * More 4 start 13:15, duration 0:05
+
+=item * E4 start 13:05, duration 0:30
+
+=item * Channel 4+1 start 13:05, duration 1:30
+
+=back
+
+To record these (running the script at 13:00) use:
+
+   $ dvbt-multirec file=itv2.mpeg ch=itv2 len=0:30  \
+   	               file=five.mpeg ch=five len=0:30 off=0:15 \
+   	               file=itv1.mpeg ch=itv1 len=0:30 off=0:30 \
+   	               file=more4.mpeg ch=more4 len=0:05 off=0:15 \
+   	               file=e4.mpeg ch=e4 len=0:30 off=0:05 \
+   	               file=ch4+1.mpeg ch='channel4+1' len=1:30 off=0:05 
+   
+
+
+=head2 Further Details
+
+For full details of the DVBT functions, please see L<Linux::DVB::DVBT>:
+
+   perldoc Linux::DVB::DVBT
+ 
+=cut
+
+	
+	
+	

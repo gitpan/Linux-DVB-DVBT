@@ -1,3 +1,6 @@
+#!perl
+use strict ;
+
 # Initial simple object tests
 
 # change 'tests => 1' to 'tests => last_test_to_print';
