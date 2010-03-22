@@ -1,5 +1,10 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.01 Mon Mar 22 12:20:00 2010
+	- Added proper support for subtitles (now automatically records the PAT & PMT when required)
+	- Fixes to module version numbers!
+	- Minor pod tweaks
+	
 2.00 Fri Mar 19 12:20:00 2010
 	- Major re-write to add multiplex recording capability
 	- Added TVAnytime reqporting in epg 

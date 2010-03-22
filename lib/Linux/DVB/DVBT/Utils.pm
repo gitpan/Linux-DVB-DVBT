@@ -19,7 +19,7 @@ if you wish to (I mainly use the time coversion functions in my scripts).
 
 use strict ;
 
-our $VERSION = '1.002' ;
+our $VERSION = '2.00' ;
 our $DEBUG = 0 ;
 
 our %CONTENT_DESC = (

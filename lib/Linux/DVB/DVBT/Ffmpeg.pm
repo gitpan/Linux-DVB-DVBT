@@ -65,7 +65,7 @@ use Data::Dumper ;
 # GLOBALS
 #============================================================================================
 
-our $VERSION = '1.008' ;
+our $VERSION = '2.00' ;
 our $DEBUG = 0 ;
 
 # margin on video length checks (in seconds)

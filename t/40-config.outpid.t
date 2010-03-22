@@ -34,14 +34,17 @@ my @tests = (
 				{
 					'pid' => 601,
 					'type' => 'audio',
+					'pnr' => 4171,
 				},
 				{
 					'pid' => 600,
 					'type' => 'video',
+					'pnr' => 4171,
 				},
 				{
 					'pid' => 605,
 					'type' => 'subtitle',
+					'pnr' => 4171,
 				},
 			],
 	},
@@ -55,14 +58,17 @@ my @tests = (
 				{
 					'pid' => 601,
 					'type' => 'audio',
+					'pnr' => 4171,
 				},
 				{
 					'pid' => 602,
 					'type' => 'audio',
+					'pnr' => 4171,
 				},
 				{
 					'pid' => 600,
 					'type' => 'video',
+					'pnr' => 4171,
 				},
 			],
 	},
@@ -76,6 +82,7 @@ my @tests = (
 				{
 					'pid' => 602,
 					'type' => 'audio',
+					'pnr' => 4171,
 				},
 			],
 	},
@@ -89,10 +96,12 @@ my @tests = (
 				{
 					'pid' => 9999,
 					'type' => 'audio',
+					'pnr' => 4171,
 				},
 				{
 					'pid' => 600,
 					'type' => 'video',
+					'pnr' => 4171,
 				},
 			],
 	},

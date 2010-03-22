@@ -19,7 +19,7 @@ you can if you wish.
 
 use strict ;
 
-our $VERSION = '1.001' ;
+our $VERSION = '2.00' ;
 our $DEBUG = 0 ;
 
 use File::Path ;
@@ -138,6 +138,9 @@ sub chan_from_pid
 {
 	my ($tsid, $pid, $tuning_href) = @_ ;
 	my $pr_href ;
+	
+	# skip PAT
+	return $pr_href unless $pid ;
 
 #	'pr' =>
 #	      BBC ONE => 
@@ -213,6 +216,9 @@ sub pid_info
 print "pid_info(pid=\"$pid\")\n" if $DEBUG ;
 
 	my @pid_info ;
+	
+	# skip PAT
+	return @pid_info unless $pid ;
 	
 	foreach my $chan (keys %{$tuning_href->{'pr'}})
 	{
@@ -519,7 +525,7 @@ Output specifier string is in the format such that it just needs to contain the 
 
 Returns an array of HASHes of the form:
 
-	 {'pid' => $pid, 'type' => $type} 
+	 {'pid' => $pid, 'type' => $type, 'pnr' => $pnr} 
 
 
 =cut
@@ -531,6 +537,8 @@ sub out_pids
 
 	## default
 	$out_spec ||= "av" ;
+	
+	my $pnr = $demux_params_href->{'pnr'} ;
 
 	## Audio required?
 	if ($out_spec =~ /a/i)
@@ -541,7 +549,7 @@ sub out_pids
 		
 		foreach my $pid (@audio_pids)
 		{
-			push @$pids_aref, {'pid' => $pid, 'type' => 'audio'} if $pid ;
+			push @$pids_aref, {'pid' => $pid, 'type' => 'audio', 'pnr' => $pnr} if $pid ;
 		}
 	}
 	
@@ -549,14 +557,14 @@ sub out_pids
 	if ($out_spec =~ /v/i)
 	{
 		my $pid = $demux_params_href->{'video'} ;
-		push @$pids_aref, {'pid' => $pid, 'type' => 'video'} if $pid ;
+		push @$pids_aref, {'pid' => $pid, 'type' => 'video', 'pnr' => $pnr} if $pid ;
 	}
 	
 	## Subtitle required?
 	if ($out_spec =~ /s/i)
 	{
 		my $pid = $demux_params_href->{'subtitle'} ;
-		push @$pids_aref, {'pid' => $pid, 'type' => 'subtitle'} if $pid ;
+		push @$pids_aref, {'pid' => $pid, 'type' => 'subtitle', 'pnr' => $pnr} if $pid ;
 	}
 	
 	return $error ;

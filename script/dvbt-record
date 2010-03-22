@@ -12,12 +12,13 @@ use Linux::DVB::DVBT ;
 our $VERSION = "1.000" ;
 
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config) ;
-	GetOptions('v|verbose=s' => \$VERBOSE,
-			   'debug=s' => \$DEBUG,
-			   'h|help' => \$help,
-			   'man' => \$man,
-			   'cfg=s' => \$config,
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $info) ;
+	GetOptions('v|verbose=s' 	=> \$VERBOSE,
+			   'debug=s' 		=> \$DEBUG,
+			   'h|help' 		=> \$help,
+			   'man' 			=> \$man,
+			   'cfg=s' 			=> \$config,
+			   'info'			=> \$info,
 			   ) or pod2usage(2) ;
 
 
@@ -44,6 +45,39 @@ our $VERSION = "1.000" ;
 	
 	## Record
 	$dvb->record($ARGV[1], $ARGV[2]) ;
+
+	if ($info)
+	{
+		## Get multiplex info
+		my %multiplex_info = $dvb->multiplex_info() ;
+	
+		#display summary of recording settings
+		print<<"HEAD";
+Recording Summary
+=================
+
+Total record duration: $multiplex_info{'duration'} seconds
+
+TSID: $multiplex_info{'tsid'}
+
+Files
+-----
+
+HEAD
+
+		foreach my $file (sort keys %{$multiplex_info{'files'}})
+		{
+			my $href = $multiplex_info{'files'}{$file} ;
+			print "  $file\n" ;
+			foreach my $pid_href (@{$href->{'demux'}})
+			{
+				printf "    PID %5d [$pid_href->{'type'}]\n", $pid_href->{'pid'} ;
+			}
+			print "\n" ;
+		}
+
+	}	
+
 
 
 #=================================================================================
