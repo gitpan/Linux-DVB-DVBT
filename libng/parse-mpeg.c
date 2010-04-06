@@ -1303,13 +1303,14 @@ int mpeg_parse_psi_pat(struct psi_info *info, unsigned char *data, int verbose, 
 int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int verbose, int tuned_freq)
 {
     int pnr,version,current;
-    int j,len,dlen,type,pid,slen;
+    int j,len,dlen,type,pid,slen,pcr_pid;
     char *lang;
 
     len     = mpeg_getbits(data,12,12) + 3 - 4;
     pnr     = mpeg_getbits(data,24,16);
     version = mpeg_getbits(data,42,5);
     current = mpeg_getbits(data,47,1);
+    pcr_pid = mpeg_getbits(data,67,13);
     if (!current)
     	return len+4;
     if (program->pnr == pnr && program->version == version)
@@ -1321,12 +1322,13 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
     /* TODO: decode descriptor? */
     if (verbose>1) {
 		fprintf_timestamp(stderr,
-			"ts [pmt]: pnr %d ver %2d [%d/%d]  pcr 0x%04x  "
+			"ts [pmt]: pnr %d ver %2d [%d/%d]  pcr 0x%04x "
 			"pid 0x%04x  type %2d #",
 			pnr, version,
 			mpeg_getbits(data,48, 8),
 			mpeg_getbits(data,56, 8),
-			mpeg_getbits(data,69,13),
+//			mpeg_getbits(data,69,13),	// This is wrong!
+			pcr_pid,
 			program->p_pid, program->type);
 		mpeg_dump_desc(data + 96/8, dlen);
 		fprintf(stderr,"\n");

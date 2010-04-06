@@ -1,8 +1,10 @@
-#!perl -T
+#!perl
 
 use strict;
 use warnings;
 use Test::More;
+
+plan skip_all => "Skipping author documentation checks" unless $ENV{'DVBT_AUTHOR'} ;
 
 # Ensure a recent version of Test::Pod
 my $min_tp = 1.22;

@@ -16,7 +16,7 @@ $modpath =~ s%\-%/%g ;
 check_new_version() ;
 
 
-my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans dvbt-multirec);
+my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans dvbt-multirec dvbt-strength);
 my $install_bin = 1;
 
 if ( 

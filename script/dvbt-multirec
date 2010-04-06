@@ -11,7 +11,7 @@ use Linux::DVB::DVBT ;
 
 our $VERSION = "1.000" ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $adap, $anypid, $addsi, $info) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $adap, $anypid, $info) ;
 	my ($tsid, $lang, $keep) ;
 	my $out = 'av' ;
 
@@ -27,7 +27,6 @@ our $VERSION = "1.000" ;
 			   'lang=s'		=> \$lang,
 			   'tsid=i'		=> \$tsid,
 			   'anypid'		=> \$anypid,
-			   'add-si'		=> \$addsi,
 			   'info'		=> \$info,
 			   
 			   ) or pod2usage(2) ;
@@ -64,7 +63,6 @@ our $VERSION = "1.000" ;
 		'out'			=> $out,
 		'tsid'			=> $tsid,
 		'no-pid-check'	=> $anypid,
-		'add-si'		=> $addsi,
 	) ;
 	$error = $dvb->multiplex_select(\@chan_spec, %options) ;
 
@@ -136,7 +134,6 @@ Options:
        -lang langspec       set default language spec
        -tsid value          specify multiplex tsid
        -anypid              allow any pid value
-       -add-si              record SI tables in all files
        -info                display recording details
       
 =head1 OPTIONS
@@ -177,10 +174,6 @@ channel names and the pid value(s) may occur in multiple TSIDs.
 
 Allows specification of any pid number, skipping checks that the pid is valid for the multiplex.
 
-
-=item B<-add-si>
-
-If the 'add-si' flag is set, then the SI tables (PAT & PMT) are recorded for all files, whether they are needed or not.
 
 =item B<-info>
 

@@ -19,7 +19,7 @@ you can if you wish.
 
 use strict ;
 
-our $VERSION = '2.00' ;
+our $VERSION = '2.01' ;
 our $DEBUG = 0 ;
 
 use File::Path ;
@@ -59,7 +59,7 @@ my %NUMERALS = (
 
 Given a frequency, find the matching TSID.
 
-$tuning_href is the HASH returned by L<Linue::DVB::DVBT::get_tuning_info()>.
+$tuning_href is the HASH returned by L<Linux::DVB::DVBT::get_tuning_info()|lib::Linux::DVB::DVBT/get_tuning_info()>.
 
 =cut
 
@@ -96,7 +96,7 @@ contain the information used to tune the frontend i.e. this is the transponder
 (TSID) information. It corresponds to the matching 'ts' entry in the tuning info
 HASH.
 
-$tuning_href is the HASH returned by L<Linue::DVB::DVBT::get_tuning_info()>.
+$tuning_href is the HASH returned by L<Linux::DVB::DVBT::get_tuning_info()|lib::Linux::DVB::DVBT/get_tuning_info()>.
 
 =cut
 
@@ -130,7 +130,7 @@ Given a tsid and pid, find the matching channel information and returns the
 program HASH ref if found. This corresponds to the matching 'pr' entry in the tuning
 info HASH.
 
-$tuning_href is the HASH returned by L<Linue::DVB::DVBT::get_tuning_info()>.
+$tuning_href is the HASH returned by L<Linux::DVB::DVBT::get_tuning_info()|lib::Linux::DVB::DVBT/get_tuning_info()>.
 
 =cut
 
@@ -205,7 +205,7 @@ tuning info HASH):
 	]
 
 
-$tuning_href is the HASH returned by L<Linue::DVB::DVBT::get_tuning_info()>.
+$tuning_href is the HASH returned by L<Linux::DVB::DVBT::get_tuning_info()|lib::Linux::DVB::DVBT/get_tuning_info()>.
 
 =cut
 
@@ -281,7 +281,7 @@ $frontend_params_href HASH ref are of the form:
 	
 (i.e. $tuning_href->{'ts'}{$tsid} where $tsid is TSID for the channel)
 	 
-$tuning_href is the HASH returned by L<Linue::DVB::DVBT::get_tuning_info()>.
+$tuning_href is the HASH returned by L<Linux::DVB::DVBT::get_tuning_info()|lib::Linux::DVB::DVBT/get_tuning_info()>.
 
 =cut
 
@@ -525,7 +525,7 @@ Output specifier string is in the format such that it just needs to contain the 
 
 Returns an array of HASHes of the form:
 
-	 {'pid' => $pid, 'type' => $type, 'pnr' => $pnr} 
+	 {'pid' => $pid, 'type' => $type, 'pmt' => $pmt} 
 
 
 =cut
@@ -538,7 +538,7 @@ sub out_pids
 	## default
 	$out_spec ||= "av" ;
 	
-	my $pnr = $demux_params_href->{'pnr'} ;
+	my $pmt = $demux_params_href->{'pmt'} ;
 
 	## Audio required?
 	if ($out_spec =~ /a/i)
@@ -549,7 +549,7 @@ sub out_pids
 		
 		foreach my $pid (@audio_pids)
 		{
-			push @$pids_aref, {'pid' => $pid, 'type' => 'audio', 'pnr' => $pnr} if $pid ;
+			push @$pids_aref, {'pid' => $pid, 'type' => 'audio', 'pmt' => $pmt} if $pid ;
 		}
 	}
 	
@@ -557,14 +557,14 @@ sub out_pids
 	if ($out_spec =~ /v/i)
 	{
 		my $pid = $demux_params_href->{'video'} ;
-		push @$pids_aref, {'pid' => $pid, 'type' => 'video', 'pnr' => $pnr} if $pid ;
+		push @$pids_aref, {'pid' => $pid, 'type' => 'video', 'pmt' => $pmt} if $pid ;
 	}
 	
 	## Subtitle required?
 	if ($out_spec =~ /s/i)
 	{
 		my $pid = $demux_params_href->{'subtitle'} ;
-		push @$pids_aref, {'pid' => $pid, 'type' => 'subtitle', 'pnr' => $pnr} if $pid ;
+		push @$pids_aref, {'pid' => $pid, 'type' => 'subtitle', 'pmt' => $pmt} if $pid ;
 	}
 	
 	return $error ;

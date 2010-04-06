@@ -7,7 +7,8 @@ use Test::More ;
 use Linux::DVB::DVBT ;
 use Linux::DVB::DVBT::Config ;
 
-#$Linux::DVB::DVBT::Conf::DEBUG = 15 ;
+my $DEBUG=0 ;
+$Linux::DVB::DVBT::Config::DEBUG = $DEBUG ;
 
 	## Create object
 	my $dvb = Linux::DVB::DVBT->new(
@@ -24,6 +25,8 @@ use Linux::DVB::DVBT::Config ;
 	
 	$dvb->config_path('./t/config-ox') ;
 	my $tuning_href = $dvb->get_tuning_info() ;
+
+Linux::DVB::DVBT::prt_data("Tuning = ", $tuning_href) if $DEBUG>=10 ;
 	
 	my $pid ;
 
@@ -38,7 +41,7 @@ use Linux::DVB::DVBT::Config ;
 #teletext = 0
 #subtitle = 605
 #type = 1
-#pnr = 4171
+#pmt = 4171
 #audio_details = eng:601 eng:602 fra:9999
 #
 #[12290-14272]
@@ -52,7 +55,7 @@ use Linux::DVB::DVBT::Config ;
 #teletext = 8888
 #subtitle = 0
 #type = 1
-#pnr = 14272
+#pmt = 14272
 #audio_details = eng:6274 fra:9999 deu:9900
 
 my @tests = (
@@ -71,6 +74,7 @@ my @tests = (
 				'subtitle'	=> '603',
 				'type'	=> 'video',
 				'pnr'	=> '8362',
+				'pmt'	=> '290',
 				'audio_details'	=> 'eng:601 eng:602',
 			},
 			{
@@ -85,6 +89,7 @@ my @tests = (
 				'subtitle'	=> '605',
 				'type'	=> 'video',
 				'pnr'	=> '4171',
+				'pmt'	=> '4171',
 				'audio_details'	=> 'eng:601 eng:602 fra:9999 deu:9900',
 			},
 		],
@@ -104,6 +109,7 @@ my @tests = (
 				'subtitle'	=> '603',
 				'type'	=> 'video',
 				'pnr'	=> '28032',
+				'pmt'	=> '1037',
 				'audio_details'	=> 'eng:602 eng:604',
 			},
 			{
@@ -118,6 +124,7 @@ my @tests = (
 				'subtitle'	=> '601',
 				'type'	=> 'subtitle',
 				'pnr'	=> '16960',
+				'pmt'	=> '703',
 				'audio_details'	=> 'eng:401 eng:402',
 			},
 			{
@@ -132,6 +139,7 @@ my @tests = (
 				'subtitle'	=> '603',
 				'type'	=> 'audio',
 				'pnr'	=> '8362',
+				'pmt'	=> '290',
 				'audio_details'	=> 'eng:601 eng:602',
 			},
 			{
@@ -146,6 +154,7 @@ my @tests = (
 				'subtitle'	=> '605',
 				'type'	=> 'audio',
 				'pnr'	=> '4171',
+				'pmt'	=> '4171',
 				'audio_details'	=> 'eng:601 eng:602 fra:9999 deu:9900',
 			},
 		],
@@ -165,6 +174,7 @@ my @tests = (
 				'subtitle'	=> '605',
 				'type'	=> 'subtitle',
 				'pnr'	=> '4171',
+				'pmt'	=> '4171',
 				'audio_details'	=> 'eng:601 eng:602 fra:9999 deu:9900',
 			},
 			{
@@ -179,6 +189,7 @@ my @tests = (
 				'subtitle'	=> '605',
 				'type'	=> 'subtitle',
 				'pnr'	=> '17024',
+				'pmt'	=> '714',
 				'audio_details'	=> 'eng:421',
 			},
 		],
@@ -198,6 +209,7 @@ my @tests = (
 				'subtitle'	=> '603',
 				'type'	=> 'audio',
 				'pnr'	=> '28032',
+				'pmt'	=> '1037',
 				'audio_details'	=> 'eng:602 eng:604',
 			},
 			{
@@ -212,6 +224,7 @@ my @tests = (
 				'subtitle'	=> '602',
 				'type'	=> 'subtitle',
 				'pnr'	=> '19968',
+				'pmt'	=> '713',
 				'audio_details'	=> 'eng:411 eng:415',
 			},
 			{
@@ -226,6 +239,7 @@ my @tests = (
 				'subtitle'	=> '603',
 				'type'	=> 'audio',
 				'pnr'	=> '8362',
+				'pmt'	=> '290',
 				'audio_details'	=> 'eng:601 eng:602',
 			},
 			{
@@ -240,6 +254,7 @@ my @tests = (
 				'subtitle'	=> '605',
 				'type'	=> 'audio',
 				'pnr'	=> '4171',
+				'pmt'	=> '4171',
 				'audio_details'	=> 'eng:601 eng:602 fra:9999 deu:9900',
 			},
 		],
@@ -259,6 +274,7 @@ my @tests = (
 				'subtitle'	=> '0',
 				'type'	=> 'video',
 				'pnr'	=> '14272',
+				'pmt'	=> '261',
 				'audio_details'	=> 'eng:6274 fra:9999',
 			},
 		],
@@ -278,6 +294,7 @@ my @tests = (
 				'subtitle'	=> '0',
 				'type'	=> 'teletext',
 				'pnr'	=> '14272',
+				'pmt'	=> '261',
 				'audio_details'	=> 'eng:6274 fra:9999',
 			},
 		],
@@ -297,6 +314,7 @@ my @tests = (
 				'subtitle'	=> '0',
 				'type'	=> 'audio',
 				'pnr'	=> '14272',
+				'pmt'	=> '261',
 				'audio_details'	=> 'eng:6274 fra:9999',
 			},
 			{
@@ -311,6 +329,7 @@ my @tests = (
 				'subtitle'	=> '605',
 				'type'	=> 'audio',
 				'pnr'	=> '4171',
+				'pmt'	=> '4171',
 				'audio_details'	=> 'eng:601 eng:602 fra:9999 deu:9900',
 			},
 		],

@@ -237,10 +237,16 @@ e) the TDT and TOT shall be transmitted at least every 30 s.
 //TDT								0x14 30s / 25 ms
 //PMT								ALL 500 ms
 
-static int scan_timeout_secs = 20 ;
-static int nodata_timeout_secs = 15 ;	// should see *something* by then
-//static int nodata_timeout_secs = 30 ;	// debugging!
+//static int scan_timeout_secs = 20 ;
+//static int scan_timeout_secs = 40 ;		// debugging!
+static int scan_timeout_secs = 40 ;		// new
+
+//static int nodata_timeout_secs = 15 ;	// should see *something* by then
+//static int nodata_timeout_secs = 40 ;	// debugging!
+static int nodata_timeout_secs = 20 ;	// new
+
 static int poll_timeout_ms = 1000 ;
+
 static int current;
 
 static void dvbwatch_tty(struct psi_info *info, int event,

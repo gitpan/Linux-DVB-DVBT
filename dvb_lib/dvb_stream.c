@@ -37,6 +37,22 @@
 #define O_LARGEFILE	0
 #endif
 
+// ERRORS
+#define ERR_DURATION		1
+#define ERR_DVB_DEV			2
+#define ERR_FILE			3
+#define ERR_NOSYNC			4
+
+#define ERR_READ			100
+#define ERR_EOF				101
+#define ERR_BUFFER_ZERO		102
+
+#define ERR_SELECT			200
+#define ERR_TIMEOUT			201
+
+
+
+
 /* ----------------------------------------------------------------------- */
 int write_stream(struct dvb_state *h, char *filename, int sec)
 {
@@ -50,19 +66,19 @@ unsigned done ;
     if (sec <= 0)
     {
 		fprintf(stderr, "Invalid duration (%d)\n", sec);
-		return(1);
+		return(ERR_DURATION);
     }
 
     if (-1 == h->dvro)
     {
 		fprintf(stderr,"dvr device not open\n");
-		return(2);
+		return(ERR_DVB_DEV);
     }
     
     file = open(filename, O_WRONLY | O_TRUNC | O_CREAT | O_LARGEFILE, 0666);
     if (-1 == file) {
 		fprintf(stderr,"open %s: %s\n",filename,strerror(errno));
-		return(3);
+		return(ERR_FILE);
     }
 
     count = 0;
@@ -74,10 +90,10 @@ unsigned done ;
 		switch (rc) {
 		case -1:
 			perror("read");
-			return(100);
+			return(ERR_READ);
 		case 0:
 			fprintf(stderr,"EOF\n");
-			return(101);
+			return(ERR_EOF);
 		default:
 			write(file, buffer, rc);
 			count += rc;
@@ -121,13 +137,18 @@ unsigned pid_index ;
 int running ;
 unsigned byte_num ;
 int buffer_len ;
+int bytes_read ;
 
     if (-1 == h->dvro)
     {
 		fprintf(stderr,"dvr device not open\n");
-		return(2);
+		return(ERR_DVB_DEV);
     }
     
+    // make access to demux non-blocking
+    setNonblocking(h->dvro) ;
+    
+    // main loop
     running = num_entries ;
     sync = 1 ;
     while (running > 0)
@@ -137,15 +158,19 @@ int buffer_len ;
 
     	// wait for sync byte
     	bptr = buffer ;
-    	status = getbuff(h, buffer, 1) ;
+		bytes_read = 1 ;
+    	status = getbuff(h, buffer, &bytes_read) ;
     	if (status) return (status) ;
+    	if (bytes_read <= 0) return (ERR_BUFFER_ZERO) ;
     	
     	// wait for sync byte, but abort if we've waited for at least 4 packets and not found it
     	byte_num=0;
     	while ( (buffer[0] != SYNC_BYTE) && (byte_num < (4*TS_PACKET_LEN)) )
     	{
-	    	status = getbuff(h, buffer, 1) ;
+    		bytes_read = 1 ;
+	    	status = getbuff(h, buffer, &bytes_read) ;
 	    	if (status) return (status) ;
+	    	if (bytes_read <= 0) return (ERR_BUFFER_ZERO) ;
 	    	
 	    	++byte_num ;
     	}
@@ -154,19 +179,22 @@ int buffer_len ;
     	// did we find it?
     	if (buffer[0] != SYNC_BYTE)
     	{
-    		return(4) ;
+    		return(ERR_NOSYNC) ;
     	}
 
 		if (dvb_debug >= 10)
 			fprintf(stderr, "handling TS packets...(buffer @ %p)\n", buffer) ;
 
 		// get rest of TS packet
-    	status = getbuff(h, &buffer[1], (BUFFSIZE-1)) ;
-    	buffer_len = BUFFSIZE ;
+		buffer_len = bytes_read ;
+		bytes_read = (BUFFSIZE-1) ;
+    	status = getbuff(h, &buffer[1], &bytes_read) ;
+    	buffer_len += bytes_read ;
     	bptr = buffer ;
     	while ( (running>0) && !sync)
     	{
 	    	if (status) return (status) ;
+	    	if (buffer_len <= 0) return (ERR_BUFFER_ZERO) ;
 
 			if (dvb_debug >= 10)
 				fprintf(stderr, "Start of loop : 0x%02x (bptr @ %p) %d bytes left\n", bptr[0], bptr, buffer_len) ;
@@ -284,8 +312,9 @@ int buffer_len ;
 				if (buffer_len < TS_PACKET_LEN)
 				{
 					// next packets
-			    	status = getbuff(h, buffer, BUFFSIZE) ;
-			    	buffer_len = BUFFSIZE ;
+					bytes_read = BUFFSIZE ;
+			    	status = getbuff(h, buffer, &bytes_read) ;
+			    	buffer_len = bytes_read ;
 			    	bptr = buffer ;
 
 					if (dvb_debug >= 10)
@@ -309,7 +338,7 @@ int buffer_len ;
 }
 
 /* ----------------------------------------------------------------------- */
-int getbuff(struct dvb_state *h, char *buffer, int count)
+int getbuff(struct dvb_state *h, char *buffer, int *count)
 {
 int rc ;
 int status ;
@@ -325,29 +354,33 @@ int data_ready ;
 		if (data_ready < 0)
 		{
 			perror("read");
-			return(200);
+			return(ERR_SELECT);
 		}
 		else
 		{
 			fprintf(stderr,"timed out\n");
-			return(201);
+			return(ERR_TIMEOUT);
 		}
 	} 
 	
 	// got to here so data is available
-	rc = read(h->dvro, buffer, count);
+	rc = read(h->dvro, buffer, *count);
+
+	// return actual read amount
+	*count = rc ;
+	
+if (dvb_debug >= 3) fprintf(stderr, "getbuff(): request=%d read=%d\n", *count, rc) ; 
+	
 	switch (rc) {
 	case -1:
 		fprintf(stderr,"reading %d bytes\n", count);
 		perror("read");
-		return(100);
+		return(ERR_READ);
 	case 0:
 		fprintf(stderr,"EOF\n");
-		return(101);
+		return(ERR_EOF);
+
 	default:
-		// check length
-		if (rc != count)
-			return(102);
 		break;
 	}
 	return(status) ;
@@ -376,4 +409,29 @@ input_timeout (int filedes, unsigned int seconds)
 }
 
 
-// void * memcpy ( void * destination, const void * source, size_t num );
+/*----------------------------------------------------------------------
+ Portable function to set a socket into nonblocking mode.
+ Calling this on a socket causes all future read() and write() calls on
+ that socket to do only as much as they can immediately, and return 
+ without waiting.
+ If no data can be read or written, they return -1 and set errno
+ to EAGAIN (or EWOULDBLOCK).
+ Thanks to Bjorn Reese for this code.
+----------------------------------------------------------------------*/
+int setNonblocking(int fd)
+{
+    int flags;
+
+    /* If they have O_NONBLOCK, use the Posix way to do it */
+#if defined(O_NONBLOCK)
+    /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+        flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#else
+    /* Otherwise, use the old way of doing it */
+    flags = 1;
+    return ioctl(fd, FIOBIO, &flags);
+#endif
+}     
+

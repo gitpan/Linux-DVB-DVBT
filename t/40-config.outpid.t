@@ -20,7 +20,7 @@ use Linux::DVB::DVBT::Config ;
 #teletext = 0
 #subtitle = 605
 #type = 1
-#pnr = 4171
+#pmt = 4171
 #audio_details = eng:601 eng:602 fra:9999 deu:9900
 
 my @tests = (
@@ -34,17 +34,17 @@ my @tests = (
 				{
 					'pid' => 601,
 					'type' => 'audio',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 				{
 					'pid' => 600,
 					'type' => 'video',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 				{
 					'pid' => 605,
 					'type' => 'subtitle',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 			],
 	},
@@ -58,17 +58,17 @@ my @tests = (
 				{
 					'pid' => 601,
 					'type' => 'audio',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 				{
 					'pid' => 602,
 					'type' => 'audio',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 				{
 					'pid' => 600,
 					'type' => 'video',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 			],
 	},
@@ -82,7 +82,7 @@ my @tests = (
 				{
 					'pid' => 602,
 					'type' => 'audio',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 			],
 	},
@@ -96,12 +96,12 @@ my @tests = (
 				{
 					'pid' => 9999,
 					'type' => 'audio',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 				{
 					'pid' => 600,
 					'type' => 'video',
-					'pnr' => 4171,
+					'pmt' => 4171,
 				},
 			],
 	},

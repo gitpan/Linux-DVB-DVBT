@@ -7,7 +7,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $check, $extra_check, $multiplex) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $check, $extra_check, $multiplex, $adap) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
@@ -16,6 +16,7 @@ use Linux::DVB::DVBT ;
 			   'check' => \$check,
 			   'extra-check' => \$extra_check,
 			   'multi|tsid' => \$multiplex,
+			   'a=i' => \$adap,
 			   ) or pod2usage(2) ;
 
 
@@ -30,7 +31,7 @@ use Linux::DVB::DVBT ;
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
-	my $dvb = Linux::DVB::DVBT->new() ;
+	my $dvb = Linux::DVB::DVBT->new('adapter_num' => $adap) ;
 	
 	$dvb->config_path($config) if $config ;
 	
@@ -82,6 +83,7 @@ LCN | Channel Name                   |  TSID-PNR   | Type   | PIDs
 $horiz_bar
 HEAD
 	
+	my $got_pmt = 0 ;
 	my ($tv, $radio)=(0,0) ;
 	if ($multiplex)
 	{
@@ -111,7 +113,7 @@ TSID
 			++$tsids ;
 			foreach my $ch_href (@{$multi{$tsid}})
 			{
-			print_chan($tuning_href, $ch_href, \$tv, \$radio) ;
+				print_chan($tuning_href, $ch_href, \$tv, \$radio) ;
 			}	
 		}
 		
@@ -134,7 +136,12 @@ TAIL
 	if ($check)
 	{
 		print $ok ? "Passed checks\n" : "FAILED checks\n" ;
+		if (!$got_pmt)
+		{
+			print "No PMT pids found. Have you re-run dvbt-scan with the latest version?\n" ;
+		}
 	}
+	print "\n" ;
 
 #-------------------------------------------------------------------------------------------------------
 sub print_chan
@@ -149,7 +156,16 @@ sub print_chan
 		my $tsid = $tuning_href->{'pr'}{$chan}{'tsid'} ;
 		if (exists($tuning_href->{'ts'}{$tsid}))
 		{
-			$checkstr .= "ok" ;
+			if (exists($tuning_href->{'pr'}{$chan}{'pmt'}))
+			{
+				$checkstr .= "ok" ;
+				++$got_pmt ;
+			}
+			else
+			{
+				$checkstr .= "no pmt" ;
+				$ok = 0 ;
+			}
 		}
 		else
 		{
@@ -186,6 +202,7 @@ sub print_chan
 		else
 		{
 			$checkstr .= "FAIL" ;
+			$ok = 0 ;
 		}
 		unlink $file ;
 	}

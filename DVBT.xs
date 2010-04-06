@@ -827,7 +827,8 @@ dvb_scan(DVB *dvb, int verbose)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, "#@p + PID %d  Video=%d Audio=%d Teletext=%d (type=%d)\n",
+	fprintf(stderr, "#@p + PNR %d pmt=%d  Video=%d Audio=%d Teletext=%d (type=%d)\n",
+		program->pnr,
 		program->p_pid,
 		program->v_pid,
 		program->a_pid,
@@ -840,6 +841,7 @@ dvb_scan(DVB *dvb, int verbose)
 			HVS_I(rh, program, pnr) ;
 			HVS_I(rh, program, ca) ;
 			HVS_I(rh, program, type) ;
+			HVSN_I(rh, program, p_pid, 	pmt) ;
 			HVSN_I(rh, program, v_pid, 	video) ;
 			HVSN_I(rh, program, a_pid,	audio) ;
 			HVSN_I(rh, program, t_pid,	teletext) ;

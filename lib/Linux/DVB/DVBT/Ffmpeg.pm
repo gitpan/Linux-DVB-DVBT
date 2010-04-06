@@ -65,7 +65,7 @@ use Data::Dumper ;
 # GLOBALS
 #============================================================================================
 
-our $VERSION = '2.00' ;
+our $VERSION = '2.02' ;
 our $DEBUG = 0 ;
 
 # margin on video length checks (in seconds)
@@ -258,7 +258,7 @@ BEGIN {
 
 Transcode the recorded transport stream file into the required format, as specified by $multiplex_info_href. 
 
-(Called by L<Linux::DVB::DVBT::multiplex_transcode(%multiplex_info)>).
+(Called by L<Linux::DVB::DVBT::multiplex_transcode()|lib::Linux::DVB::DVBT/multiplex_transcode(%multiplex_info)>).
 
 Multiplex info HASH ref is of the form:
 
@@ -321,6 +321,9 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 		push @$errors_aref, $error ;
 		return $error ;
 	}
+	
+	## Save source filename
+	$multiplex_info_href->{'srcfile'} = $src ;
 	
 	#### Select the dest file format
 	if ($destfile)

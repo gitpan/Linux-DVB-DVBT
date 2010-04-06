@@ -149,7 +149,8 @@ Options:
        -verbose level       set verbosity level
        -help                brief help message
        -man                 full documentation
-       -merge               merge previous scan
+       -clean               perform a clean scan
+       -a adap              use adapter number
        
 =head1 OPTIONS
 
@@ -177,6 +178,9 @@ Start a clean scan (i.e. don not merge this scan with previous results). Normall
 in the morning and evening to pick up all the channels (since some are only broadcast morning or evening). However, after a frequency 
 change it is best to start from scratch again by using this option. 
 
+=item B<-a>
+
+Use if you wish to specify which one of multiple DVB adapters to use (useful if you are recording on the default adapter).
 
 =back
 

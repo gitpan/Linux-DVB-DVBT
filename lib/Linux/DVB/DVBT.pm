@@ -115,7 +115,7 @@ in the same multiplex). As you can imagine, specifying the recording of multiple
 diffent times) can get quite involved. 
 
 To simplify these tasks in your scripts, I've written various "helpers" that handle parsing command line arguments, through to optionally running
-ffmpeg to extract the required programs. These are all in addition to the base function that adds a demux filter to the list that will be recorded
+ffmpeg to transcode the recorded files. These are all in addition to the base function that adds a demux filter to the list that will be recorded
 (see L</add_demux_filter($pid, $pid_type [, $tsid])>). Feel free to use as much (or as little) of the helper functions as you like - you can always write
 your own scripts using add_demux_filter().
 
@@ -194,11 +194,11 @@ are useable programs in themeselves). To see the full man page of each script, s
 
 =over 4
 
-=item L<dvbt-devices|Linux::DVB::DVBT::script::dvbt-devices>
+=item L<dvbt-devices|Linux::DVB::DVBT::..::..::..::script::dvbt-devices>
 
 Shows information about fited DVB-T tuners
 
-=item L<dvbt-scan|Linux::DVB::DVBT::script::dvbt-scan>
+=item L<dvbt-scan|Linux::DVB::DVBT::..::..::..::script::dvbt-scan>
 
 Run this by providing the frequency file (usually stored in /usr/share/dvb/dvb-t). If run as root, this will set up the configuration
 files for all users. For example:
@@ -207,7 +207,7 @@ files for all users. For example:
 
 NOTE: Frequency files are provided by the 'dvb' rpm package available for most distros
 
-=item L<dvbt-chans|Linux::DVB::DVBT::script::dvbt-chans>
+=item L<dvbt-chans|Linux::DVB::DVBT::..::..::..::script::dvbt-chans>
 
 Use to display the current list of tuned channels. Shows them in logical channel number order. The latest version shows information on
 the PID numbers for the video, audio, teletext, and subtitle streams that make up each channel.
@@ -216,7 +216,7 @@ It also now has the option (-multi) to display the channels grouped into their m
 really useful if you want to schedule a multiplex recording and need to check which channels you can record at the same time. 
 
 
-=item L<dvbt-epg|Linux::DVB::DVBT::script::dvbt-epg>
+=item L<dvbt-epg|Linux::DVB::DVBT::..::..::..::script::dvbt-epg>
 
 When run, this grabs the latest EPG information and prints out the program guide:
 
@@ -224,7 +224,7 @@ When run, this grabs the latest EPG information and prints out the program guide
 
 NOTE: This process can take quite a while (it takes around 30 minutes on my system), so please be patient.
 
-=item L<dvbt-record|Linux::DVB::DVBT::script::dvbt-record>
+=item L<dvbt-record|Linux::DVB::DVBT::..::..::..::script::dvbt-record>
 
 Specify the channel, the duration, and the output filename to record a channel:
 
@@ -232,7 +232,7 @@ Specify the channel, the duration, and the output filename to record a channel:
    
 Note that the duration can be specified as an integer (number of minutes), or in HH:MM format (for hours and minutes)
 
-=item L<dvbt-ffrec|Linux::DVB::DVBT::script::dvbt-ffrec>
+=item L<dvbt-ffrec|Linux::DVB::DVBT::..::..::..::script::dvbt-ffrec>
 
 Similar to dvbt-record, but pipes the transport stream into ffmpeg and uses that to transcode the data directly into an MPEG file (without
 saving the transport stream file).
@@ -249,7 +249,7 @@ It's worth mentioning that this relies on ffmpeg operating correctly. Some versi
 
 which appear to be related to piping the in via stdin (running ffmpeg on a saved transport stream file always seems to work) 
 
-=item L<dvbt-multirec|Linux::DVB::DVBT::script::dvbt-multirec>
+=item L<dvbt-multirec|Linux::DVB::DVBT::..::..::..::script::dvbt-multirec>
 
 Record multiple channels at the same time (as long as they are all in the same multiplex).
 
@@ -323,7 +323,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.01';
+our $VERSION = '2.02';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -420,6 +420,16 @@ It is the application's responsibility to handle the errors (stored in  L</error
 Set hardware timeout time in milliseconds. Most hardware will be ok using the default (900ms), but you can use this field to increase
 the timeout time. 
 
+=item B<add_si> - Automatically add SI tables
+
+By default, recorded files automatically have the SI tables (the PAT & PMT for the program) recorded along with the
+usual audio/video streams. This is the new default since the latest version of ffmpeg refuses to understand the
+encoding of any video streams unless this information is added.
+
+If you really want to, you can change this flag to 0 to prevent SI tables being added in all cases.
+
+NOTE: You still get the tables whenever you add subtitles.
+
 
 =item B<errors> - List of errors
 
@@ -443,6 +453,7 @@ my @FIELD_LIST = qw/dvb
 					merge
 					timeout
 					prune_channels
+					add_si
 					
 					_scan_freqs
 					_device_index
@@ -490,6 +501,9 @@ my %DEFAULTS = (
 
 	# remove un-tuneable channels
 	'prune_channels'	=> 1,
+	
+	# Automatically add SI tables to recording
+	'add_si'		=> 1,
 	
 	######################################
 	# Internal
@@ -763,7 +777,7 @@ sub new
 	{
 		$self->hwinit() ;
 	}
-	
+
 	return($self) ;
 }
 
@@ -1744,26 +1758,26 @@ Returns 0 for success; error code otherwise.
 sub set_demux
 {
 	my $self = shift ;
-	my ($video_pid, $audio_pid, $subtitle_pid, $teletext_pid, $tsid, $pnr) = @_ ;
+	my ($video_pid, $audio_pid, $subtitle_pid, $teletext_pid, $tsid, $pmt) = @_ ;
 
 print STDERR "set_demux( <$video_pid>, <$audio_pid>, <$teletext_pid> )\n" if $DEBUG ;
 
 	my $error = 0 ;
 	if ($video_pid && !$error)
 	{
-		$error = $self->add_demux_filter($video_pid, "video") ;
+		$error = $self->add_demux_filter($video_pid, "video", $tsid, $pmt) ;
 	}
 	if ($audio_pid && !$error)
 	{
-		$error = $self->add_demux_filter($audio_pid, "audio") ;
+		$error = $self->add_demux_filter($audio_pid, "audio", $tsid, $pmt) ;
 	}
 	if ($teletext_pid && !$error)
 	{
-		$error = $self->add_demux_filter($teletext_pid, "teletext") ;
+		$error = $self->add_demux_filter($teletext_pid, "teletext", $tsid, $pmt) ;
 	}
 	if ($subtitle_pid && !$error)
 	{
-		$error = $self->add_demux_filter($subtitle_pid, "subtitle") ;
+		$error = $self->add_demux_filter($subtitle_pid, "subtitle", $tsid, $pmt) ;
 	}
 	return $error ;
 }
@@ -1824,7 +1838,14 @@ sub select_channel
 	$self->multiplex_close() ;	
 
 	# Set demux (no teletext or subtitle)
-	if ($self->set_demux($demux_params_href->{'video'}, $demux_params_href->{'audio'}, 0, 0, $frontend_params_href->{'tsid'}, $demux_params_href->{'pnr'}) )
+	if ($self->set_demux(
+		$demux_params_href->{'video'}, 
+		$demux_params_href->{'audio'},
+		0, 
+		0, 
+		$frontend_params_href->{'tsid'}, 
+		$demux_params_href->{'pmt'}) 
+	)
 	{
 		return $self->handle_error("Unable to set demux") ;
 	}
@@ -1953,6 +1974,126 @@ sub get_channel_list
 	return $channels_aref ;
 }
 
+#----------------------------------------------------------------------------
+
+=item B<signal_quality()>
+
+Measures the signal quality of the currently tuned transponder. Returns a HASH ref containing:
+
+	{
+		'ber'					=> Bit error rate (32 bits)
+		'snr'					=> Signal to noise ratio (maximum is 0xffff)
+		'strength'				=> Signal strength (maximum is 0xffff)
+		'uncorrected_blocks'	=> Number of uncorrected blocks (32 bits)
+		'ok'					=> flag set if no errors occured during the measurements
+	}
+
+Note that some tuner hardware may not support some (or any) of the above measurements.
+
+=cut
+
+sub signal_quality
+{
+	my $self = shift ;
+	
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	# if not tuned yet, tune to all station freqs (assumes scan has been performed)
+	if (!$self->frontend_params())
+	{
+		return $self->handle_error("Frontend not tuned") ;
+	}
+
+	# get signal info
+	my $signal_href = dvb_signal_quality($self->{dvb}) ;
+	
+	return $signal_href ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<tsid_signal_quality([$tsid])>
+
+Measures the signal quality of the specified transponder. Returns a HASH containing:
+
+	{
+		$tsid => {
+			'ber'					=> Bit error rate (32 bits)
+			'snr'					=> Signal to noise ratio (maximum is 0xffff)
+			'strength'				=> Signal strength (maximum is 0xffff)
+			'uncorrected_blocks'	=> Number of uncorrected blocks (32 bits)
+			'ok'					=> flag set if no errors occured during the measurements
+		}
+	}
+
+If no TSID is specified, then scans all transponders and returns the complete HASH.
+
+Note that some tuner hardware may not support some (or any) of the above measurements.
+
+=cut
+
+sub tsid_signal_quality
+{
+	my $self = shift ;
+	my ($tsid) = @_ ;
+	
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	# ensure we have the tuning info
+	my $tuning_href = $self->get_tuning_info() ;
+	if (! $tuning_href)
+	{
+		return $self->handle_error("Unable to get tuning information") ;
+	}
+
+	# check/create list of TSIDs
+	my @tsids ;
+	if ($tsid)
+	{
+		# check it
+		if (!exists($tuning_href->{'ts'}{$tsid}))
+		{
+			# Raise an error
+			return $self->handle_error("Unknown TSID $tsid") ;
+		}
+		
+		push @tsids, $tsid ;
+	}
+	else
+	{
+		# create
+		@tsids = keys %{$tuning_href->{'ts'}} ;
+	}
+	
+	my %info ;
+	foreach my $tsid (@tsids)
+	{
+		## Tune frontend
+		my $frontend_params_href = $tuning_href->{'ts'}{$tsid} ;
+		if ($self->set_frontend(%$frontend_params_href, 'timeout' => $self->timeout))
+		{
+			return $self->handle_error("Unable to tune frontend") ;
+		}
+		
+		## get info
+		$info{$tsid} = $self->signal_quality($tsid) ;
+	}
+	
+	return %info ;
+}
+
 
 
 #============================================================================================
@@ -2014,8 +2155,8 @@ print STDERR "record($file, $duration)" if $DEBUG ;
 	my $frontend_href = $self->frontend_params() ;
 	my $tsid = $frontend_href->{'tsid'} ;
 	
-	## Add in SI tables (if required) to the multiplex info (no force)
-	my $error = $self->_add_required_si($tsid, 0) ;
+	## Add in SI tables (if required) to the multiplex info
+	my $error = $self->_add_required_si($tsid) ;
 	$self->handle_error($error) if ($error) ;
 	
 	## ensure pid lists match the demux list
@@ -2023,7 +2164,6 @@ print STDERR "record($file, $duration)" if $DEBUG ;
 
 
 	## Now record
-#	my %multiplex_info = $self->multiplex_info() ;
 Linux::DVB::DVBT::prt_data("multiplex_info=", $self->{'_multiplex_info'}) if $DEBUG>=10 ;
 
 	return $self->multiplex_record(%{$self->{'_multiplex_info'}}) ;
@@ -2425,7 +2565,7 @@ Returns 0 for success; error code otherwise.
 sub add_demux_filter
 {
 	my $self = shift ;
-	my ($pid, $pid_type, $tsid, $pnr) = @_ ;
+	my ($pid, $pid_type, $tsid, $pmt) = @_ ;
 
 printf STDERR "add_demux_filter($pid, $pid_type)\n", $pid if $DEBUG ;
 
@@ -2512,7 +2652,7 @@ printf STDERR "added demux filter : PID = 0x%03x ( fd = $fd )\n", $pid if $DEBUG
 		'tsid'	=> $tsid,
 		'pid'	=> $pid,
 		'type'	=> $pid_type,
-		'pnr'	=> $pnr,
+		'pmt'	=> $pmt,
 	} ;
 
 	push @{$self->{_demux_filters}}, $filter_href ;
@@ -2696,7 +2836,7 @@ sub multiplex_parse
 		# strip off any extra quotes
 		if ($arg =~ /(\S+)\s*=\s*([\'\"]{0,1})([^\2]*)\2/)
 		{
-			my ($var, $value, $valid) = (lc $1, lc $3, 0) ;
+			my ($var, $value, $valid) = (lc $1, $3, 0) ;
 
 			# allow fuzzy input - convert to known variable names
 			foreach my $regexp (keys %multiplex_params)
@@ -2837,7 +2977,6 @@ The optional options hash consists of:
 		'tsid'			=> tsid
 		'lang'			=> default lang spec
 		'out'			=> default output spec
-		'add-si'		=> force SI tables to be added to all recordings
 		'no-pid-check'	=> when set, allows specification of any pids
 	}
 
@@ -2850,8 +2989,6 @@ the default rather than for every file.
 
 The method sets up the DVB demux filters to record each of the required streams. It also sets up a HASH of the settings,
 which may be read using L</multiplex_info()>. This hash being used in L</multiplex_record(%multiplex_info)>.
-
-If the 'add-si' flag is set, then the SI tables (PAT & PMT) are recorded for all files, whether they are needed or not.
 
 Setting the 'no-pid-check' allows the recording of pids that are not known to the module (i.e. not in the scan files). This is
 for experimental use.
@@ -2967,7 +3104,7 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 				foreach my $pid_href (@pids)
 				{
 					# add filter
-					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'type'}, $tsid, $pid_href->{'pnr'}) ;
+					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'type'}, $tsid, $pid_href->{'pmt'}) ;
 					return $self->handle_error($error) if $error ;
 					
 					# keep demux filter info
@@ -3059,7 +3196,7 @@ prt_data(" + Add pid = ", $pid_href) if $DEBUG >= 15 ;
 					}
 					
 					# add a filter
-					$error = $self->add_demux_filter($pid, $pid_href->{'type'}, $tsid, $pid_href->{'pnr'}) ;
+					$error = $self->add_demux_filter($pid, $pid_href->{'type'}, $tsid, $pid_href->{'pmt'}) ;
 					return $self->handle_error($error) if $error ;
 					
 					# keep demux filter info
@@ -3072,7 +3209,7 @@ prt_data(" + Add pid = ", $pid_href) if $DEBUG >= 15 ;
 	}
 	
 	## Add in SI tables (if required) to the multiplex info
-	$error = $self->_add_required_si($tsid, $options{'add-si'}) ;
+	$error = $self->_add_required_si($tsid) ;
 	
 	## ensure pid lists match the demux list
 	$self->_update_multiplex_info($tsid) ;
@@ -3169,24 +3306,30 @@ Linux::DVB::DVBT::prt_data("multiplex_record() : multiplex_info=", \%multiplex_i
 			'pids'		=> [],
 		} ;
 
-		# sneaky bit: if file type is .ts, then leave everything; otherwise save the requested file name
-		# and change destination filename to .ts
-		my ($name, $destdir, $suffix) = fileparse($multiplex_info{'files'}{$file}{'destfile'}, '\..*');
-print STDERR " + dest=$multiplex_info{'files'}{$file}{'destfile'} : name=$name dir=$destdir ext=$suffix\n" if $DEBUG>=10 ;
-		if (lc $suffix ne '.ts')
-		{
-			# keep original
-			$multiplex_info{'files'}{$file}{'_destfile'} = $multiplex_info{'files'}{$file}{'destfile'} ;
-			$multiplex_info{'files'}{$file}{'destfile'} = "$destdir$name.ts" ;
-print STDERR " + + mod extension\n" if $DEBUG>=10 ;
-		}
-
 		# copy scalars
 		foreach (qw/offset duration destfile/)
 		{
 			$href->{$_} = $multiplex_info{'files'}{$file}{$_} ;
 		}
 		
+		# placeholder in case we need to record to intermediate .ts file
+		$multiplex_info{'files'}{$file}{'tsfile'} = "" ;
+		
+		# if file type is .ts, then leave everything; otherwise save the requested file name
+		# and change source filename to .ts
+		my ($name, $destdir, $suffix) = fileparse($multiplex_info{'files'}{$file}{'destfile'}, '\..*');
+print STDERR " + dest=$multiplex_info{'files'}{$file}{'destfile'} : name=$name dir=$destdir ext=$suffix\n" if $DEBUG>=10 ;
+		if (lc $suffix ne '.ts')
+		{
+			# modify destination so that we record to it
+			$href->{'destfile'} = "$destdir$name.ts" ;
+			
+			# report intermediate file
+			$multiplex_info{'files'}{$file}{'tsfile'} = "$destdir$name.ts" ;
+
+print STDERR " + + mod extension\n" if $DEBUG>=10 ;
+		}
+
 		# fill in the pid info
 		foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
 		{
@@ -3207,6 +3350,17 @@ print STDERR " + + mod extension\n" if $DEBUG>=10 ;
 	}
 
 Linux::DVB::DVBT::prt_data(" + info=", \@multiplex_info) if $DEBUG>=10 ;
+
+	## @multiplex_info = (
+	#		{
+	#			destfile	=> recorded ts file
+	#			pids		=> [
+	#			
+	#			]
+	#			
+	#		}
+	#	
+	#	)
 
 	## do the recordings
 	$error = dvb_record_demux($self->{dvb}, \@multiplex_info) ;
@@ -3262,8 +3416,10 @@ Linux::DVB::DVBT::prt_data("multiplex_transcode() : multiplex_info=", \%multiple
 	{
 		# run ffmpeg (or just do video duration check)
 		$error = Linux::DVB::DVBT::Ffmpeg::ts_transcode(
+#			$multiplex_info{'files'}{$file}{'destfile'}, 
+#			$multiplex_info{'files'}{$file}{'_destfile'}, 
+			$multiplex_info{'files'}{$file}{'tsfile'}, 
 			$multiplex_info{'files'}{$file}{'destfile'}, 
-			$multiplex_info{'files'}{$file}{'_destfile'}, 
 			$multiplex_info{'files'}{$file}, 
 			\%written_files) ;
 		
@@ -3543,14 +3699,18 @@ sub _multiplex_file_href
 }
 
 #-----------------------------------------------------------------------------
-# Add in the required SI tables to any recording that requires it OR if the 'add-si'
+# Add in the required SI tables to any recording that requires it OR if the 'add_si'
 # option is set
 sub _add_required_si
 {
 	my $self = shift ;
-	my ($tsid, $force_si) = @_ ;
+	my ($tsid) = @_ ;
 	my $error ;
 
+	# get flag
+	my $force_si = $self->{'add_si'} ;
+
+	# set tsid if not already set
 	$self->{_multiplex_info}{'tsid'} ||= $tsid ;
 
 print STDERR "_add_required_si(tsid=$tsid, force=$force_si)\n" if $DEBUG>=10 ;
@@ -3564,15 +3724,15 @@ prt_data("current mux info=", $self->{_multiplex_info}) if $DEBUG>=15 ;
 		my $href = $self->_multiplex_file_href($file) ;
 		
 		## check pids looking for non-audio/video (get pnr for later)
-		my $pnr ;
+		my $pmt ;
 		my %pids ;
 		foreach my $demux_href (@{$self->{_multiplex_info}{'files'}{$file}{'demux'}})
 		{
 			# keep track of the pids scheduled
 			++$pids{ $demux_href->{'pid'} } ;
 			
-			# set pnr
-			$pnr = $demux_href->{'pnr'} if ($demux_href->{'pnr'}) ;
+			# set pmt
+			$pmt = $demux_href->{'pmt'} if ($demux_href->{'pmt'}) ;
 
 			# see if non-av
 			if ( ($demux_href->{'type'} ne 'audio') && ($demux_href->{'type'} ne 'video') )
@@ -3581,25 +3741,33 @@ prt_data("current mux info=", $self->{_multiplex_info}) if $DEBUG>=15 ;
 			}
 		}
 
-print STDERR " + file=$file : add=$add_si  pnr=$pnr\n" if $DEBUG>=10 ;
+print STDERR " + file=$file : add=$add_si  pmt=$pmt\n" if $DEBUG>=10 ;
 
 		## Add tables if necessary (and possible!)
-		if ($add_si && $pnr)
+		if ($add_si)
 		{
-			foreach my $pid_href (
-				{ 'type' => 'PAT',	'pid' => $SI_TABLES{'PAT'}, },
-				{ 'type' => 'PMT',	'pid' => $pnr, },
-			)
+			if (!$pmt)
 			{
-				# skip any already scheduled
-				next if exists($pids{ $pid_href->{'pid'} }) ;
-				
-				# add filter
-				$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'type'}, $tsid, $pnr) ;
-				return $self->handle_error($error) if $error ;
-				
-				# keep demux filter info
-				push @{$href->{'demux'}}, $self->{_demux_filters}[-1] ;
+				$error = "Unable to determine PMT pid (have you re-scanned with this latest version?)" ;
+				return $self->handle_error($error) ;
+			}
+			else
+			{
+				foreach my $pid_href (
+					{ 'type' => 'PAT',	'pid' => $SI_TABLES{'PAT'}, },
+					{ 'type' => 'PMT',	'pid' => $pmt, },
+				)
+				{
+					# skip any already scheduled
+					next if exists($pids{ $pid_href->{'pid'} }) ;
+					
+					# add filter
+					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'type'}, $tsid, $pmt) ;
+					return $self->handle_error($error) if $error ;
+					
+					# keep demux filter info
+					push @{$href->{'demux'}}, $self->{_demux_filters}[-1] ;
+				}
 			}
 		}
 	}
@@ -3639,7 +3807,7 @@ sub _update_multiplex_info
 sub _si_pid
 {
 	my $self = shift ;
-	my ($pid, $tsid, $pnr) = @_ ;
+	my ($pid, $tsid, $pmt) = @_ ;
 	my $pid_href ;
 
 	# check for SI
@@ -3648,20 +3816,19 @@ sub _si_pid
 		$pid_href = {
 			'tsid'	=> $tsid,
 			'type'	=> $SI_LOOKUP{$pid},
+			'pmt'	=> 1,
 		} ;
 	}
 
 	
 	# if not found & pnr specified, see if it's PMT
-	if (!$pid_href && $pnr)
+	if (!$pid_href && $pmt)
 	{
-		if ($pnr == $pid)
-		{
-			$pid_href = {
-				'tsid'	=> $tsid,
-				'type'	=> 'PMT',
-			} ;
-		}
+		$pid_href = {
+			'tsid'	=> $tsid,
+			'type'	=> 'PMT',
+			'pmt'	=> $pmt,
+		} ;
 	}
 
 	return $pid_href ;
@@ -3778,8 +3945,7 @@ Recording of any streams within a multiplex at the same time (i.e. multi-channel
 
 =item *
 
-Additional module providing wrappers to ffmpeg as "helper" programs to extract the appropriate streams recorded during
-multiplex recording. 
+Additional module providing wrappers to ffmpeg as "helper" programs to transcode recorded files (either during "normal" or "multiplex" recording). 
 
 =back
 
