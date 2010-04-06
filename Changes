@@ -1,5 +1,8 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.03 Mon Apr 06 16:10:00 2010
+	- Fixed error when recording to .ts file (transcoding should just check length)
+	
 2.02 Mon Apr 06 08:48:00 2010
 	- Default to now add SI tables otherwise ffmpeg does not recognise the video stream encoding
 	- Various bug fixes to multiplex recording

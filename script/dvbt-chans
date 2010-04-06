@@ -31,7 +31,10 @@ use Linux::DVB::DVBT ;
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
-	my $dvb = Linux::DVB::DVBT->new('adapter_num' => $adap) ;
+	my $dvb = Linux::DVB::DVBT->new(
+		'adapter_num' 	=> $adap,
+		'add_si'		=> 0,		# Do NOT add SI tables
+	) ;
 	
 	$dvb->config_path($config) if $config ;
 	
@@ -195,7 +198,7 @@ sub print_chan
 		} ;
 		
 		$checkstr .= " : Record test " ;
-		if (-s $file)
+		if (-s $file > 4000000)
 		{
 			$checkstr .= "PASS" ;
 		}

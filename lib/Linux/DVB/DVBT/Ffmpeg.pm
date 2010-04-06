@@ -65,7 +65,7 @@ use Data::Dumper ;
 # GLOBALS
 #============================================================================================
 
-our $VERSION = '2.02' ;
+our $VERSION = '2.03' ;
 our $DEBUG = 0 ;
 
 # margin on video length checks (in seconds)
@@ -307,26 +307,47 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 	my $warnings_aref = ($multiplex_info_href->{'warnings'} ||= []) ;
 	my $lines_aref = ($multiplex_info_href->{'lines'} ||= []) ;
 	
-	#### Check the source file duration
-	if (! -s "$src")
+	## if src not specified, then destination is a ts file - just check it's length
+	if (! $src)
 	{
-		$error = "source file \"$src\" zero length" ;
-		push @$errors_aref, $error ;
-		return $error ;
+		#### Check the destination file duration
+		if (! -s "$destfile")
+		{
+			$error = "final file \"$destfile\" zero length" ;
+			push @$errors_aref, $error ;
+			return $error ;
+		}
+		my $file_duration = video_duration("$destfile") ;
+		if ($file_duration < $multiplex_info_href->{'duration'} - $DURATION_MARGIN)
+		{
+			$error = "Duration of final \"$destfile\" ($file_duration secs) not as expected ($multiplex_info_href->{'duration'} secs)" ;
+			push @$errors_aref, $error ;
+			return $error ;
+		}
 	}
-	my $file_duration = video_duration("$src") ;
-	if ($file_duration < $multiplex_info_href->{'duration'} - $DURATION_MARGIN)
+	else
 	{
-		$error = "Duration of source \"$src\" ($file_duration secs) not as expected ($multiplex_info_href->{'duration'} secs)" ;
-		push @$errors_aref, $error ;
-		return $error ;
+		#### Check the source file duration
+		if (! -s "$src")
+		{
+			$error = "source file \"$src\" zero length" ;
+			push @$errors_aref, $error ;
+			return $error ;
+		}
+		my $file_duration = video_duration("$src") ;
+		if ($file_duration < $multiplex_info_href->{'duration'} - $DURATION_MARGIN)
+		{
+			$error = "Duration of source \"$src\" ($file_duration secs) not as expected ($multiplex_info_href->{'duration'} secs)" ;
+			push @$errors_aref, $error ;
+			return $error ;
+		}
 	}
 	
 	## Save source filename
 	$multiplex_info_href->{'srcfile'} = $src ;
 	
 	#### Select the dest file format
-	if ($destfile)
+	if ($src)
 	{
 		# turn the pid types into a valid output spec
 		# e.g. vaa for 2 audio + 1 video
