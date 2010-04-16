@@ -65,11 +65,11 @@ use Data::Dumper ;
 # GLOBALS
 #============================================================================================
 
-our $VERSION = '2.03' ;
+our $VERSION = '2.07' ;
 our $DEBUG = 0 ;
 
-# margin on video length checks (in seconds)
-our $DURATION_MARGIN = 30 ;
+# margin on video length checks (in seconds) - allow for 3 minutes of padding
+our $DURATION_MARGIN = 180 ;
 
 # Niceness level
 our $NICE = 19 ;
@@ -130,37 +130,37 @@ my $pass2_options = "$me_method_opt umh ".
 our %COMMANDS = (
 
 	'ts'		=> 
-		'-i "$src"  -vcodec copy -acodec copy -scodec copy -async 1 -y "$dest.$ext"',
+		'ffmpeg -i "$src"  -vcodec copy -acodec copy -scodec copy -async 1 -y "$dest.$ext"',
 
 	'mpeg'		=> [
 		# First try
-		'-i "$src"  -vcodec copy -acodec copy -scodec copy -async 1 -y "$dest.$ext"',
+		'ffmpeg -i "$src"  -vcodec copy -acodec copy -scodec copy -async 1 -y "$dest.$ext"',
 		
 		# Alternate
-		'-i "$src"  -vcodec mpeg2video -sameq -acodec copy -scodec copy -async 1 -y "$dest.$ext"',
+		'ffmpeg -i "$src"  -vcodec mpeg2video -sameq -acodec copy -scodec copy -async 1 -y "$dest.$ext"',
 	],
 	
 	'm2v'		=> [
 		# First try
-		'-i "$src"  -vcodec copy -f mpeg2video  -y "$dest.$ext"',
+		'ffmpeg -i "$src"  -vcodec copy -f mpeg2video  -y "$dest.$ext"',
 		
 		# Alternate
-		'-i "$src"  -vcodec mpeg2video -sameq -f mpeg2video  -y "$dest.$ext"',
+		'ffmpeg -i "$src"  -vcodec mpeg2video -sameq -f mpeg2video  -y "$dest.$ext"',
 	],
 
 	'mp2'		=> 
-		'-i "$src"  -acodec copy -f mp2   -y "$dest.$ext"',
+		'ffmpeg -i "$src"  -acodec copy -f mp2   -y "$dest.$ext"',
 
 	'mp3'		=> 
-		'-i "$src"  -f mp3  -y "$dest.$ext"',
+		'ffmpeg -i "$src"  -f mp3  -y "$dest.$ext"',
 
 	'mp4'		=> [
 		[
 			# 1st pass
-			'-i "$src" ' . "$pass1_codec -pass 1 $common_start $pass1_options $common_end" . ' -y "$temp.$ext"',
+			'ffmpeg -i "$src" ' . "$pass1_codec -pass 1 $common_start $pass1_options $common_end" . ' -y "$temp.$ext"',
 			
 			# 2nd pass
-			'-i "$src" ' . "$pass2_codec -pass 2 $common_start $pass2_options $common_end" . '$title_opt -y "$dest.$ext"',
+			'ffmpeg -i "$src" ' . "$pass2_codec -pass 2 $common_start $pass2_options $common_end" . '$title_opt -y "$dest.$ext"',
 		],
 	],
 ) ;
@@ -337,9 +337,8 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 		my $file_duration = video_duration("$src") ;
 		if ($file_duration < $multiplex_info_href->{'duration'} - $DURATION_MARGIN)
 		{
-			$error = "Duration of source \"$src\" ($file_duration secs) not as expected ($multiplex_info_href->{'duration'} secs)" ;
-			push @$errors_aref, $error ;
-			return $error ;
+			my $warn = "Duration of source \"$src\" ($file_duration secs) not as expected ($multiplex_info_href->{'duration'} secs)" ;
+			push @$warnings_aref, $warn ;
 		}
 	}
 	
@@ -430,7 +429,7 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 				
 				# run the ffmpeg command
 				my @lines ;
-				$rc = ffmpeg($args, \@lines) ;
+				$rc = run_transcoder($args, \@lines) ;
 				
 				# save results
 				push @$lines_aref, @lines ;
@@ -657,7 +656,7 @@ sub video_info
 	my ($file) = @_ ;
 	
 	my @lines ;
-	ffmpeg("-i '$file'", \@lines) ;
+	run_transcoder("ffmpeg -i '$file'", \@lines) ;
 	
 	my %info = (
 		'input'	=> undef,
@@ -720,20 +719,24 @@ sub video_info
 
 #-----------------------------------------------------------------------------
 
-=item B<ffmpeg($args[, $lines_aref])>
+=item B<run_transcoder($args[, $lines_aref])>
 
-Run ffmpeg with the provided arguments. If the $lines_aref ARRAY ref is supplied,
+Run the transcoder command with the provided arguments. If the $lines_aref ARRAY ref is supplied,
 then the output lines from ffmpeg are returned in that array (one entry per line).
 
 Returns the exit status from ffmpeg.
 
 =cut
 
-sub ffmpeg
+sub run_transcoder
 {
 	my ($args, $lines_aref) = @_ ;
 
 	$lines_aref ||= [] ;
+
+	# get command name
+	my $transcoder = "" ;
+	($transcoder = $args) =~ s/^\s*(\S+).*/$1/ ;
 
 	# set niceness
 	my $nice = "" ;
@@ -742,7 +745,8 @@ sub ffmpeg
 		$nice = "nice -n $NICE" ;
 	}
 	# run ffmpeg
-	my $cmd = "$nice ffmpeg $args" ;
+#	my $cmd = "$nice ffmpeg $args" ;
+	my $cmd = "$nice $args" ;
 	@$lines_aref = `$cmd 2>&1 ; echo RC=$?` ;
 	
 	# strip newlines
@@ -752,6 +756,9 @@ sub ffmpeg
 		
 		# Strip out the intermediate processing output
 		$_ =~ s/^.*\r//g ;
+		
+		# prepend with command name
+		$_ = "[$transcoder] $_" ;
 	}
 
 	# Add command to start

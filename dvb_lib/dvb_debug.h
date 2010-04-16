@@ -12,6 +12,14 @@
 extern int dvb_debug;
 
 /*------------------------------------------------------------------*/
+// Timer
+struct timespec *dbg_timer_start() ;
+struct timespec *dbg_timer_stop() ;
+struct timespec *dbg_timer_duration() ;
+char *dbg_sprintf_timer(const char *format, struct timespec *t) ;
+char *dbg_sprintf_duration(const char *format) ;
+
+/*------------------------------------------------------------------*/
 void dump_fe_info(struct dvb_state *h);
 void fprintf_timestamp(FILE *stream, const char *format, ...) ;
 void printf_timestamp(const char *format, ...) ;

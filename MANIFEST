@@ -3,6 +3,12 @@ README
 COPYING
 Changes
 DVBT.xs
+xs/DVBT-epg.c
+xs/DVBT-common.h
+xs/DVBT-tuning.c
+xs/DVBT-init.c
+xs/DVBT-scan.c
+xs/DVBT-record.c
 Makefile.PL
 ppport.h
 typemap
@@ -66,6 +72,4 @@ t/config-ox/dvb-pr
 t/config-ox/dvb-ts
 t/config-Oxford/dvb-pr
 t/config-Oxford/dvb-ts
-
-
 META.yml                                 Module meta-data (added by MakeMaker)

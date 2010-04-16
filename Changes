@@ -1,5 +1,18 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.04 Fri Apr 16 09:00:00 2010
+	- Fixed error in dvbt-chans : file length with -extra-check was too large
+	- Re-write of low-level epg functions to speed up the process (and stop lock ups)
+	- Fixed errors in epg : loop checks were wrong (also increased buffer size)
+	- Now sort the config files by tsid & pnr
+	- Fixed error message when recording fails (attempted byte was reporting the pointer not the value)
+	- Fixed bug in regexp of Utils::fix_episodes that required a word before the episode number
+	- Split XS file into more manageable chunks
+	- Fixed setting inversion parameter : use AUTO value where possible (rather than 0) 
+	  (Reported as [rt.cpan.org #56362] Does not work with DiBcom 3000P/M-C DVB-T)
+	- Corrected tuning timeout
+	- Modified Ffmpeg module to allow other transcode commands to be added to the command list
+		
 2.03 Mon Apr 06 16:10:00 2010
 	- Fixed error when recording to .ts file (transcoding should just check length)
 	

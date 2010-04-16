@@ -19,7 +19,7 @@ our $VERSION = "1.000" ;
 			   'cfg=s' => \$config,
 			   'noprune' => \$noprune,
 			   'check' => \$check,
-			   'a=s' => \$adap,
+			   'a|adap|dvb=i' => \$adap,
 			   ) or pod2usage(2) ;
 
 	# force checking on
@@ -39,7 +39,7 @@ $VERBOSE ||= 1 ;
 	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
 	Linux::DVB::DVBT->verbose($VERBOSE) ;
 
-	## Create dvb (use first found adapter). 
+	## Create dvb
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##

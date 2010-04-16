@@ -22,11 +22,6 @@
 
 
 /* ----------------------------------------------------------------------- */
-/* ----------------------------------------------------------------------- */
-/* maintain current state for these ... */
-extern int  dvb_inv;
-
-/* ----------------------------------------------------------------------- */
 /* map vdr config file numbers to enums                                    */
 
 #define VDR_MAX 999
@@ -242,8 +237,8 @@ e) the TDT and TOT shall be transmitted at least every 30 s.
 static int scan_timeout_secs = 40 ;		// new
 
 //static int nodata_timeout_secs = 15 ;	// should see *something* by then
-//static int nodata_timeout_secs = 40 ;	// debugging!
-static int nodata_timeout_secs = 20 ;	// new
+static int nodata_timeout_secs = 40 ;	// debugging!
+//static int nodata_timeout_secs = 20 ;	// new
 
 static int poll_timeout_ms = 1000 ;
 

@@ -323,7 +323,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.03';
+our $VERSION = '2.04';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -685,12 +685,12 @@ my %FE_HIER = (
 	'AUTO'		=> $AUTO,
 ) ;		
 
-# =8 -> ?
-#			$tuning_params{'bandwidth'} = $bw if ($bw) ;
-# =2 -> AUTO
-#			$tuning_params{'transmission'} = $tr if ($tr) ;
-# =1 -> 1/16 ?
-#			$tuning_params{'guard_interval'} = $gu if ($gu) ;
+my %FE_INV = (
+	'NONE'		=> 0,
+	'0'			=> 0,
+	'1'			=> 1,
+	'AUTO'		=> $AUTO,
+) ;		
 
 ## All FE params
 my %FE_PARAMS = (
@@ -701,6 +701,7 @@ my %FE_PARAMS = (
 	transmission 		=> \%FE_TRANSMISSION,
 	guard_interval 		=> \%FE_GUARD,
 	hierarchy 			=> \%FE_HIER,
+	inversion 			=> \%FE_INV,
 ) ;
 
 my %FE_CAPABLE = (
@@ -711,6 +712,7 @@ my %FE_CAPABLE = (
 	transmission 		=> 'FE_CAN_TRANSMISSION_MODE_AUTO',
 	guard_interval 		=> 'FE_CAN_GUARD_INTERVAL_AUTO',
 	hierarchy 			=> 'FE_CAN_HIERARCHY_AUTO',
+	inversion			=> 'FE_CAN_INVERSION_AUTO',
 ) ;
 
 
@@ -868,6 +870,11 @@ sub debug
 	if (defined($level))
 	{
 		$DEBUG = $level ;
+		
+		## Set utility module debug levels
+		$Linux::DVB::DVBT::Config::DEBUG = $DEBUG ;
+		$Linux::DVB::DVBT::Utils::DEBUG = $DEBUG ;
+		$Linux::DVB::DVBT::Ffmpeg::DEBUG = $DEBUG ;
 	}
 
 	return $DEBUG ;
@@ -1543,6 +1550,7 @@ prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBU
 				transmission => $6,
 				guard_interval => $7,
 				hierarchy => $8,
+				inversion => 0,
 			) ;
 			
 			# convert file entry into a frontend param
@@ -2370,6 +2378,16 @@ prt_data("Lookup=", $channel_lookup_href) if $DEBUG >= 2 ;
 		if ($tuning_href)
 		{
 			@next_freq = values %{$tuning_href->{'ts'}} ;
+			
+			if ($DEBUG)
+			{
+				print STDERR "FREQ LIST:\n" ;
+				foreach (@next_freq)
+				{
+					print STDERR "  $_ Hz\n" ;
+				}
+			}
+			
 			my $params_href = shift @next_freq ;
 prt_data("Set frontend : params=", $params_href) if $DEBUG >= 2 ;
 			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
@@ -2405,7 +2423,13 @@ prt_data("Retune params=", $params_href)  if $DEBUG >= 2 ;
 	}
 	while ($params_href) ;
 
-prt_data("EPG data=", $epg_data) if $DEBUG ;
+	printf("Found %d EPG entries\n", scalar(@$epg_data)) if $VERBOSE ;
+
+prt_data("EPG data=", $epg_data) if $DEBUG>=2 ;
+
+	## get epg statistics
+	my $epg_stats = dvb_epg_stats($self->{dvb}) ;
+
 
 	# ok to clear down the low-level list now
 	dvb_clear_epg() ;
@@ -2426,7 +2450,7 @@ prt_data("EPG data=", $epg_data) if $DEBUG ;
 			$chan = $channel_lookup_href->{$chan}{'channel'} || $chan ;
 		}
 		
-prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG ;
+prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 		
 		# {chan}
 		#	{pid}
@@ -2517,11 +2541,30 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG ;
 			'tva_series'=> $epg_entry->{'tva_series'} || '',
 		} ;
 
-prt_data("EPG final entry ($chan) $pid=", $epg{$chan}{$pid}) if $DEBUG ;
+prt_data("EPG final entry ($chan) $pid=", $epg{$chan}{$pid}) if $DEBUG>=2 ;
 
 	}
+	
+	## analyse statistics
+	my %epg_statistics ;
+	$epg_statistics{'totals'} = $epg_stats->{'totals'} ;
+	foreach my $part_href (@{$epg_stats->{'parts'}})
+	{
+		my ($tsid, $pnr, $parts, $parts_left) = @{$part_href}{qw/tsid pnr parts parts_left/} ;
+		$epg_statistics{'parts'}{$tsid}{$pnr} = {
+			'parts'			=> $parts,
+			'parts_left'	=> $parts_left,
+		} ;
+	}
+	foreach my $err_href (@{$epg_stats->{'errors'}})
+	{
+		my ($freq, $section, $errors) = @{$err_href}{qw/freq section errors/} ;
+		$epg_statistics{'errors'}{$freq}{$section} = $errors ;
+	}
+
+prt_data("** EPG STATS ** =", \%epg_statistics) if $DEBUG ;
 		
-	return (\%epg, \%dates) ;
+	return (\%epg, \%dates, \%epg_statistics) ;
 }
 
 

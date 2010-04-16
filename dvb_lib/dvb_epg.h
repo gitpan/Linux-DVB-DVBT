@@ -21,6 +21,7 @@
 
 #define EPG_FLAG_SUBTITLES       (1<<16)
 
+/* ----------------------------------------------------------------------- */
 struct epgitem {
     struct list_head    next;
     int                 id;
@@ -48,6 +49,27 @@ struct epgitem {
 extern struct list_head epg_list;
 extern time_t eit_last_new_record;
 extern int    eit_count_records;
+
+/* ----------------------------------------------------------------------- */
+struct partitem {
+    struct list_head    next;
+    int                 pnr;
+    int                 tsid;
+    int                 parts;
+    int                 parts_left;
+};
+extern struct list_head parts_list;
+extern int parts_remaining ;
+
+/* ----------------------------------------------------------------------- */
+struct erritem {
+    struct list_head    next;
+    int                 freq;
+    int                 section;
+    int                 errors;
+};
+extern struct list_head errs_list;
+extern int total_errors ;
 
 struct eit_state;
 

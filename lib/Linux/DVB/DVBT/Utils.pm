@@ -19,7 +19,7 @@ if you wish to (I mainly use the time coversion functions in my scripts).
 
 use strict ;
 
-our $VERSION = '2.00' ;
+our $VERSION = '2.01' ;
 our $DEBUG = 0 ;
 
 our %CONTENT_DESC = (
@@ -335,15 +335,23 @@ sub fix_title
 
 	return unless ($$title_ref && $$synopsis_ref) ;
 
-	# fix title when title is Julian Fellowes Investigates...
-	# and synopsis is ...a Most Mysterious Murder. The Case of etc.
-	if ($$synopsis_ref =~ s/^\.\.\. ?//) 
+	# fix title when title is 'Julian Fellowes Investigates...'
+	# and synopsis is '...a Most Mysterious Murder. The Case of xxxxx'
+	if ($$synopsis_ref =~ s/^\.\.\.\s?//) 
 	{
+		# remove trailing ... from title		
 		$$title_ref =~ s/\.\.\.//;
+		
+		# synopsis = 'a Most Mysterious Murder. The Case of xxxxx'
+		# match = 'a Most Mysterious Murder'
+		# new synopsis = 'The Case of xxxxx'
 		$$synopsis_ref =~ s/^(.+?)\. //;
 		if ($1) 
 		{
+			# new title = 'Julian Fellowes Investigates a Most Mysterious Murder'
 			$$title_ref .= ' ' . $1;
+			
+			# remove duplicate spaces
 			$$title_ref =~ s/ {2,}/ /;
 		}
 	}
@@ -384,7 +392,7 @@ sub fix_episodes
 	# "Episode 1 of 7."
 	# "Part 1 of 7."
 	# "(1/7)."
-	if ($$synopsis_ref =~ s%\(*\s*\S+\s*(\d+)\s*(?:/|\\|of)\s*(\d+)[\:\.\s\)]*%%i) 
+	if ($$synopsis_ref =~ s%\(*\s*\S*\s*(\d+)\s*(?:/|\\|of)\s*(\d+)[\:\.\s\)]*%%i) 
 	{
 		$$episode_ref = $1;
 		$$num_episodes_ref = $2;

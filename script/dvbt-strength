@@ -19,7 +19,7 @@ our $VERSION = '2.001' ;
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'cfg=s' => \$config,
-			   'a=i' => \$adapter,
+			   'a|adap|dvb=i' => \$adap,
 			   'munin=s' => \$munin,
 			   ) or pod2usage(2) ;
 
@@ -36,7 +36,7 @@ our $VERSION = '2.001' ;
 	Linux::DVB::DVBT->debug($DEBUG) ;
 	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
 
-	## Create dvb (use first found adapter). 
+	## Create dvb
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
@@ -142,6 +142,7 @@ Options:
        -verbose level       set verbosity level
        -help                brief help message
        -man                 full documentation
+       -a <num>             Use adapter <num>
        
 =head1 OPTIONS
 
@@ -163,6 +164,9 @@ Set verbosity level. Higher values show more information.
 
 Set debug level. Higher levels show more debugging information (only really of any interest to developers!)
 
+=item B<-a>
+
+Specify which adapter number to use
 
 =back
 

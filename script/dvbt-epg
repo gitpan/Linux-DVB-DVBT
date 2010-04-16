@@ -26,12 +26,13 @@ $text
 .
 
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $adap) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'cfg=s' => \$config,
+			   'a|adap|dvb=i' => \$adap,
 			   ) or pod2usage(2) ;
 
 
@@ -42,11 +43,13 @@ $text
 	Linux::DVB::DVBT->verbose($VERBOSE) ;
 	
 
-	## Create dvb (use first found adapter). 
+	## Create dvb. 
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
-	my $dvb = Linux::DVB::DVBT->new() ;
+	my $dvb = Linux::DVB::DVBT->new(
+		'adapter_num' 	=> $adap,
+	) ;
 
 	$dvb->config_path($config) if $config ;
 	
@@ -93,6 +96,7 @@ Options:
        -verbose level       set verbosity level
        -help                brief help message
        -man                 full documentation
+       -a <num>             Use adapter <num>
        
 =head1 OPTIONS
 
@@ -114,6 +118,9 @@ Set verbosity level. Higher values show more information.
 
 Set debug level. Higher levels show more debugging information (only really of any interest to developers!)
 
+=item B<-a>
+
+Specify which adapter number to use
 
 =back
 

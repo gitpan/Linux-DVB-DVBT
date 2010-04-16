@@ -17,13 +17,6 @@
 #include "dvb_debug.h"
 #include "dvb_tune.h"
 
-int dvb_type_override = -1;
-
-
-/* maintain current state for these ... */
-char *dvb_src   = NULL;
-char *dvb_lnb   = NULL;
-int  dvb_inv    = INVERSION_AUTO;
 
 // Debug problem where frequency readback from DVB tuner is not the same as requested
 //
@@ -71,22 +64,6 @@ int frequency = params->frequency ;
 		freqi = list_entry(item, struct freqitem, next);
 		if (freqi->frequency != frequency)
 		    continue;
-////		if (freqi->params.inversion != params->inversion)
-////		    continue;
-//		if (freqi->params.u.ofdm.bandwidth != params->u.ofdm.bandwidth)
-//		    continue;
-//		if (freqi->params.u.ofdm.code_rate_HP != params->u.ofdm.code_rate_HP)
-//		    continue;
-//		if (freqi->params.u.ofdm.code_rate_LP != params->u.ofdm.code_rate_LP)
-//		    continue;
-//		if (freqi->params.u.ofdm.constellation != params->u.ofdm.constellation)
-//		    continue;
-//		if (freqi->params.u.ofdm.transmission_mode != params->u.ofdm.transmission_mode)
-//		    continue;
-//		if (freqi->params.u.ofdm.guard_interval != params->u.ofdm.guard_interval)
-//		    continue;
-//		if (freqi->params.u.ofdm.hierarchy_information != params->u.ofdm.hierarchy_information)
-//		    continue;
 		return freqi;
     }
     freqi = malloc(sizeof(*freqi));
@@ -240,6 +217,17 @@ static fe_hierarchy_t fe_vdr_hierarchy[] = {
     [ 4 ]             = HIERARCHY_4,
 };
 
+static fe_spectral_inversion_t fe_vdr_inversion[] = {
+    [ 0 ... VDR_MAX ] = INVERSION_AUTO,
+    [ 0 ]             = INVERSION_OFF,
+    [ 1 ]             = INVERSION_ON,
+};
+
+// Keep track of whether the current hardware can handle auto inversion
+int dvb_inversion = INVERSION_AUTO ;
+
+
+
 /* ----------------------------------------------------------------------- */
 static unsigned fixup_freq(unsigned freq)
 {
@@ -279,10 +267,12 @@ void params_stream_to_vdr(struct psi_stream *stream, struct tuning_params *vdr_p
 
 //	if (stream->polarization)
 //	{
-//		inversion = fe_vdr_bandwidth[ atoi(stream->polarization) ] ;
+//		vdr_params->inversion = atoi(stream->polarization) ;
 //	}
-	vdr_params->inversion = 0 ;
-	
+
+	// use auto setting if possible
+	vdr_params->inversion = dvb_inversion ;
+
 	if (stream->bandwidth)
 	{
 		vdr_params->bandwidth = atoi(stream->bandwidth) ;
@@ -330,9 +320,9 @@ void params_to_frontend(
 		struct dvb_frontend_parameters *params)
 {
 	params->frequency = fixup_freq(frequency) ;
-	params->inversion = inversion;
 
 	// Params decoded for transponders are converted into strings - convert back
+	params->inversion = fe_vdr_inversion [ inversion ] ;
 	params->u.ofdm.bandwidth = fe_vdr_bandwidth [ bandwidth ];
 	params->u.ofdm.code_rate_HP = fe_vdr_rates [ code_rate_high ];
 	params->u.ofdm.code_rate_LP = fe_vdr_rates [ code_rate_low ];
@@ -489,10 +479,6 @@ xioctl(int fd, int cmd, void *arg, int mayfail)
     if (mayfail && errno == mayfail && !dvb_debug)
 	return rc;
 
-/* FIX
-    print_ioctl(stderr,ioctls_dvb,"dvb ioctl: ",cmd,arg);
-*/
-
     fprintf(stderr,": %s\n",(rc == 0) ? "ok" : strerror(errno));
     return rc;
 }
@@ -572,16 +558,7 @@ if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
     	return -11;
     }
 
-    if (dvb_src)
-    	free(dvb_src);
-    if (dvb_lnb)
-    	free(dvb_lnb);
-    dvb_src = NULL;
-    dvb_lnb = NULL;
-
-if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "at start", h) ;
-
-
+    if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "at start", h) ;
    	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "OFDM\n") ; }
 
 	params_to_frontend(
@@ -625,7 +602,7 @@ if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "xiotcl(FE
 
 done:
 
-if (dvb_debug>1) _fn_end((char *)__FUNCTION__, rc) ;
+	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, rc) ;
 
     // Hmm, the driver seems not to like that :-/
     // dvb_frontend_release(h,1);
@@ -726,13 +703,22 @@ int ok = 1 ;
     return ok ;
 }
 
+//#define USLEEP	40
+#define USLEEP	200
+
 /* ----------------------------------------------------------------------- */
 int dvb_frontend_wait_lock(struct dvb_state *h, int timeout)
 {
 fe_status_t  status  = 0;
 int i ;
 
-	for (i = 0; i < 50; i++) {
+	// timeout is in ms - convert to number of wait loops
+	// Thanks to Martin Ward for pointing out that I needed to round the value up
+	timeout = (timeout + USLEEP - 1) / USLEEP ;
+	if (timeout <= 0)
+		timeout = 1 ;
+
+	for (i = 0; i < timeout; i++) {
 
 	    if (-1 == ioctl(h->fdro, FE_READ_STATUS, &status)) {
 			perror("dvb fe: ioctl FE_READ_STATUS");
@@ -745,7 +731,7 @@ if ( (dvb_debug>=10) && (i%10==0) ) fprintf(stderr, ">>> tuning status == 0x%04x
 			return 0;
 		}
 
-		usleep (40000);
+		usleep (USLEEP*1000);
 	}
     
     
@@ -808,15 +794,17 @@ int dvb_demux_get_section(int fd, unsigned char *buf, int len)
 
     memset(buf,0,len);
     if ((rc = read(fd, buf, len)) < 0)
-	if ((ETIMEDOUT != errno && EOVERFLOW != errno) || dvb_debug)
-	    fprintf(stderr,"dvb mux: read: %s [%d]\n",
-		    strerror(errno), errno);
-    return rc;
+    {
+		if ((ETIMEDOUT != errno && EOVERFLOW != errno) || dvb_debug)
+		{
+			fprintf(stderr,"dvb mux: read: %s [%d] rc=%d\n", strerror(errno), errno, rc);
+		}
+    }
+	return rc;
 }
 
 
 /* ----------------------------------------------------------------------- */
-
 int dvb_demux_req_section(struct dvb_state *h, int fd, int pid,
 			  int sec, int mask, int oneshot, int timeout)
 {
@@ -836,11 +824,11 @@ struct dmx_sct_filter_params filter;
 
     if (-1 == fd) {
     	fd = open(h->demux, O_RDWR);
-	if (-1 == fd) {
-	    fprintf(stderr,"dvb mux: [pid %d] open %s: %s\n",
-		    pid, h->demux, strerror(errno));
-	    goto oops;
-	}
+		if (-1 == fd) {
+			fprintf(stderr,"dvb mux: [pid %d] open %s: %s\n",
+				pid, h->demux, strerror(errno));
+			goto oops;
+		}
     }
     if (-1 == xioctl(fd, DMX_SET_FILTER, &filter, 0)) {
     	fprintf(stderr,"dvb mux: [pid %d] ioctl DMX_SET_PES_FILTER: %s\n",
@@ -858,6 +846,35 @@ struct dmx_sct_filter_params filter;
 	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
     return -14;
 }
+
+/* ----------------------------------------------------------------------- */
+int dvb_demux_set_size(struct dvb_state *h, int fd, unsigned long size)
+{
+if (dvb_debug) fprintf(stderr, "dvb_demux_set_size(%l)\n", size) ;
+
+    if (-1 == fd) {
+    	fd = open(h->demux, O_RDWR);
+		if (-1 == fd) {
+			fprintf(stderr,"dvb mux: open %s: errno=%d %s\n", h->demux, errno, strerror(errno));
+			goto oops;
+		}
+    }
+    if (-1 == xioctl(fd, DMX_SET_BUFFER_SIZE, &size, 0)) {
+    	fprintf(stderr,"dvb mux: ioctl DMX_SET_BUFFER_SIZE=%l: errno=%d %s\n", size, errno, strerror(errno));
+    	goto oops;
+    }
+
+    if (dvb_debug) fprintf(stderr, "dvb_demux_set_size() DONE fd=%d\n", fd) ;
+    return fd;
+
+ oops:
+    if (-1 != fd)
+    	close(fd);
+
+    if (dvb_debug) fprintf(stderr, "dvb_demux_set_size() DONE\n") ;
+    return -1;
+}
+
 
 /* ======================================================================= */
 /* open/close/tune dvr                                                     */
@@ -935,8 +952,6 @@ int rc = 0 ;
     h->fdro     = -1;
     h->fdwr     = -1;
     h->dvro     = -1;
-//    h->audio.fd = -1;
-//    h->video.fd = -1;
 
     snprintf(h->frontend, sizeof(h->frontend),"%s/frontend%d", adapter, frontend);
     snprintf(h->demux,    sizeof(h->demux),   "%s/demux%d",    adapter, frontend);
@@ -948,6 +963,7 @@ int rc = 0 ;
     	goto oops;
     }
 
+	// get info about the tuner
     if (-1 == xioctl(h->fdro, FE_GET_INFO, &h->info, 0)) {
     	rc = -3 ;
 		if (dvb_debug) fprintf(stderr, "dvb init: xiotcl FE_GET_INFO failed\n");
@@ -955,9 +971,17 @@ int rc = 0 ;
 		goto oops;
     }
 
-    /* hacking DVB-S without hardware ;) */
-    if (-1 != dvb_type_override)
-    	h->info.type = dvb_type_override;
+    // see if we can use auto inversion
+    if (h->info.caps & FE_CAN_INVERSION_AUTO)
+    {
+    	// ok to use auto
+    	dvb_inversion = INVERSION_AUTO ;
+    }
+    else
+    {
+    	// use the old default of 0
+    	dvb_inversion = INVERSION_OFF ;
+    }
 
     if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return h;
@@ -1057,38 +1081,3 @@ struct dvb_frontend_parameters info ;
 }
 
 
-#if 0
-
-// Now using dvb_wait_tune called by dvb_tune. Also changed demux setup
-
-/* ----------------------------------------------------------------------- */
-int dvb_finish_tune(struct dvb_state *h, int timeout)
-{
-int rc = 0 ;
-
-	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
-	if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "", h);
-
-	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Ensure video & audio filters are initialised\n"); }
-	if (0 == h->video.filter.pid && 0 == h->audio.filter.pid)
-	{
-		if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -2) ;
-		return -20;
-	}
-
-	// Ensure frontend is tuned
-	rc = dvb_wait_tune(h, timeout) ;
-	if (rc != 0) return rc ;
-
-
-	if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Apply filter\n"); }
-    if (0 != dvb_demux_filter_apply(h))
-    {
-    	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -2) ;
-    	return -21;
-    }
-
-	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
-    return 0;
-}
-#endif

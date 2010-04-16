@@ -25,6 +25,75 @@
 int dvb_debug=0;
 static int dbg_indent = 0 ;
 
+//time_t  tv_sec    seconds
+//long    tv_nsec   nanoseconds
+static struct timespec t0 ;
+static struct timespec t1 ;
+static struct timespec tdiff ;
+
+static char timer_buff[128] ;
+
+/*------------------------------------------------------------------*/
+struct timespec *dbg_timer_start()
+{
+	clock_gettime(CLOCK_REALTIME, &t0) ;
+
+//fprintf(stderr, "t0 : sec=%u ns=%lu\n", t0.tv_sec, t0.tv_nsec) ;
+	return &t0 ;
+}
+
+/*------------------------------------------------------------------*/
+struct timespec *dbg_timer_stop()
+{
+	clock_gettime(CLOCK_REALTIME, &t1) ;
+
+//fprintf(stderr, "t1 : sec=%u ns=%lu\n", t1.tv_sec, t1.tv_nsec) ;
+//fprintf(stderr, "t0 is sec=%u ns=%lu\n", t0.tv_sec, t0.tv_nsec) ;
+
+	tdiff.tv_nsec = t1.tv_nsec - t0.tv_nsec ;
+	tdiff.tv_sec = t1.tv_sec - t0.tv_sec ;
+	if (tdiff.tv_nsec < 0L)
+	{
+		tdiff.tv_sec--;
+		tdiff.tv_nsec += 1000000000L ;
+	}
+//fprintf(stderr, "tdiff = sec=%u ns=%lu\n", tdiff.tv_sec, tdiff.tv_nsec) ;
+
+	return &t1 ;
+}
+
+/*------------------------------------------------------------------*/
+struct timespec *dbg_timer_duration()
+{
+	return &tdiff ;
+}
+
+/*------------------------------------------------------------------*/
+char *dbg_sprintf_timer(const char *format, struct timespec *t)
+{
+unsigned us ;
+struct tm  *ts;
+char  buf[80];
+
+	// print timestamp
+    ts = localtime(&t->tv_sec);
+    strftime(buf, sizeof(buf), format, ts);
+
+    // tack on us
+    us = (unsigned)(t->tv_nsec / 1000L) ;
+	sprintf(timer_buff, "%s.%06u", buf, us) ;
+
+	return timer_buff ;
+}
+
+/*------------------------------------------------------------------*/
+// Just format the difference and return the string
+char *dbg_sprintf_duration(const char *format)
+{
+	return dbg_sprintf_timer(format, &tdiff) ;
+}
+
+
 /*------------------------------------------------------------------*/
 void fprintf_timestamp(FILE *stream, const char *format, ...)
 {

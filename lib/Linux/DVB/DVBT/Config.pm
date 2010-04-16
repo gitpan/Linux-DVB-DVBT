@@ -19,7 +19,7 @@ you can if you wish.
 
 use strict ;
 
-our $VERSION = '2.01' ;
+our $VERSION = '2.03' ;
 our $DEBUG = 0 ;
 
 use File::Path ;
@@ -739,7 +739,7 @@ sub merge_scan_freqs
 {
 	my ($new_href, $old_href, $verbose) = @_ ;
 
-#print STDERR "merge_scan_freqs()\n" ;
+print STDERR "merge_scan_freqs()\n" if $DEBUG ;
 
 	if ($old_href && $new_href)
 	{
@@ -751,7 +751,7 @@ sub merge_scan_freqs
 				my $overwrite = 1 ;
 				if ( (($region eq 'pr')||($region eq 'ts')) && exists($old_href->{$region}{$section}) )
 				{
-#	print STDERR " + found 2 instances of {$region}{$section}\n" ;
+print STDERR " + found 2 instances of {$region}{$section}\n" if $DEBUG ;
 					# check for signal quality to compare
 					my ($new_freq, $old_freq) ;
 					foreach (qw/frequency tuned_freq/)
@@ -770,10 +770,10 @@ sub merge_scan_freqs
 						}
 						if ($new_strength && $old_strength)
 						{
-#	print STDERR " + checking $region $section  : Strength NEW=$new_strength  OLD=$old_strength\n" ;
+print STDERR " + checking $region $section  : Strength NEW=$new_strength  OLD=$old_strength\n" if $DEBUG ;
 							if ($old_strength >= $new_strength)
 							{
-#	print STDERR " + + keep stronger signal (OLD)\n" ;
+print STDERR " + + keep stronger signal (OLD)\n" if $DEBUG ;
 
 								$new_strength = $new_strength * 100 / 65535 ;
 								$old_strength = $old_strength * 100 / 65535 ;
@@ -788,6 +788,7 @@ sub merge_scan_freqs
 				
 				if ($overwrite)
 				{
+print STDERR " + Overwrite existing {$region}{$section} with new ....\n" if $DEBUG ;
 					## Just overwrite
 					foreach my $field (keys %{$new_href->{$region}{$section}})
 					{
@@ -800,7 +801,7 @@ sub merge_scan_freqs
 
 	$old_href = $new_href if (!$old_href) ;
 	
-#print STDERR "merge_scan_freqs() - DONE\n" ;
+print STDERR "merge_scan_freqs() - DONE\n" if $DEBUG ;
 	
 	return $old_href ;
 }
@@ -1108,10 +1109,10 @@ sub write_dvb_ts
 	#transmission = 2
 	#
 	#
-	foreach my $section (keys %$href)
+	foreach my $section (sort {$a <=> $b} keys %$href)
 	{
 		print $fh "[$section]\n" ;
-		foreach my $field (keys %{$href->{$section}})
+		foreach my $field (sort keys %{$href->{$section}})
 		{
 			my $val = $href->{$section}{$field} ;
 			if ($val =~ /\S+/)
@@ -1167,10 +1168,14 @@ sub write_dvb_pr
 	#net = BBC
 	#name = BBC ONE
 	#
-	foreach my $section (keys %$href)
+	foreach my $section (sort {
+		$href->{$a}{'tsid'} <=> $href->{$b}{'tsid'}
+		||
+		$href->{$a}{'pnr'} <=> $href->{$b}{'pnr'}
+	} keys %$href)
 	{
 		print $fh "[$href->{$section}{tsid}-$href->{$section}{pnr}]\n" ;
-		foreach my $field (keys %{$href->{$section}})
+		foreach my $field (sort keys %{$href->{$section}})
 		{
 			my $val = $href->{$section}{$field} ;
 			if ($val =~ /\S+/)

@@ -156,6 +156,7 @@ int dvb_demux_get_section(int fd, unsigned char *buf, int len) ;
 //int dvb_demux_req_section(struct dvb_state *h, int pid, int timeout)
 int dvb_demux_req_section(struct dvb_state *h, int fd, int pid,
 			  int sec, int mask, int oneshot, int timeout) ;
+int dvb_demux_set_size(struct dvb_state *h, int fd, unsigned long size) ;
 
 /* ======================================================================= */
 /* handle dvb dvr                                                          */

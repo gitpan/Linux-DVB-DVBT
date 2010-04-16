@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+
 use strict ;
 use Pod::Usage ;
 use Getopt::Long qw/:config no_ignore_case/ ;
@@ -7,7 +8,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $check, $extra_check, $multiplex, $adap) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $check, $extra_check, $multiplex, $adap, $write) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
@@ -16,7 +17,8 @@ use Linux::DVB::DVBT ;
 			   'check' => \$check,
 			   'extra-check' => \$extra_check,
 			   'multi|tsid' => \$multiplex,
-			   'a=i' => \$adap,
+			   'a|adap|dvb=i' => \$adap,
+			   'write=s' => \$write,
 			   ) or pod2usage(2) ;
 
 
@@ -27,7 +29,7 @@ use Linux::DVB::DVBT ;
 	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
 	Linux::DVB::DVBT->verbose($VERBOSE) ;
 
-	## Create dvb (use first found adapter). 
+	## Create dvb 
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
@@ -46,6 +48,7 @@ use Linux::DVB::DVBT ;
 
 	# Set displayed widths
 	my %widths = (
+		'check'		=> 1,
 		'lcn'		=> 3,
 		'chan'		=> 30,
 		'tsid'		=> 5,
@@ -55,7 +58,10 @@ use Linux::DVB::DVBT ;
 	) ;
 	
 	# calc seperators
-	my $horiz_bar = "-"x$widths{'lcn'} ;
+	my $horiz_bar = "" ;
+	$horiz_bar .= "-"x$widths{'check'} ;
+	$widths{'total'} = $widths{'check'} ;
+	$horiz_bar .= "-"x$widths{'lcn'} ;
 	$widths{'total'} = $widths{'lcn'} ;
 	foreach (qw/chan tsid pnr type pids/)
 	{
@@ -82,7 +88,7 @@ Channel List
 ============
 
 $horiz_bar
-LCN | Channel Name                   |  TSID-PNR   | Type   | PIDs                                                 
+ LCN | Channel Name                   |  TSID-PNR   | Type   | PIDs                                                 
 $horiz_bar
 HEAD
 	
@@ -136,9 +142,9 @@ $horiz_bar
 TAIL
 
 	printf "Found %d channels (%d tv, %d other)\n", $tv+$radio, $tv, $radio ;	
-	if ($check)
+	if ($check || $extra_check)
 	{
-		print $ok ? "Passed checks\n" : "FAILED checks\n" ;
+		print $ok ? "Passed checks\n" : "* These channels have FAILED checks\n" ;
 		if (!$got_pmt)
 		{
 			print "No PMT pids found. Have you re-run dvbt-scan with the latest version?\n" ;
@@ -146,12 +152,20 @@ TAIL
 	}
 	print "\n" ;
 
+	## Write out new set
+	if ($write)
+	{
+		Linux::DVB::DVBT::Config::write($write, $tuning_href) ;
+		print "Written new copy of configuration files into $write\n" ;
+	}
+
 #-------------------------------------------------------------------------------------------------------
 sub print_chan
 {
 	my ($tuning_href, $ch_href, $tv_ref, $radio_ref) = @_ ;
 	
 	my $chan = $ch_href->{'channel'} ;
+	my $check_flag = 1 ;
 	my $checkstr = "" ;
 	if ($check)
 	{
@@ -168,12 +182,14 @@ sub print_chan
 			{
 				$checkstr .= "no pmt" ;
 				$ok = 0 ;
+				$check_flag = 0 ;
 			}
 		}
 		else
 		{
 			$checkstr .= "incorrect" ;
 			$ok = 0 ;
+			$check_flag = 0 ;
 		}
 	}
 
@@ -198,7 +214,7 @@ sub print_chan
 		} ;
 		
 		$checkstr .= " : Record test " ;
-		if (-s $file > 4000000)
+		if (-s $file > 100000)
 		{
 			$checkstr .= "PASS" ;
 		}
@@ -206,6 +222,7 @@ sub print_chan
 		{
 			$checkstr .= "FAIL" ;
 			$ok = 0 ;
+			$check_flag = 0 ;
 		}
 		unlink $file ;
 	}
@@ -228,7 +245,8 @@ sub print_chan
 	{
 		$avstr .= "subtitle=$tuning_href->{'pr'}{$chan}{'subtitle'} " ;
 	}
-	printf "%$widths{lcn}d | %-$widths{chan}s | %$widths{tsid}d-%-$widths{pnr}d | %-$widths{type}s | $avstr $checkstr\n", 
+	printf "%-$widths{check}s%$widths{lcn}d | %-$widths{chan}s | %$widths{tsid}d-%-$widths{pnr}d | %-$widths{type}s | $avstr $checkstr\n", 
+		$check_flag ? " " : "*",
 		$ch_href->{'channel_num'},
 		$chan,
 		$tuning_href->{'pr'}{$chan}{'tsid'},
