@@ -272,9 +272,9 @@ struct freq_info *finfo ;
 //    {
 //    	fprintf(stderr, "PROG [program=>%p list.next=%p list.prev=%p] ", program, program->next.next, program->next.prev) ;
 //    }
-	fprintf(stderr, "TSID %d PNR %d : name %s : network %s : running %d : type %d : prog %d, video %d, audio %d, ttext %d : audio %s (up %d / seen %d) : Tuned ",
+	fprintf(stderr, "TSID %d PNR %d : name %s : network %s : running %d : type %d : prog %d, video %d, audio %d, ttext %d, pcr %d : audio %s (up %d / seen %d) : Tuned ",
 			program->tsid, program->pnr, program->name, program->net, program->running,
-			program->type, program->p_pid, program->v_pid, program->a_pid, program->t_pid,
+			program->type, program->p_pid, program->v_pid, program->a_pid, program->t_pid, program->pcr_pid,
 			program->audio,
 			program->updated, program->seen
 	) ;
@@ -647,7 +647,6 @@ if (dvb_debug >= 15) fprintf(stderr, "<< set freq done >>\n") ;
     program->a_pid = -1;
     program->t_pid = -1;
     program->s_pid = -1;
-    program->fd = -1;
 
     list_add_tail(&program->next,&info->programs);
 
@@ -1317,6 +1316,7 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
     	return len+4;
     program->version = version;
     program->updated = 1;
+    program->pcr_pid = pcr_pid ;
 
     dlen = mpeg_getbits(data,84,12);
     /* TODO: decode descriptor? */
@@ -1327,11 +1327,17 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
 			pnr, version,
 			mpeg_getbits(data,48, 8),
 			mpeg_getbits(data,56, 8),
-//			mpeg_getbits(data,69,13),	// This is wrong!
+//			mpeg_getbits(data,69,13),	// IS This is wrong!
 			pcr_pid,
 			program->p_pid, program->type);
 		mpeg_dump_desc(data + 96/8, dlen);
 		fprintf(stderr,"\n");
+
+		fprintf_timestamp(stderr,
+			"+ pcr %d or %d\n",
+			mpeg_getbits(data,69,13),	// IS This is wrong!
+			pcr_pid);
+
     }
     j = 96 + dlen*8;
     program->v_pid = 0;

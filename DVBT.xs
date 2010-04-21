@@ -7,7 +7,7 @@
 /*---------------------------------------------------------------------------------------------------*/
 #include "xs/DVBT-common.h"
 
-#define DVBT_VERSION		"1.11"
+#define DVBT_VERSION		"2.00"
 
 MODULE = Linux::DVB::DVBT		PACKAGE = Linux::DVB::DVBT
 

@@ -11,10 +11,75 @@
 #include <sys/poll.h>
 #include <sys/ioctl.h>
 
+#include <fcntl.h>
+#include <sys/types.h>
+
+#include "dvb_lib.h"
 #include "dvb_tune.h"
 #include "dvb_epg.h"
 #include "grab-ng.h"
 #include "dvb_debug.h"
+
+/* ------------------------------------------------------------------------ */
+
+/*
+4.4.2 Terrestrial delivery systems
+For terrestrial delivery systems bandwidth within a single transmitted TS is a valuable resource and in order to
+safeguard the bandwidth allocated to the primary services receivable from the actual multiplex, the following minimum
+repetition rates are specified in order to reflect the need to impose a limit on the amount of available bandwidth used for
+this purpose:
+a) all sections of the NIT shall be transmitted at least every 10 s;
+b) all sections of the BAT shall be transmitted at least every 10 s, if present;
+c) all sections of the SDT for the actual multiplex shall be transmitted at least every 2 s;
+d) all sections of the SDT for other TSs shall be transmitted at least every 10 s if present;
+e) all sections of the EIT Present/Following Table for the actual multiplex shall be transmitted at least every 2 s;
+f) all sections of the EIT Present/Following Tables for other TSs shall be transmitted at least every 20 s if
+present.
+
+The repetition rates for further EIT tables will depend greatly on the number of services and the quantity of related SI
+information. The following transmission intervals should be followed if practicable but they may be increased as the use
+of EIT tables is increased. The times are the consequence of a compromise between the acceptable provision of data to a
+viewer and the use of multiplex bandwidth.
+
+a) all sections of the EIT Schedule table for the first full day for the actual TS, shall be transmitted at least every
+10 s, if present;
+b) all sections of the EIT Schedule table for the first full day for other TSs, shall be transmitted at least every
+60 s, if present;
+c) all sections of the EIT Schedule table for the actual TS, shall be transmitted at least every 30 s, if present;
+d) all sections of the EIT Schedule table for other TSs, shall be transmitted at least every 300 s, if present;
+e) the TDT and TOT shall be transmitted at least every 30 s.
+
+*/
+
+/* ----------------------------------------------------------------------------- */
+
+//EIT actual present-following		0x12 2s / 25 ms [2]
+//EIT other present-following		0x12 10s / 25 ms [2]
+
+// Max section size is 4096
+#define EIT_BUFF_SIZE			4096
+
+// number of cycles of no new data until we time out and stop
+#define CYCLES_NOUPDATES		100
+
+// number of cycles with new data at which point we restart the counters
+#define CYCLES_RESTART			500
+
+// Poll timeout in ms
+#define POLL_TIMEOUT			1000
+
+// Number of times round the poll loop before giving up (~10s)
+#define POLL_CYCLES				20
+
+// Number of times we retry requesting the section
+# define SECTION_RETRY_COUNT	3
+
+
+/* ----------------------------------------------------------------------- */
+//#define CHECK_PARTS
+//#define BUFF_TEST
+
+/* ----------------------------------------------------------------------- */
 
 /* ----------------------------------------------------------------------- */
 
@@ -131,6 +196,39 @@ struct versions {
     int                 version;
 };
 static LIST_HEAD(seen_list);
+
+
+/* ----------------------------------------------------------------------- */
+
+int epg_demux_get_section(int fd, unsigned char *buf, int len)
+{
+int rc;
+#ifdef BUFF_TEST
+unsigned char buf2[EIT_BUFF_SIZE];
+int rc2;
+#endif
+
+    memset(buf,0,len);
+    if ((rc = read(fd, buf, len)) < 0)
+    {
+		if ((ETIMEDOUT != errno && EOVERFLOW != errno) || dvb_debug)
+		{
+			fprintf(stderr,"dvb mux: read: %s [%d] rc=%d\n", strerror(errno), errno, rc);
+		}
+    }
+#ifdef BUFF_TEST
+    else
+    {
+        if ((rc2 = read(fd, buf2, sizeof(buf2))) > 0)
+        {
+   			fprintf(stderr,"#!#! Got second section buffer! rc=%d\n", rc2);
+        }
+    }
+#endif
+	return rc;
+}
+
+
 
 /* ----------------------------------------------------------------------- */
 LIST_HEAD(parts_list);
@@ -735,7 +833,10 @@ int tab,pnr,version,current,len, new, eit_count;
 int j,dlen,tsid,nid,part,parts,seen, seg_last_section, last_table_id ;
 struct epgitem *epg;
 int id,mjd,start,length;
+
+#ifdef CHECK_PARTS
 struct partitem *partp ;
+#endif
 
     tab     = mpeg_getbits(data, 0,8);
     len     = mpeg_getbits(data,12,12) + 3 - 4;
@@ -761,7 +862,9 @@ struct partitem *partp ;
     	return len+4;
     }
 
-partp = get_parts(tsid, pnr, parts) ;
+#ifdef CHECK_PARTS
+    partp = get_parts(tsid, pnr, parts) ;
+#endif
 
     // time of eit
     eit_last_new_record = time(NULL);
@@ -794,7 +897,9 @@ partp = get_parts(tsid, pnr, parts) ;
 				epg->updated);
 
 
+#ifdef CHECK_PARTS
 if (new) partp->parts_left-- ;
+#endif
 
 		if (verbose > 2)
 			fprintf(stderr,"  id %d mjd %d time %06x du %06x r %d ca %d  #",
@@ -841,60 +946,6 @@ int    eit_count_records;
 
 /* ----------------------------------------------------------------------- */
 /* public interface                                                        */
-
-/* ------------------------------------------------------------------------ */
-
-/*
-4.4.2 Terrestrial delivery systems
-For terrestrial delivery systems bandwidth within a single transmitted TS is a valuable resource and in order to
-safeguard the bandwidth allocated to the primary services receivable from the actual multiplex, the following minimum
-repetition rates are specified in order to reflect the need to impose a limit on the amount of available bandwidth used for
-this purpose:
-a) all sections of the NIT shall be transmitted at least every 10 s;
-b) all sections of the BAT shall be transmitted at least every 10 s, if present;
-c) all sections of the SDT for the actual multiplex shall be transmitted at least every 2 s;
-d) all sections of the SDT for other TSs shall be transmitted at least every 10 s if present;
-e) all sections of the EIT Present/Following Table for the actual multiplex shall be transmitted at least every 2 s;
-f) all sections of the EIT Present/Following Tables for other TSs shall be transmitted at least every 20 s if
-present.
-
-The repetition rates for further EIT tables will depend greatly on the number of services and the quantity of related SI
-information. The following transmission intervals should be followed if practicable but they may be increased as the use
-of EIT tables is increased. The times are the consequence of a compromise between the acceptable provision of data to a
-viewer and the use of multiplex bandwidth.
-
-a) all sections of the EIT Schedule table for the first full day for the actual TS, shall be transmitted at least every
-10 s, if present;
-b) all sections of the EIT Schedule table for the first full day for other TSs, shall be transmitted at least every
-60 s, if present;
-c) all sections of the EIT Schedule table for the actual TS, shall be transmitted at least every 30 s, if present;
-d) all sections of the EIT Schedule table for other TSs, shall be transmitted at least every 300 s, if present;
-e) the TDT and TOT shall be transmitted at least every 30 s.
-
-*/
-
-/* ----------------------------------------------------------------------------- */
-
-//EIT actual present-following		0x12 2s / 25 ms [2]
-//EIT other present-following		0x12 10s / 25 ms [2]
-
-// Max section size is 4096
-#define EIT_BUFF_SIZE			4096
-
-// number of cycles of no new data until we time out and stop
-#define CYCLES_NOUPDATES		100
-
-// number of cycles with new data at which point we restart the counters
-#define CYCLES_RESTART			500
-
-// Poll timeout in ms
-#define POLL_TIMEOUT			1000
-
-// Number of times round the poll loop before giving up (~10s)
-#define POLL_CYCLES				20
-
-// Number of times we retry requesting the section
-# define SECTION_RETRY_COUNT	3
 
 
 /* ----------------------------------------------------------------------- */
@@ -979,6 +1030,9 @@ int rc ;
 					/* oneshot */ 0,
 					/* timeout */ 20);
 
+#ifdef BUFF_TEST
+    setNonblocking(eit->fd) ;
+#endif
 
 	// get current frequency info
 	current_freqi = freqitem_get(&dvb->p) ;
@@ -1042,7 +1096,7 @@ int rc ;
 		rc = -99 ;
 		if (found)
 		{
-			rc=dvb_demux_get_section(eit->fd, buf, sizeof(buf)) ;
+			rc=epg_demux_get_section(eit->fd, buf, sizeof(buf)) ;
 		}
 
 		if (rc < 0)

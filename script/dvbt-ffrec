@@ -44,16 +44,59 @@ our $VERSION = "1.000" ;
 	## Select the channel
 	$dvb->select_channel($ARGV[0]) ;
 	
+	## Add si tables
+	add_si_tables($dvb, $ARGV[0]) ;
+	
 	## Record using ffmpeg
 	my ($name, $dir) = (fileparse($ARGV[1], '\..*'))[0,1] ;
 	my $dev = $dvb->dvr_name ;
 	system("ffmpeg -i $dev -vcodec copy -acodec copy -async 1 -t $ARGV[2] -y '$dir/$name.mpeg'")==0 or die "Error: failed to record : $!" ;
 
+	exit 0 ;
+
+#--------------------------------------------------------------------------------------------------------------------
+# ffmpeg now needs this extra SI table information. The follwoing code is pulled out from DVBT.pm....
+#
+sub add_si_tables
+{
+	my ($dvb, $file) = @_ ;
+	
+	## Set up the multiplex info for this single file
+
+	# get entry for this file (or create it)
+	my $href = $dvb->_multiplex_file_href($file) ;
+	
+	# set time
+	$href->{'duration'} = $seconds ;
+	
+	# set total length
+	$dvb->{_multiplex_info}{'duration'} = $seconds ;
+			
+	# set demux filter info
+	push @{$href->{'demux'}}, @{$dvb->{_demux_filters}};
+
+	# get tsid
+	my $frontend_href = $dvb->frontend_params() ;
+	my $tsid = $frontend_href->{'tsid'} ;
+	
+	## Add in SI tables (if required) to the multiplex info
+	my $error = $dvb->_add_required_si($tsid) ;
+	
+	## ensure pid lists match the demux list
+	$dvb->_update_multiplex_info($tsid) ;
+
+}
 
 #=================================================================================
 # END
 #=================================================================================
 __END__
+
+=head1 OBSOLETE
+
+This script just got a lot more complicated because ffmpeg now needs the SI tables to be
+able to decode the transport stream correctly. I would B<STRONGLY> advise you use one of 
+the other recording scripts. This script will no longer be supported.
 
 =head1 NAME
 

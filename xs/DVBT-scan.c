@@ -1,3 +1,4 @@
+ # VERSION = "1.001"
 
  # /*---------------------------------------------------------------------------------------------------*/
  # /* Set up for scanning */
@@ -286,18 +287,19 @@ dvb_scan(DVB *dvb, int verbose)
 	) ;
  }
 
-			HVS_I(rh, program, tsid) ;
-			HVS_I(rh, program, pnr) ;
-			HVS_I(rh, program, ca) ;
-			HVS_I(rh, program, type) ;
-			HVSN_I(rh, program, p_pid, 	pmt) ;
-			HVSN_I(rh, program, v_pid, 	video) ;
-			HVSN_I(rh, program, a_pid,	audio) ;
-			HVSN_I(rh, program, t_pid,	teletext) ;
-			HVSN_I(rh, program, s_pid,	subtitle) ;
-			HVSN_S(rh, program, audio,	audio_details) ;
-			HVS_S(rh, program, net) ;
-			HVS_S(rh, program, name) ;
+			HVS_I(rh, 	program, tsid) ;
+			HVS_I(rh, 	program, pnr) ;
+			HVS_I(rh, 	program, ca) ;
+			HVS_I(rh, 	program, type) ;
+			HVSN_I(rh, 	program, p_pid, 	pmt) ;
+			HVSN_I(rh, 	program, v_pid, 	video) ;
+			HVSN_I(rh, 	program, a_pid,		audio) ;
+			HVSN_I(rh, 	program, t_pid,		teletext) ;
+			HVSN_I(rh, 	program, s_pid,		subtitle) ;
+			HVSN_I(rh, 	program, pcr_pid,	pcr) ;
+			HVSN_S(rh, 	program, audio,		audio_details) ;
+			HVS_S(rh, 	program, net) ;
+			HVS_S(rh, 	program, name) ;
 
 			// add frequencies
 			freq_array = (AV *)sv_2mortal((SV *)newAV());

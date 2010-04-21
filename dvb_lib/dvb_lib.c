@@ -6,9 +6,11 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <inttypes.h>
-
+#include <signal.h>
 #include <sys/time.h>
 #include <sys/ioctl.h>
+#include <sys/poll.h>
+#include <sys/types.h>
 
 #include "dvb_lib.h"
 
@@ -94,5 +96,31 @@ struct list_head *item;
     }
 
     return &list;
+}
+
+/*----------------------------------------------------------------------
+ Portable function to set a socket into nonblocking mode.
+ Calling this on a socket causes all future read() and write() calls on
+ that socket to do only as much as they can immediately, and return
+ without waiting.
+ If no data can be read or written, they return -1 and set errno
+ to EAGAIN (or EWOULDBLOCK).
+ Thanks to Bjorn Reese for this code.
+----------------------------------------------------------------------*/
+int setNonblocking(int fd)
+{
+    int flags;
+
+    /* If they have O_NONBLOCK, use the Posix way to do it */
+#if defined(O_NONBLOCK)
+    /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+        flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#else
+    /* Otherwise, use the old way of doing it */
+    flags = 1;
+    return ioctl(fd, FIOBIO, &flags);
+#endif
 }
 

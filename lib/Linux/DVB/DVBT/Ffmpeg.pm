@@ -266,7 +266,7 @@ Multiplex info HASH ref is of the form:
 		'pids'	=> [
 			{
 				'pid'	=> Stream PID
-				'type'	=> pid type (video, audio, subtitle)
+				'pidtype'	=> pid type (video, audio, subtitle)
 			},
 			...
 		],
@@ -344,6 +344,8 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 	
 	## Save source filename
 	$multiplex_info_href->{'srcfile'} = $src ;
+
+
 	
 	#### Select the dest file format
 	if ($src)
@@ -391,6 +393,7 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 	
 	print STDERR " + dest=$dest  ext=$ext\n" if $DEBUG ;
 		
+print STDERR "COMMANDS list for $aliased_ext =" . Data::Dumper->Dump([$COMMANDS{$aliased_ext}]) if $DEBUG >= 5 ;
 	
 		## Run ffmpeg
 		my $cmds_ref = $COMMANDS{$aliased_ext} ;
@@ -417,7 +420,8 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 			{
 	
 	print STDERR "PASS: $pass\n" if $DEBUG ;
-				($pass_str = $pass) =~ s/\"/\\\"/g ; 
+				($pass_str = $pass) =~ s/\\/\\\\/g ; 
+				$pass_str =~ s/\"/\\\"/g ; 
 	
 	print STDERR "PASS STR: $pass_str\n" if $DEBUG ;
 	
@@ -645,7 +649,7 @@ Uses ffmpeg to determine the video file contents. Returns a HASH containing:
 			'input'		=> input number that this pid is part of
 			'stream'	=> stream number
 			'lang'		=> audio language
-			'type'		=> pid type (video, audio, subtitle)
+			'pidtype'		=> pid type (video, audio, subtitle)
 		}
 	}
 
@@ -686,7 +690,7 @@ sub video_info
 				'input'		=> $input,
 				'stream'	=> $stream,
 				'lang'		=> $lang,
-				'type'		=> $type,
+				'pidtype'		=> $type,
 			} ;
 		}
 		#    Stream #0.0[0x258]: Video: mpeg2video, yuv420p, 720x576 [PAR 64:45 DAR 16:9], 15000 kb/s, 25 fps, 25 tbr, 90k tbn, 50 tbc
@@ -696,7 +700,7 @@ sub video_info
 			$info{'pids'}{$pid} = {
 				'input'		=> $input,
 				'stream'	=> $stream,
-				'type'		=> $type,
+				'pidtype'		=> $type,
 			} ;
 		}
 		#	  Duration: 00:00:27.18, start: 15213.487800, bitrate: 4049 kb/s
@@ -1032,6 +1036,8 @@ sub _audio_chan_count
 sub _pids_out_spec
 {
 	my (@pids) = @_ ;
+
+print STDERR "_pids_out_spec()\n" if $DEBUG>=10 ;
 	
 	## turn the pid types into a format string of the form: <audio><video><subtitle>
 	## e.g. aav for 2 audio + 1 video
@@ -1040,9 +1046,11 @@ sub _pids_out_spec
 	{
 		foreach my $pid_href (@pids)
 		{
-			if ($pid_href->{'type'} eq $type)
+print STDERR " + check pid $pid_href->{'pid'} type=$pid_href->{'type'} against $type..\n" if $DEBUG>=10 ;
+			if ($pid_href->{'pidtype'} eq $type)
 			{
 				$out_spec .= substr($type, 0, 1) ;
+print STDERR " + + added outspec=\"$out_spec\"\n" if $DEBUG>=10 ;
 			}
 		}
 	}

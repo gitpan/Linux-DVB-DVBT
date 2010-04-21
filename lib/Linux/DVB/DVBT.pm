@@ -323,7 +323,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.04';
+our $VERSION = '2.05';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -725,7 +725,6 @@ my %SI_TABLES = (
 	
 	# DVB
 	'NIT'		=> 0x10,
-	'BAT'		=> 0x11,
 	'SDT'		=> 0x11,
 	'EIT'		=> 0x12,
 	'RST'		=> 0x13,
@@ -1766,26 +1765,26 @@ Returns 0 for success; error code otherwise.
 sub set_demux
 {
 	my $self = shift ;
-	my ($video_pid, $audio_pid, $subtitle_pid, $teletext_pid, $tsid, $pmt) = @_ ;
+	my ($video_pid, $audio_pid, $subtitle_pid, $teletext_pid, $tsid, $demux_params_href) = @_ ;
 
 print STDERR "set_demux( <$video_pid>, <$audio_pid>, <$teletext_pid> )\n" if $DEBUG ;
 
 	my $error = 0 ;
 	if ($video_pid && !$error)
 	{
-		$error = $self->add_demux_filter($video_pid, "video", $tsid, $pmt) ;
+		$error = $self->add_demux_filter($video_pid, "video", $tsid, $demux_params_href) ;
 	}
 	if ($audio_pid && !$error)
 	{
-		$error = $self->add_demux_filter($audio_pid, "audio", $tsid, $pmt) ;
+		$error = $self->add_demux_filter($audio_pid, "audio", $tsid, $demux_params_href) ;
 	}
 	if ($teletext_pid && !$error)
 	{
-		$error = $self->add_demux_filter($teletext_pid, "teletext", $tsid, $pmt) ;
+		$error = $self->add_demux_filter($teletext_pid, "teletext", $tsid, $demux_params_href) ;
 	}
 	if ($subtitle_pid && !$error)
 	{
-		$error = $self->add_demux_filter($subtitle_pid, "subtitle", $tsid, $pmt) ;
+		$error = $self->add_demux_filter($subtitle_pid, "subtitle", $tsid, $demux_params_href) ;
 	}
 	return $error ;
 }
@@ -1852,7 +1851,7 @@ sub select_channel
 		0, 
 		0, 
 		$frontend_params_href->{'tsid'}, 
-		$demux_params_href->{'pmt'}) 
+		$demux_params_href) 
 	)
 	{
 		return $self->handle_error("Unable to set demux") ;
@@ -2608,7 +2607,7 @@ Returns 0 for success; error code otherwise.
 sub add_demux_filter
 {
 	my $self = shift ;
-	my ($pid, $pid_type, $tsid, $pmt) = @_ ;
+	my ($pid, $pid_type, $tsid, $demux_params_href) = @_ ;
 
 printf STDERR "add_demux_filter($pid, $pid_type)\n", $pid if $DEBUG ;
 
@@ -2691,11 +2690,13 @@ printf STDERR "added demux filter : PID = 0x%03x ( fd = $fd )\n", $pid if $DEBUG
 		$frontend_href->{'tsid'} = $tsid ;
 	}
 	my $filter_href = {
-		'fd'	=> $fd,
-		'tsid'	=> $tsid,
-		'pid'	=> $pid,
-		'type'	=> $pid_type,
-		'pmt'	=> $pmt,
+		'fd'		=> $fd,
+		'tsid'		=> $tsid,
+		'pid'		=> $pid,
+		'pidtype'	=> $pid_type,
+		
+		## keep track of the associated program's demux params  
+		'demux_params'	=> $demux_params_href,
 	} ;
 
 	push @{$self->{_demux_filters}}, $filter_href ;
@@ -2712,10 +2713,10 @@ Return the list of currently active demux filters.
 
 Each filter entry in the list consists of a HASH ref of the form:
 
-	'fd'	=> file handle for this filter
-	'tsid'	=> Transponder ID
-	'pid'	=> Stream PID
-	'type'	=> $pid_type,
+	'fd'		=> file handle for this filter
+	'tsid'		=> Transponder ID
+	'pid'		=> Stream PID
+	'pidtype'	=> $pid_type,
 
 =cut
 
@@ -3147,7 +3148,7 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 				foreach my $pid_href (@pids)
 				{
 					# add filter
-					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'type'}, $tsid, $pid_href->{'pmt'}) ;
+					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'pidtype'}, $tsid, $pid_href->{'demux_params'}) ;
 					return $self->handle_error($error) if $error ;
 					
 					# keep demux filter info
@@ -3168,7 +3169,7 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 					return $self->handle_error("Cannot mix chan definitions with pid definitions for file \"$file\"") ;
 				}
 
-				# array of: { 'type'=>$type, 'tsid' => $tsid, ... } for this pid value
+				# array of: { 'pidtype'=>$type, 'tsid' => $tsid, ... } for this pid value
 				my $pid_href ;
 				my @pid_info = Linux::DVB::DVBT::Config::pid_info($pid, $tuning_href) ;
 
@@ -3185,7 +3186,7 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 					{
 						# create a simple entry if we allow any pids
 						$pid_href = {
-							'type' 	=> 'data',
+							'pidtype' 	=> 'data',
 							'tsid'	=> $tsid,
 						} ;
 					}
@@ -3233,13 +3234,13 @@ prt_data(" + Add pid = ", $pid_href) if $DEBUG >= 15 ;
 
 					# check multiplex
 					$tsid ||= $pid_href->{'tsid'} ;
-					if ($tsid != $pid_href->{'tsid'})
+					if (!defined($tsid) || !defined($pid_href->{'tsid'}) || ($tsid != $pid_href->{'tsid'}) )
 					{
 						return $self->handle_error("PID $pid (on $pid_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
 					}
 					
 					# add a filter
-					$error = $self->add_demux_filter($pid, $pid_href->{'type'}, $tsid, $pid_href->{'pmt'}) ;
+					$error = $self->add_demux_filter($pid, $pid_href->{'pidtype'}, $tsid, $pid_href->{'demux_params'}) ;
 					return $self->handle_error($error) if $error ;
 					
 					# keep demux filter info
@@ -3288,7 +3289,7 @@ Returns HASH of the currently defined multiplex filters. HASH is of the form:
 		'pids'	=> [
 			{
 				'pid'	=> Stream PID
-				'type'	=> pid type (i.e. 'audio', 'video', 'subtitle')
+				'pidtype'	=> pid type (i.e. 'audio', 'video', 'subtitle')
 			},
 			...
 		]
@@ -3457,6 +3458,8 @@ Linux::DVB::DVBT::prt_data("multiplex_transcode() : multiplex_info=", \%multiple
 	## process each file
 	foreach my $file (keys %{$multiplex_info{'files'}})
 	{
+Linux::DVB::DVBT::prt_data("Call ts_transcode for file=$file with : info=", $multiplex_info{'files'}{$file}) if $DEBUG>=10 ;
+
 		# run ffmpeg (or just do video duration check)
 		$error = Linux::DVB::DVBT::Ffmpeg::ts_transcode(
 #			$multiplex_info{'files'}{$file}{'destfile'}, 
@@ -3767,24 +3770,28 @@ prt_data("current mux info=", $self->{_multiplex_info}) if $DEBUG>=15 ;
 		my $href = $self->_multiplex_file_href($file) ;
 		
 		## check pids looking for non-audio/video (get pnr for later)
-		my $pmt ;
+		my $demux_params_href ;
 		my %pids ;
 		foreach my $demux_href (@{$self->{_multiplex_info}{'files'}{$file}{'demux'}})
 		{
 			# keep track of the pids scheduled
 			++$pids{ $demux_href->{'pid'} } ;
 			
-			# set pmt
-			$pmt = $demux_href->{'pmt'} if ($demux_href->{'pmt'}) ;
+			# get HASH ref to program's demux params
+			$demux_params_href = $demux_href->{'demux_params'} if ($demux_href->{'demux_params'}) ;
 
 			# see if non-av
-			if ( ($demux_href->{'type'} ne 'audio') && ($demux_href->{'type'} ne 'video') )
+			if ( ($demux_href->{'pidtype'} ne 'audio') && ($demux_href->{'pidtype'} ne 'video') )
 			{
 				++$add_si ;
 			}
 		}
 
-print STDERR " + file=$file : add=$add_si  pmt=$pmt\n" if $DEBUG>=10 ;
+		my $pmt = $demux_params_href->{'pmt'} ;
+		my $pcr = $demux_params_href->{'pcr'} ;
+print STDERR " + file=$file : add=$add_si  pmt=$pmt  pcr=$pcr\n" if $DEBUG>=10 ;
+prt_data("demux_params_href=", $demux_params_href) if $DEBUG>=10 ;
+prt_data("scheduled PIDS==", \%pids) if $DEBUG>=10 ;
 
 		## Add tables if necessary (and possible!)
 		if ($add_si)
@@ -3797,15 +3804,26 @@ print STDERR " + file=$file : add=$add_si  pmt=$pmt\n" if $DEBUG>=10 ;
 			else
 			{
 				foreach my $pid_href (
-					{ 'type' => 'PAT',	'pid' => $SI_TABLES{'PAT'}, },
-					{ 'type' => 'PMT',	'pid' => $pmt, },
+					{ 'pidtype' => 'PAT',	'pid' => $SI_TABLES{'PAT'}, },
+#					{ 'pidtype' => 'SDT',	'pid' => $SI_TABLES{'SDT'}, },
+#					{ 'pidtype' => 'TDT',	'pid' => $SI_TABLES{'TDT'}, },
+					{ 'pidtype' => 'PMT',	'pid' => $pmt, },
+					{ 'pidtype' => 'PCR',	'pid' => $pcr, },
 				)
 				{
+print STDERR " + pid=$pid_href->{'pid'} pidtype=$pid_href->{'pidtype'}\n" if $DEBUG>=10 ;
+
 					# skip any already scheduled
+					next unless defined($pid_href->{'pid'}) ;
 					next if exists($pids{ $pid_href->{'pid'} }) ;
 					
+print STDERR " + check defined..\n" if $DEBUG>=10 ;
+					next unless defined($pid_href->{'pid'}) ;
+
+print STDERR " + add filter..\n" if $DEBUG>=10 ;
+					
 					# add filter
-					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'type'}, $tsid, $pmt) ;
+					$error = $self->add_demux_filter($pid_href->{'pid'}, $pid_href->{'pidtype'}, $tsid, $demux_params_href) ;
 					return $self->handle_error($error) if $error ;
 					
 					# keep demux filter info
@@ -3839,7 +3857,7 @@ sub _update_multiplex_info
 		{
 			push @{$self->{_multiplex_info}{'files'}{$file}{'pids'}}, {
 				'pid'	=> $demux_href->{'pid'},
-				'type'	=> $demux_href->{'type'},
+				'pidtype'	=> $demux_href->{'pidtype'},
 			} ;
 		}
 	}
@@ -3858,7 +3876,7 @@ sub _si_pid
 	{
 		$pid_href = {
 			'tsid'	=> $tsid,
-			'type'	=> $SI_LOOKUP{$pid},
+			'pidtype'	=> $SI_LOOKUP{$pid},
 			'pmt'	=> 1,
 		} ;
 	}
@@ -3869,7 +3887,7 @@ sub _si_pid
 	{
 		$pid_href = {
 			'tsid'	=> $tsid,
-			'type'	=> 'PMT',
+			'pidtype'	=> 'PMT',
 			'pmt'	=> $pmt,
 		} ;
 	}

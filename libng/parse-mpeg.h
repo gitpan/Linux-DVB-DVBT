@@ -94,8 +94,6 @@ struct psi_program {
     int                  running;
     int                  ca;
     
-//    int					 tuned_freq; 	
-
 	// keep a record of the currently tuned frequency when we saw this
     // (it may not relate to the transponder centre freq)
     struct list_head     tuned_freq_list ;
@@ -108,6 +106,7 @@ struct psi_program {
     int                  a_pid;             // audio
     int                  t_pid;             // teletext
     int                  s_pid;             // subtitle
+    int                  pcr_pid;           // PCR (program clock reference)
     char                 audio[PSI_STR_MAX];
     char                 net[PSI_STR_MAX];
     char                 name[PSI_STR_MAX];
@@ -117,7 +116,7 @@ struct psi_program {
     int                  seen;
 
     /* hmm ... */
-    int                  fd;
+//    int                  fd;
 };
 
 struct psi_info {

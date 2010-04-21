@@ -1,5 +1,11 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.05 Wed Apr 21 12:00:00 2010
+	- Corrected typo in dvbt-strength script
+	- Fixed trsncode command escaping
+	- Modified so that it's easier to add extra SI pids into the recording
+	- Corrected bug when adding SI tables
+
 2.04 Fri Apr 16 09:00:00 2010
 	- Fixed error in dvbt-chans : file length with -extra-check was too large
 	- Re-write of low-level epg functions to speed up the process (and stop lock ups)

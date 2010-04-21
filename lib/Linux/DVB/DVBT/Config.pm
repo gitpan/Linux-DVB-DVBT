@@ -19,7 +19,7 @@ you can if you wish.
 
 use strict ;
 
-our $VERSION = '2.03' ;
+our $VERSION = '2.05' ;
 our $DEBUG = 0 ;
 
 use File::Path ;
@@ -195,7 +195,7 @@ tuning info HASH):
 
 	@pid_info = [
 		{
-			  'type' => video, audio, subtitle, teletext
+			  'pidtype' => video, audio, subtitle, teletext
 		     pnr => 4171,
 		     tsid => 4107,
 		     tuned_freq => 57800000,
@@ -224,26 +224,39 @@ print "pid_info(pid=\"$pid\")\n" if $DEBUG ;
 	{
 		my $tsid = $tuning_href->{'pr'}{$chan}{'tsid'} ;
 		
+		# program
 		my @chan_pids ;
 		foreach my $stream (qw/video audio teletext subtitle/)
 		{
 			push @chan_pids, [$stream, $tuning_href->{'pr'}{$chan}{$stream}] ;
 		}
+		
+		# extra audio
 		my @audio = audio_list( $tuning_href->{'pr'}{$chan} ) ;
 		foreach (@audio)
 		{
 			push @chan_pids, ['audio', $_] ;
 		}
+		
+		# SI
+		foreach my $si (qw/pmt/)
+		{
+			push @chan_pids, [uc $si, $tuning_href->{'pr'}{$chan}{$si}] ;
+		}
+		
 
 		# check pids
 		foreach my $aref (@chan_pids)
 		{
 			if ($pid == $aref->[1])
 			{
-print " + type=$aref->[0]\n" if $DEBUG ;
+print " + pidtype=$aref->[0]\n" if $DEBUG ;
 				push @pid_info, {
 					%{$tuning_href->{'pr'}{$chan}},
-					'type'		=> $aref->[0],
+					'pidtype'		=> $aref->[0],
+					
+					# keep ref to program HASH (used by downstream functions)  
+					'demux_params'	=> $tuning_href->{'pr'}{$chan},
 				} ;
 			}
 		}
@@ -525,7 +538,7 @@ Output specifier string is in the format such that it just needs to contain the 
 
 Returns an array of HASHes of the form:
 
-	 {'pid' => $pid, 'type' => $type, 'pmt' => $pmt} 
+	 {'pid' => $pid, 'pidtype' => $type, 'pmt' => $pmt} 
 
 
 =cut
@@ -538,7 +551,7 @@ sub out_pids
 	## default
 	$out_spec ||= "av" ;
 	
-	my $pmt = $demux_params_href->{'pmt'} ;
+#	my $pmt = $demux_params_href->{'pmt'} ;
 
 	## Audio required?
 	if ($out_spec =~ /a/i)
@@ -549,7 +562,13 @@ sub out_pids
 		
 		foreach my $pid (@audio_pids)
 		{
-			push @$pids_aref, {'pid' => $pid, 'type' => 'audio', 'pmt' => $pmt} if $pid ;
+			push @$pids_aref, {
+				'pid' => $pid, 
+				'pidtype' => 'audio', 
+					
+				# keep ref to program HASH (used by downstream functions)  
+				'demux_params'	=> $demux_params_href,
+			} if $pid ;
 		}
 	}
 	
@@ -557,14 +576,26 @@ sub out_pids
 	if ($out_spec =~ /v/i)
 	{
 		my $pid = $demux_params_href->{'video'} ;
-		push @$pids_aref, {'pid' => $pid, 'type' => 'video', 'pmt' => $pmt} if $pid ;
+		push @$pids_aref, {
+			'pid' => $pid, 
+			'pidtype' => 'video', 
+					
+			# keep ref to program HASH (used by downstream functions)  
+			'demux_params'	=> $demux_params_href,
+		} if $pid ;
 	}
 	
 	## Subtitle required?
 	if ($out_spec =~ /s/i)
 	{
 		my $pid = $demux_params_href->{'subtitle'} ;
-		push @$pids_aref, {'pid' => $pid, 'type' => 'subtitle', 'pmt' => $pmt} if $pid ;
+		push @$pids_aref, {
+			'pid' => $pid, 
+			'pidtype' => 'subtitle', 
+					
+			# keep ref to program HASH (used by downstream functions)  
+			'demux_params'	=> $demux_params_href,
+		} if $pid ;
 	}
 	
 	return $error ;
