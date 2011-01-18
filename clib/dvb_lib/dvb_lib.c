@@ -70,7 +70,7 @@ struct list_head *item;
         for (fe = 0; fe < MAX_FRONTENDS; fe++)
         {
 			frontend_name(fe, device,sizeof(device), adapter) ;
-			fd = open(device, O_RDONLY | O_NONBLOCK, 212, debug);
+			fd = open(device, O_RDONLY | O_NONBLOCK);
 			if (-1 == fd)
 				continue;
 

@@ -74,7 +74,7 @@ HEAD
 			print "  $file\n" ;
 			foreach my $pid_href (@{$href->{'demux'}})
 			{
-				printf "    PID %5d [$pid_href->{'type'}]\n", $pid_href->{'pid'} ;
+				printf "    PID %5d [$pid_href->{'pidtype'}]\n", $pid_href->{'pid'} ;
 			}
 			print "\n" ;
 		}

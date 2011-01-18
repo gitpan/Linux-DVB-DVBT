@@ -68,6 +68,8 @@ dvb_record (DVB *dvb, char *filename, int sec)
  #		time_t 							start;
  #		time_t 							end;
  #	    unsigned int                    done;
+ #	    uint64_t                        errors;
+ #	    uint64_t                        pkts;
  #	} ;
  #
  #	struct multiplex_pid_struct {
@@ -85,7 +87,11 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 	SV				**item ;
 	SV 				**val;
 	HV				*href ;
+	HV				*errors_href ;
+	HV				*pkts_href ;
 	char			*str ;
+    char 			key[256] ;
+    char 			string[256] ;
 
     AV 				*pid_array;
 	unsigned 		num_pids ;
@@ -180,7 +186,11 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
  					pid_list[pid_index].file_info = &file_info[i] ;
  					pid_list[pid_index].pid  = SvIV (*piditem) ;
  					pid_list[pid_index].done = 0 ;
+ 					pid_list[pid_index].errors = 0 ;
  					pid_list[pid_index].pkts = 0 ;
+
+ 					// internal
+ 					pid_list[pid_index].ref = (void *)item ;
  				}
  			}
 
@@ -198,6 +208,27 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
  		// close dvr
  		dvb_dvr_release(dvb) ;
  	}
+
+ 	// Copy error/packet counts
+	for (i=0; i < pid_index; ++i)
+	{
+		item = (SV **)pid_list[i].ref ;
+		href = (HV *)SvRV(*item) ;
+
+		sprintf(key, "%d", pid_list[i].pid) ;
+
+		// set errors (save 64 bit value as a string)
+		val = HVF(href, errors) ;
+		errors_href = (HV *) SvRV (*val);
+		sprintf(string, "%"PRIu64, pid_list[i].errors) ;
+		hv_store(errors_href, key, strlen(key), newSVpv(string, 0), 0);
+
+		// set packets (save 64 bit value as a string)
+		val = HVF(href, pkts) ;
+		pkts_href = (HV *) SvRV (*val);
+		sprintf(string, "%"PRIu64, pid_list[i].pkts) ;
+		hv_store(pkts_href, key, strlen(key), newSVpv(string, 0), 0);
+	}
 
  	// free up
  	for (i=0; i < num_entries ; i++)

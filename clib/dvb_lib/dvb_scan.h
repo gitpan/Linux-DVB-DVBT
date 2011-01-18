@@ -7,7 +7,7 @@
 
 #include "dvb_tune.h"
 #include "dvb_epg.h"
-#include "grab-ng.h"
+#include "dvb_lib.h"
 
 #include "parse-mpeg.h"
 

@@ -4,10 +4,10 @@
 
 #include "list.h"
 
-#include "../dvb_lib/dvb_struct.h"
-#include "../dvb_lib/dvb_lib.h"
+#include "dvb_struct.h"
+#include "dvb_lib.h"
+#include "ts.h"
 
-#define DVBT_VERSION		"1.11"
 #define DEFAULT_TIMEOUT		900
 
 // If large file support is not included, then make the value do nothing
@@ -33,8 +33,6 @@
 #define HVS_I(h, sp, name)		if (sp->name >= 0) hv_store(h, #name, sizeof(#name)-1, newSViv(sp->name), 0)
 #define HVS_BIT(h, var, name)	hv_store(h, #name, sizeof(#name)-1, newSViv(var & name ? 1 : 0), 0)
 
-#define HVS_INT(h, name, i)		hv_store(h, #name, sizeof(#name)-1, newSViv(i), 0)
-
 /* Specify the structure field name and HASH key name separately */
 #define HVSN_S(h, sp, name, key)		if (sp->name)      hv_store(h, #key, sizeof(#key)-1, newSVpv(sp->name, 0), 0)
 #define HVSN_I(h, sp, name, key)		if (sp->name >= 0) hv_store(h, #key, sizeof(#key)-1, newSViv(sp->name), 0)
@@ -42,12 +40,38 @@
 /* Convert string before storing in hash */
 #define HVS_STRING(h, sp, name)		hv_store(h, #name, sizeof(#name)-1, newSVpv(_to_string(sp->name), 0), 0)
 
+/* non-struct member versions */
+#define HVS_INT(h, name, i)		hv_store(h, #name, sizeof(#name)-1, newSViv(i), 0)
+#define HVS_STR(h, name, s)		hv_store(h, #name, sizeof(#name)-1, newSVpv(s, 0), 0)
+
+
 /** HASH read macros **/
 #define HVF_I(hv,var)                                 \
   if ( (val = hv_fetch (hv, #var, sizeof (#var) - 1, 0)) ) { \
   	if ( val != NULL ) { \
       var = SvIV (*val); \
   	  if (DVBT_DEBUG) fprintf(stderr, " set %s = %d\n", #var, var); \
+  	} \
+  }
+
+#define HVF_SV(hv,var)                                 \
+  if ( (val = hv_fetch (hv, #var, sizeof (#var) - 1, 0)) ) { \
+  	if ( val != NULL ) { \
+      var = SvSV (*val); \
+  	} \
+  }
+
+#define HVF_IV(hv,var,ival)                                 \
+  if ( (val = hv_fetch (hv, #var, sizeof (#var) - 1, 0)) ) { \
+  	if ( val != NULL ) { \
+      ival = SvIV (*val); \
+  	} \
+  }
+
+#define HVF_SVV(hv,var,sval)                                 \
+  if ( (val = hv_fetch (hv, #var, sizeof (#var) - 1, 0)) ) { \
+  	if ( val != NULL ) { \
+      sval = (*val); \
   	} \
   }
 
@@ -71,42 +95,62 @@
 
 static int DVBT_DEBUG = 0 ;
 
+static int fe_vdr_bandwidth[] = {
+	[ BANDWIDTH_AUTO  ] = VDR_MAX,
+	[ BANDWIDTH_8_MHZ ] = 8,
+	[ BANDWIDTH_7_MHZ ] = 7,
+	[ BANDWIDTH_6_MHZ ] = 6,
+};
 
-static int bw[4] = {
-	[ 0 ] = 8,
-	[ 1 ] = 7,
-	[ 2 ] = 6,
-	[ 3 ] = 5,
-    };
-static int co_t[4] = {
-	[ 0 ] = 0,	/* QPSK */
-	[ 1 ] = 16,
-	[ 2 ] = 64,
-    };
-static int hi[4] = {
-	[ 0 ] = 0,
-	[ 1 ] = 1,
-	[ 2 ] = 2,
-	[ 3 ] = 4,
-    };
-static int ra_t[8] = {
-	[ 0 ] = 12,
-	[ 1 ] = 23,
-	[ 2 ] = 34,
-	[ 3 ] = 56,
-	[ 4 ] = 78,
-    };
-static int gu[4] = {
-	[ 0 ] = 32,
-	[ 1 ] = 16,
-	[ 2 ] = 8,
-	[ 3 ] = 4,
-    };
-static int tr[3] = {
-	[ 0 ] = 2,
-	[ 1 ] = 8,
-	[ 2 ] = 4,
-    };
+static int fe_vdr_rates[] = {
+	[ FEC_AUTO ] = VDR_MAX,
+	[ FEC_1_2  ] = 12,
+	[ FEC_2_3  ] = 23,
+	[ FEC_3_4  ] = 34,
+	[ FEC_4_5  ] = 45,
+	[ FEC_5_6  ] = 56,
+	[ FEC_6_7  ] = 67,
+	[ FEC_7_8  ] = 78,
+	[ FEC_8_9  ] = 89,
+};
+
+static int fe_vdr_modulation[] = {
+	[ QAM_AUTO ] = VDR_MAX,
+	[ QPSK     ] = 0,
+	[ QAM_16   ] = 16,
+	[ QAM_32   ] = 32,
+	[ QAM_64   ] = 64,
+	[ QAM_128  ] = 128,
+	[ QAM_256  ] = 256,
+};
+
+static int fe_vdr_transmission[] = {
+	[ TRANSMISSION_MODE_AUTO ] = VDR_MAX,
+	[ TRANSMISSION_MODE_2K   ] = 2,
+	[ TRANSMISSION_MODE_8K   ] = 8,
+};
+
+static int fe_vdr_guard[] = {
+	[ GUARD_INTERVAL_AUTO ] = VDR_MAX,
+	[ GUARD_INTERVAL_1_4  ] = 4,
+	[ GUARD_INTERVAL_1_8  ] = 8,
+	[ GUARD_INTERVAL_1_16 ] = 16,
+	[ GUARD_INTERVAL_1_32 ] = 32,
+};
+
+static int fe_vdr_hierarchy[] = {
+	[ HIERARCHY_AUTO ] = VDR_MAX,
+	[ HIERARCHY_NONE ] = 0,
+	[ HIERARCHY_1 ]    = 1,
+	[ HIERARCHY_2 ]    = 2,
+	[ HIERARCHY_4 ]    = 4,
+};
+
+static int fe_vdr_inversion[] = {
+	[ INVERSION_OFF  ] = 0,
+	[ INVERSION_ON   ] = 1,
+	[ INVERSION_AUTO   ] = VDR_MAX,
+};
 
 
 /*---------------------------------------------------------------------------------------------------*/
@@ -124,5 +168,19 @@ static char ret_str[8192] ;
    }
    return ret_str ;
 }
+
+/*---------------------------------------------------------------------------------------------------*/
+// MACROS for DVBT-advert
+
+#define HVS_INT_SETTING(h, name, i, prefix)		HVS_INT(h, name, i)
+#define HVS_INT_RESULT(h, name, i)				HVS_INT(h, name, i)
+
+
+// Store result
+#define HVS_FRAME_RESULT(h, NAME, IDX)		HVS_INT(h, NAME, user_data->results_array[IDX].frame_results.NAME)
+#define HVS_LOGO_RESULT(h, NAME, IDX)		HVS_INT(h, NAME, user_data->results_array[IDX].logo_results.NAME)
+#define HVS_AUDIO_RESULT(h, NAME, IDX)		HVS_INT(h, NAME, user_data->results_array[IDX].audio_results.NAME)
+#define HVS_RESULT_START
+#define HVS_RESULT_END
 
 

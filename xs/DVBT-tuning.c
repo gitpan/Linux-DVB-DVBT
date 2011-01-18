@@ -79,6 +79,12 @@ dvb_tune (DVB *dvb, HV *parameters)
 				hierarchy,
 				timeout) ;
 
+ if (DVBT_DEBUG >= 10)
+ {
+	fprintf(stderr, " rc = %d\n", RETVAL) ;
+	fprintf(stderr, " == DVBT.xs::dvb_tune() - END ================\n") ;
+ }
+
 	OUTPUT:
         RETVAL
 

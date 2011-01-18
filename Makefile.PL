@@ -12,6 +12,17 @@ $mod =~ s%\-%::%g ;
 my $modpath = $name ;
 $modpath =~ s%\-%/%g ;
 
+
+# Check OS
+#
+#    *  No support for OS
+#    * OS unsupported 
+if ($^O !~ /linux/i)
+{
+	print "No support for OS\n" ;
+	exit 1 ;
+}
+
 # See if newer version is available
 check_new_version() ;
 
@@ -32,10 +43,10 @@ else
 {
 	warn <<EOW;
 
-This program comes with several scripts which I would try to install in
+This Perl module comes with several scripts which I would try to install in
 directory $Config{installscript}.
 
-To skip, rerun with option -n given to Makefile.PL.
+To skip install, rerun with option -n given to Makefile.PL.
 
 EOW
 }
@@ -59,17 +70,17 @@ WriteMakefile(
       (ABSTRACT_FROM  => "lib/$modpath.pm", # retrieve abstract from module
        AUTHOR         => 'Steve Price <cpan@sdprice.plus.com>') : ()),
     LIBS              => ['-lrt'], # e.g., '-lm'
-    DEFINE            => '', # e.g., '-DHAVE_SOMETHING'
-    INC               => '-I./dvb_lib -I./libng', # e.g., '-I. -I/usr/include/other'
+    DEFINE            => '-DHAVE_DVB', # e.g., '-DHAVE_SOMETHING'
+    INC               => '-I./clib/dvb_lib -I./clib/libng', # e.g., '-I. -I/usr/include/other'
     EXE_FILES         => [ map "script/$_", @programs_to_install ],
  
  
     ##CCFLAGS			  => '-g -O0',
-    OPTIMIZE	  => '-g',
+    OPTIMIZE	  => '-ggdb',
 	# Un-comment this if you add C files to link with later:
     # OBJECT            => '$(O_FILES)', # link all the C files too
 
-    MYEXTLIB          => 'dvb_lib/libdvb_lib$(LIB_EXT)', 
+    MYEXTLIB          => 'clib/dvb_lib/libdvb_lib$(LIB_EXT)', 
 
 );
 
@@ -84,14 +95,14 @@ ifdef TESTDEF
 endif
 
 ## make libs
-$(MYEXTLIB): dvb_lib/Makefile 
-	cd dvb_lib && $(MAKE) $(MAKE_TEST_DEF) CCFLAGS="$(CCFLAGS)" CCCDLFLAGS="$(CCCDLFLAGS)"
+$(MYEXTLIB): clib/dvb_lib/Makefile 
+	cd clib/dvb_lib && $(MAKE) $(MAKE_TEST_DEF) CCFLAGS="$(CCFLAGS)" CCCDLFLAGS="$(CCCDLFLAGS)"
 
 ## Clean up
 clean:: dvb_lib_clean                                                                                                   
                                                                                                                         
 dvb_lib_clean: FORCE                                                                                                    
-	cd dvb_lib && $(MAKE) clean                                                                                     
+	cd clib/dvb_lib && $(MAKE) clean                                                                                     
 
 ## Optional doxygen documentation 
 doxygen: FORCE
@@ -122,10 +133,13 @@ sub check_new_version
 		
 		## specify user name so that I can filter out my builds
 		my $user = $ENV{USER} || $ENV{USERNAME} || 'nobody' ;
+
+		# CPAN testers
+		my $cpan = $ENV{'PERL5_CPAN_IS_RUNNING'}||0 ;
 		
 		## check for OS-specific versions
 		my $os = $^O ;
-		my $url = "http://quartz.homelinux.com/CPAN/index.php?ver=$version&mod=$name&user=$user&os=$os" ;
+		my $url = "http://quartz.homelinux.com/CPAN/index.php?ver=$version&mod=$name&user=$user&os=$os&cpan=$cpan" ;
 		 
 		my $ua = LWP::UserAgent->new;
 		$ua->agent("CPAN-$name/$version") ;

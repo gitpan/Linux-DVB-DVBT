@@ -22,6 +22,8 @@ use strict ;
 our $VERSION = '2.05' ;
 our $DEBUG = 0 ;
 
+our $DEFAULT_CONFIG_PATH = '/etc/dvb:~/.tv' ;
+
 use File::Path ;
 use File::Spec ;
 

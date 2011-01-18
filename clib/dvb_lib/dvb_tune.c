@@ -15,7 +15,9 @@
 #include <sys/ioctl.h>
 
 #include "dvb_debug.h"
+#include "dvb_error.h"
 #include "dvb_tune.h"
+
 
 
 // Debug problem where frequency readback from DVB tuner is not the same as requested
@@ -25,6 +27,22 @@
 //
 //#define TEST_FREQ_READBACK
 
+
+/* ----------------------------------------------------------------------- */
+static void print_params(struct dvb_frontend_parameters *params)
+{
+	fprintf(stderr, "inv=%d bw=%d crh=%d crl=%d con=%d tr=%d g=%d hi=%d",
+	    params->inversion,
+		params->u.ofdm.bandwidth,
+		params->u.ofdm.code_rate_HP,
+		params->u.ofdm.code_rate_LP,
+		params->u.ofdm.constellation,
+		params->u.ofdm.transmission_mode,
+		params->u.ofdm.guard_interval,
+		params->u.ofdm.hierarchy_information
+
+	) ;
+}
 
 
 /* ======================================================================= */
@@ -56,7 +74,14 @@ struct freqitem* freqitem_get(struct dvb_frontend_parameters *params)
 struct freqitem   *freqi;
 struct list_head *item;
 int frequency = params->frequency ;
-	
+
+if (dvb_debug>=10)
+{
+	fprintf(stderr, "freqitem_get() FREQ=%d [params: ", params->frequency) ;
+	print_params(params) ;
+	fprintf(stderr, "]\n") ;
+}
+
 	// round up frequency to nearest kHz
 	frequency = (int)(  ((float)frequency / 1000.0) + 0.5 ) * 1000 ; 
 
@@ -89,18 +114,52 @@ int frequency = params->frequency ;
     return freqi;
 }
 
+/* ----------------------------------------------------------------------- */
+// Update a freq_item with the latest parameter values. Used to set actual
+// tuning params
+//
+struct freqitem* freqitem_update(struct dvb_frontend_parameters *params)
+{
+struct freqitem   *freqi;
+int frequency = params->frequency ;
+
+if (dvb_debug>=10)
+{
+	fprintf(stderr, "freqitem_update() FREQ=%d [params: ", params->frequency) ;
+	print_params(params) ;
+	fprintf(stderr, "]\n") ;
+}
+
+	// get freq_item
+	freqi = freqitem_get(params) ;
+
+	// set values
+    freqi->params.inversion    = params->inversion ;
+	freqi->params.u.ofdm.bandwidth = params->u.ofdm.bandwidth ;
+	freqi->params.u.ofdm.code_rate_HP = params->u.ofdm.code_rate_HP ;
+	freqi->params.u.ofdm.code_rate_LP = params->u.ofdm.code_rate_LP ;
+	freqi->params.u.ofdm.constellation = params->u.ofdm.constellation ;
+	freqi->params.u.ofdm.transmission_mode = params->u.ofdm.transmission_mode ;
+	freqi->params.u.ofdm.guard_interval = params->u.ofdm.guard_interval ;
+	freqi->params.u.ofdm.hierarchy_information = params->u.ofdm.hierarchy_information ;
+
+    return freqi;
+}
 
 /* ----------------------------------------------------------------------- */
 struct freqitem* freqitem_get_from_stream(struct psi_stream *stream) 
 {
 struct dvb_frontend_parameters params ;	
 struct tuning_params vdr_params ;
+struct freqitem   *freqi;
 
 	// translate params
 	params_stream_to_vdr(stream, &vdr_params) ;
 	params_vdr_to_frontend(&vdr_params, &params) ;
+
+	freqi = freqitem_get(&params) ;
 	
-	return freqitem_get(&params) ;
+	return freqi ;
 }
 
 
@@ -121,25 +180,18 @@ struct freqitem   *freqi;
    	
 }
 
+
 /* ----------------------------------------------------------------------- */
 void print_freqi(struct freqitem   *freqi)
 {
-	fprintf(stderr, "FREQ: %d Hz seen=%d tuned=%d (Strength=%d) [inv=%d bw=%d crh=%d crl=%d con=%d tr=%d g=%d hi=%d]\n",
+	fprintf(stderr, "FREQ: %d Hz seen=%d tuned=%d (Strength=%d) [",
 		freqi->frequency,
 		freqi->flags.seen,
 		freqi->flags.tuned,
-		freqi->strength,
-		
-	    freqi->params.inversion,
-		freqi->params.u.ofdm.bandwidth,
-		freqi->params.u.ofdm.code_rate_HP,
-		freqi->params.u.ofdm.code_rate_LP,
-		freqi->params.u.ofdm.constellation,
-		freqi->params.u.ofdm.transmission_mode,
-		freqi->params.u.ofdm.guard_interval,
-		freqi->params.u.ofdm.hierarchy_information
-		
+		freqi->strength
 	) ;
+	print_params(&freqi->params) ;
+	fprintf(stderr, "]\n") ;
 }
 
 
@@ -468,19 +520,17 @@ struct freqitem* freqi ;
 
 /* ----------------------------------------------------------------------- */
 int
-xioctl(int fd, int cmd, void *arg, int mayfail)
+xioctl(int fd, int cmd, void *arg)
 {
     int rc;
 
     rc = ioctl(fd,cmd,arg);
+    if (dvb_debug>1) fprintf(stderr,": %s\n",(rc == 0) ? "ok" : strerror(errno));
 
-    if (0 == rc && !dvb_debug)
-	return rc;
-    if (mayfail && errno == mayfail && !dvb_debug)
-	return rc;
+    if (0 == rc)
+    	return rc;
 
-    fprintf(stderr,": %s\n",(rc == 0) ? "ok" : strerror(errno));
-    return rc;
+	RETURN_DVB_ERROR(ERR_IOCTL);
 }
 
 /* ======================================================================= */
@@ -506,9 +556,9 @@ int dvb_frontend_open(struct dvb_state *h, int write)
     *fd = open(h->frontend, (write ? O_RDWR : O_RDONLY) | O_NONBLOCK);
 
     if (-1 == *fd) {
-		fprintf(stderr,"dvb fe: open %s: %s\n", h->frontend,strerror(errno));
+    	if (dvb_debug>1) fprintf(stderr,"dvb fe: open %s: %s (%d)\n", h->frontend,strerror(errno), errno);
 		if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -10) ;
-		return -10;
+		RETURN_DVB_ERROR(ERR_FE_OPEN);
     }
 
     if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "Created fd=%d\n", *fd);}
@@ -522,8 +572,8 @@ void dvb_frontend_release(struct dvb_state *h, int write)
     int *fd = write ? &h->fdwr : &h->fdro;
 
     if (-1 != *fd) {
-	close(*fd);
-	*fd = -1;
+		close(*fd);
+		*fd = -1;
     }
 }
 
@@ -550,12 +600,12 @@ int rc;
 
 if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
-    if (-1 == dvb_frontend_open(h, /* write=1*/1))
+    if ( (rc=dvb_frontend_open(h, /* write=1*/1)) < 0 )
     {
-		fprintf(stderr,"unable to open rw frontend\n");
-    	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
+    	if (dvb_debug>1) fprintf(stderr,"unable to open rw frontend\n");
+    	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, rc) ;
 
-    	return -11;
+    	RETURN_DVB_ERROR(rc);;
     }
 
     if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "at start", h) ;
@@ -576,8 +626,7 @@ if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
     if (0 == memcmp(&h->p, &h->plast, sizeof(h->plast))) {
 		if (dvb_frontend_is_locked(h)) {
 		    /* same frequency and frontend still locked */
-		    if (dvb_debug)
-			fprintf(stderr,"dvb fe: skipped tuning\n");
+		    if (dvb_debug) fprintf(stderr,"dvb fe: skipped tuning\n");
 		    rc = 0;
 		    goto done;
 		}
@@ -585,12 +634,11 @@ if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
 if (dvb_debug>1) _dump_state((char *)__FUNCTION__, "before ioctl call", h) ;
 
-    rc = -1;
+    rc = ERR_GENERIC ;
 if (dvb_debug>1) {_prt_indent((char *)__FUNCTION__) ; fprintf(stderr, "xiotcl(FE_SET_FRONTEND)\n") ; }
-    if (-1 == xioctl(h->fdwr,FE_SET_FRONTEND,&h->p, 0)) {
+    if ( (rc=xioctl(h->fdwr,FE_SET_FRONTEND,&h->p)) < 0) {
     	// failed
-	    if (dvb_debug)
-			dump_fe_info(h);
+	    if (dvb_debug) dump_fe_info(h);
 		goto done;
     }
 
@@ -606,7 +654,7 @@ done:
 
     // Hmm, the driver seems not to like that :-/
     // dvb_frontend_release(h,1);
-    return rc;
+	RETURN_DVB_ERROR(rc);;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -615,16 +663,22 @@ void dvb_frontend_tune_info(struct dvb_state *h)
 {
 struct dvb_frontend_parameters info ;
 	
-    if (-1 == xioctl(h->fdro,FE_GET_FRONTEND,&info,1)) 
+    if (xioctl(h->fdro,FE_GET_FRONTEND,&info) != 0)
     {
 //		dump_fe_info(h);
 //		goto done;
+        if (dvb_debug>=5)
+        {
+        	fprintf(stderr, "Error reading FE info\n") ;
+        }
     }
-
-    if (dvb_debug)
+    else
     {
-    	fprintf(stderr, "readback tuning:\n") ;
-		_dump_frontend_params(0, &info) ;
+		if (dvb_debug>=5)
+		{
+			fprintf(stderr, "readback tuning:\n") ;
+			_dump_frontend_params(0, &info) ;
+		}
     }
 
 }
@@ -635,8 +689,8 @@ int dvb_frontend_is_locked(struct dvb_state *h)
 {
     fe_status_t  status  = 0;
 
-    if (-1 == ioctl(h->fdro, FE_READ_STATUS, &status)) {
-		perror("dvb fe: ioctl FE_READ_STATUS");
+    if (ioctl(h->fdro, FE_READ_STATUS, &status) < 0) {
+    	if (dvb_debug>1) perror("dvb fe: ioctl FE_READ_STATUS");
 		return 0;
     }
 if (dvb_debug>=10) fprintf(stderr, "frontend status=0x%04x\n", status) ;
@@ -664,24 +718,24 @@ int ok = 1 ;
 	*uncorrected_blocks = 0 ;
 
 	
-    if (-1 == ioctl(h->fdro, FE_READ_BER, &ber32)) 
+    if (ioctl(h->fdro, FE_READ_BER, &ber32) < 0)
     {
 //		perror("dvb fe: ioctl FE_READ_BER");
 		ok = 0 ;
     }
-    if (-1 == ioctl(h->fdro, FE_READ_SNR, &snr16)) 
+    if (ioctl(h->fdro, FE_READ_SNR, &snr16) < 0)
     {
 //		perror("dvb fe: ioctl FE_READ_SNR");
 		ok = 0 ;
     }
 
-	if (-1 == ioctl(h->fdro, FE_READ_SIGNAL_STRENGTH, &strength16)) 
+	if (ioctl(h->fdro, FE_READ_SIGNAL_STRENGTH, &strength16) < 0)
 	{
 //		perror("dvb fe: ioctl FE_READ_SIGNAL_STRENGTH");
 		ok = 0 ;
 	}
 	
-	if (-1 == ioctl(h->fdro, FE_READ_UNCORRECTED_BLOCKS, &uncorrected_blocks32)) 
+	if (ioctl(h->fdro, FE_READ_UNCORRECTED_BLOCKS, &uncorrected_blocks32) < 0)
 	{
 //		perror("dvb fe: ioctl FE_READ_UNCORRECTED_BLOCKS");
 		ok = 0 ;
@@ -721,8 +775,8 @@ int i ;
 	for (i = 0; i < timeout; i++) {
 
 	    if (-1 == ioctl(h->fdro, FE_READ_STATUS, &status)) {
-			perror("dvb fe: ioctl FE_READ_STATUS");
-			return -22;
+	    	if (dvb_debug>1) perror("dvb fe: ioctl FE_READ_STATUS");
+			RETURN_DVB_ERROR(ERR_IOCTL) ;
 	    }
 
 if ( (dvb_debug>=10) && (i%10==0) ) fprintf(stderr, ">>> tuning status == 0x%04x\n", status) ;
@@ -735,7 +789,7 @@ if ( (dvb_debug>=10) && (i%10==0) ) fprintf(stderr, ">>> tuning status == 0x%04x
 	}
     
     
-    return -12;
+	RETURN_DVB_ERROR(ERR_TUNING_TIMEOUT) ;
 }
 
 /* ======================================================================= */
@@ -752,8 +806,8 @@ struct dmx_pes_filter_params f;
 
 	fd = open(h->demux, O_RDONLY);
 	if (fd == -1) {
-		perror("cannot open demux device");
-		return -1;
+		if (dvb_debug>1) perror("cannot open demux device");
+		RETURN_DVB_ERROR(ERR_DEMUX_OPEN) ;
 	}
 
 	memset(&f, 0, sizeof(f));
@@ -763,9 +817,9 @@ struct dmx_pes_filter_params f;
 	f.pes_type = DMX_PES_OTHER;
 	f.flags   = DMX_IMMEDIATE_START;
 
-	if (xioctl(fd, DMX_SET_PES_FILTER, &f, 0) == -1) {
-		perror("DMX_SET_PES_FILTER");
-		return -2;
+	if (xioctl(fd, DMX_SET_PES_FILTER, &f) < 0) {
+		if (dvb_debug>1) perror("DMX_SET_PES_FILTER");
+		RETURN_DVB_ERROR( ERR_SET_PES_FILTER );
 	}
 
 	if (dvb_debug) fprintf(stderr, "set filter for PID 0x%04x on fd %d\n", pid, fd);
@@ -777,7 +831,7 @@ struct dmx_pes_filter_params f;
 int dvb_demux_remove_filter(struct dvb_state *h, int fd)
 {
     if (-1 != fd) {
-		xioctl(fd,DMX_STOP,NULL,0);
+		xioctl(fd,DMX_STOP,NULL);
 		close(fd);
 		fd = -1;
     }
@@ -797,10 +851,11 @@ int dvb_demux_get_section(int fd, unsigned char *buf, int len)
     {
 		if ((ETIMEDOUT != errno && EOVERFLOW != errno) || dvb_debug)
 		{
-			fprintf(stderr,"dvb mux: read: %s [%d] rc=%d\n", strerror(errno), errno, rc);
+			if (dvb_debug>1) fprintf(stderr,"dvb mux: read: %s [%d] rc=%d\n", strerror(errno), errno, rc);
 		}
+		SET_ERROR(rc, ERR_READ) ;
     }
-	return rc;
+    return(rc) ;
 }
 
 
@@ -825,15 +880,15 @@ struct dmx_sct_filter_params filter;
     if (-1 == fd) {
     	fd = open(h->demux, O_RDWR);
 		if (-1 == fd) {
-			fprintf(stderr,"dvb mux: [pid %d] open %s: %s\n",
-				pid, h->demux, strerror(errno));
+			if (dvb_debug>1) fprintf(stderr,"dvb mux: [pid %d] open %s: %s\n",
+									pid, h->demux, strerror(errno));
 			goto oops;
 		}
     }
-    if (-1 == xioctl(fd, DMX_SET_FILTER, &filter, 0)) {
-    	fprintf(stderr,"dvb mux: [pid %d] ioctl DMX_SET_PES_FILTER: %s\n",
-		pid, strerror(errno));
-	goto oops;
+    if (xioctl(fd, DMX_SET_FILTER, &filter) < 0) {
+    	if (dvb_debug>1) fprintf(stderr,"dvb mux: [pid %d] ioctl DMX_SET_PES_FILTER: %s\n",
+									pid, strerror(errno));
+    	goto oops;
     }
 
 	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
@@ -844,35 +899,7 @@ struct dmx_sct_filter_params filter;
     	close(fd);
 
 	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
-    return -14;
-}
-
-/* ----------------------------------------------------------------------- */
-int dvb_demux_set_size(struct dvb_state *h, int fd, unsigned long size)
-{
-if (dvb_debug) fprintf(stderr, "dvb_demux_set_size(%l)\n", size) ;
-
-    if (-1 == fd) {
-    	fd = open(h->demux, O_RDWR);
-		if (-1 == fd) {
-			fprintf(stderr,"dvb mux: open %s: errno=%d %s\n", h->demux, errno, strerror(errno));
-			goto oops;
-		}
-    }
-    if (-1 == xioctl(fd, DMX_SET_BUFFER_SIZE, &size, 0)) {
-    	fprintf(stderr,"dvb mux: ioctl DMX_SET_BUFFER_SIZE=%l: errno=%d %s\n", size, errno, strerror(errno));
-    	goto oops;
-    }
-
-    if (dvb_debug) fprintf(stderr, "dvb_demux_set_size() DONE fd=%d\n", fd) ;
-    return fd;
-
- oops:
-    if (-1 != fd)
-    	close(fd);
-
-    if (dvb_debug) fprintf(stderr, "dvb_demux_set_size() DONE\n") ;
-    return -1;
+	RETURN_DVB_ERROR( ERR_REQ_SECTION );
 }
 
 
@@ -891,8 +918,8 @@ int rc=0;
 		h->dvro = open(h->dvr,  O_RDONLY) ;
 		if (-1 == h->dvro)
 		{
-			fprintf(stderr,"error opening dvr0: %s\n", strerror(errno));
-			rc=-1 ;
+			if (dvb_debug>1) fprintf(stderr,"error opening dvr0: %s\n", strerror(errno));
+			SET_ERROR(rc, ERR_DVR_OPEN) ;
 		}
 	}
 
@@ -943,9 +970,13 @@ int rc = 0 ;
 
 	if (dvb_debug>1) _fn_start((char *)__FUNCTION__) ;
 
+	// clear out errors
+	dvb_error_clear() ;
+
+	// create
     h = malloc(sizeof(*h));
     if (NULL == h) {
-    	rc = -1 ;
+    	SET_ERROR(rc, ERR_MALLOC) ;
     	goto oops;
     }
     memset(h,0,sizeof(*h));
@@ -957,17 +988,15 @@ int rc = 0 ;
     snprintf(h->demux,    sizeof(h->demux),   "%s/demux%d",    adapter, frontend);
     snprintf(h->dvr,      sizeof(h->demux),   "%s/dvr%d",      adapter, frontend);
 
-    if (0 != dvb_frontend_open(h, /* read=0 */ 0)) {
-    	rc = -2 ;
+    if ( (rc=dvb_frontend_open(h, /* read=0 */ 0)) < 0 ) {
     	if (dvb_debug) fprintf(stderr, "dvb init: frontend failed to open : fdro=%d, fdwr=%d\n", h->fdro, h->fdwr);
     	goto oops;
     }
 
 	// get info about the tuner
-    if (-1 == xioctl(h->fdro, FE_GET_INFO, &h->info, 0)) {
-    	rc = -3 ;
+    if ( (rc=xioctl(h->fdro, FE_GET_INFO, &h->info)) < 0  ) {
 		if (dvb_debug) fprintf(stderr, "dvb init: xiotcl FE_GET_INFO failed\n");
-		perror("dvb init: ioctl FE_GET_INFO");
+		//perror("dvb init: ioctl FE_GET_INFO");
 		goto oops;
     }
 
@@ -991,6 +1020,7 @@ int rc = 0 ;
     	dvb_fini(h);
 
     if (dvb_debug>1) _fn_end((char *)__FUNCTION__, rc) ;
+    SET_DVB_ERROR(rc) ;
     return NULL;
 }
 
@@ -1023,7 +1053,7 @@ struct dvb_frontend_parameters info ;
 		if (!dvb_frontend_is_locked(h))
 		{
 			if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
-		    return -15;
+			RETURN_DVB_ERROR(ERR_TUNING_TIMEOUT0) ;
 		}
     }
     else
@@ -1031,50 +1061,74 @@ struct dvb_frontend_parameters info ;
 		if (0 != dvb_frontend_wait_lock(h, timeout))
 		{
 			if (dvb_debug>1) _fn_end((char *)__FUNCTION__, -1) ;
-		    return -16;
+			RETURN_DVB_ERROR(ERR_TUNING_TIMEOUT) ;
 		}
     }
 
 	// Update the tuning parameters
-    if (-1 == xioctl(h->fdro,FE_GET_FRONTEND,&info,0)) 
+    if ( xioctl(h->fdro,FE_GET_FRONTEND,&info) != 0)
     {
-//		dump_fe_info(h);
-//		goto done;
+        if (dvb_debug>=5)
+        {
+        	fprintf(stderr, "Error reading FE info\n") ;
+        }
     }
+    else
+    {
+        if (dvb_debug>=5)
+        {
+        	fprintf(stderr, "readback tuning:\n") ;
+    		_dump_frontend_params(0, &info) ;
+        }
 
-	// Actually, this piece of code is now obsolete since I'm currently only interested in the
-	// (rounded) frequency. The scan frequency list only compare entries by frequency. I'm keeping
-	// the code in case I want to switch back to checking the other tuning params (satellite decode
-	// perhaps?)
-	//  
-	// Anyway, it turns out that some tuners (a) readback all zeroes, or (b) readback a frequency
-	// 1 kHz less than actually set! To avoid these problems, I'm actually keeping the requested frequency
-	// [thus negating the whole purpose of this stuff!]
-	//
-	
-	
-	// only overwrite params if these came back correctly - some tuners don't seem to properly support
-	// readback
-	if (info.frequency > 0)
-	{
-		// save the frequency to ensure it's correct
-		int frequency = h->p.frequency ;
-		
-		// update the parameters with the params reported by the DVB tuner
-	    memcpy(&h->p, &info, sizeof(h->p));
-	    
-#ifdef TEST_FREQ_READBACK
-		// Debug problem where frequency readback from DVB tuner is not the same as requested
+		// Actually, this piece of code is now obsolete since I'm currently only interested in the
+		// (rounded) frequency. The scan frequency list only compare entries by frequency. I'm keeping
+		// the code in case I want to switch back to checking the other tuning params (satellite decode
+		// perhaps?)
 		//
-		// requested= 698167000
-		// readback=  698166000
+		// Anyway, it turns out that some tuners (a) readback all zeroes, or (b) readback a frequency
+		// 1 kHz less than actually set! To avoid these problems, I'm actually keeping the requested frequency
 		//
-		h->p.frequency -= 1000 ;
-#endif	    
 
-		// restore frequency
-		h->p.frequency = frequency ;
-	}
+
+		// only overwrite params if these came back correctly - some tuners don't seem to properly support
+		// readback
+		if (info.frequency > 0)
+		{
+			// save the frequency to ensure it's correct
+			int frequency = h->p.frequency ;
+
+			// update the parameters with the params reported by the DVB tuner
+			memcpy(&h->p, &info, sizeof(h->p));
+
+	#ifdef TEST_FREQ_READBACK
+			// Debug problem where frequency readback from DVB tuner is not the same as requested
+			//
+			// requested= 698167000
+			// readback=  698166000
+			//
+			h->p.frequency -= 1000 ;
+	#endif
+
+			// restore frequency
+			h->p.frequency = frequency ;
+
+			if (dvb_debug>=10)
+			{
+				fprintf(stderr, "WAIT TUNE : params "); print_params(&h->p) ; fprintf(stderr, "\n");
+			}
+	
+			// update the freq item with these settings
+			freqitem_update(&h->p) ;
+	
+			if (dvb_debug>=5)
+			{
+				fprintf(stderr, "freqitem update:\n") ;
+				_dump_frontend_params(0, &h->p) ;
+			}
+		}
+
+    }
 
 	if (dvb_debug>1) _fn_end((char *)__FUNCTION__, 0) ;
     return 0;

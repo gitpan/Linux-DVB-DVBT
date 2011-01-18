@@ -1,5 +1,3 @@
-#include "config.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -17,7 +15,7 @@
 #include "dvb_lib.h"
 #include "dvb_tune.h"
 #include "dvb_epg.h"
-#include "grab-ng.h"
+#include "dvb_error.h"
 #include "dvb_debug.h"
 
 /* ------------------------------------------------------------------------ */
@@ -1016,6 +1014,9 @@ struct eit_state *eit;
 struct freqitem *current_freqi ;
 int rc ;
 
+	// start with no errors
+	dvb_error_clear() ;
+
 	// Set section filter
 	eit = malloc(sizeof(*eit));
 	memset(eit,0,sizeof(*eit));
@@ -1085,7 +1086,8 @@ int rc ;
 				break;
 			}
 
-			fprintf_timestamp(stderr, "error polling for data\n");
+			//fprintf_timestamp(stderr, "error polling for data\n");
+			SET_DVB_ERROR(ERR_EPG_POLL) ;
 			close(eit->fd);
 			return (struct list_head *)0;
 		}

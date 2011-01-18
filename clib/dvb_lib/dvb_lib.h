@@ -8,6 +8,7 @@
 #include "dvb_tune.h"
 #include "dvb_epg.h"
 #include "dvb_scan.h"
+#include "dvb_error.h"
 #include "dvb_stream.h"
 
 #include "list.h"
@@ -24,6 +25,11 @@ if (dvb_debug>1) _fn_start(_name) ;
 #define DVB_FN_END(err)	\
 if (dvb_debug>1) _fn_end(_name, err) ;
 
+#define UNSET          (-1U)
+#define DIMOF(array)   (sizeof(array)/sizeof(array[0]))
+#define SDIMOF(array)  ((signed int)(sizeof(array)/sizeof(array[0])))
+#define GETELEM(array,index,default) \
+	(index < sizeof(array)/sizeof(array[0]) ? array[index] : default)
 
 
 /* ----------------------------------------------------------------------- */

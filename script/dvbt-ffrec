@@ -41,16 +41,21 @@ our $VERSION = "1.000" ;
 	
 	$dvb->config_path($config) if $config ;
 	
+	my ($channel, $file, $duration) = @ARGV ;
+
+	## Convert duration to seconds
+	my $seconds = Linux::DVB::DVBT::Utils::timesec2secs($duration) ;
+	
 	## Select the channel
-	$dvb->select_channel($ARGV[0]) ;
+	$dvb->select_channel($channel) ;
 	
 	## Add si tables
-	add_si_tables($dvb, $ARGV[0]) ;
+	add_si_tables($dvb, $channel, $seconds) ;
 	
 	## Record using ffmpeg
-	my ($name, $dir) = (fileparse($ARGV[1], '\..*'))[0,1] ;
+	my ($name, $dir) = (fileparse($file, '\..*'))[0,1] ;
 	my $dev = $dvb->dvr_name ;
-	system("ffmpeg -i $dev -vcodec copy -acodec copy -async 1 -t $ARGV[2] -y '$dir/$name.mpeg'")==0 or die "Error: failed to record : $!" ;
+	system("ffmpeg -i $dev -vcodec copy -acodec copy -async 1 -t $duration -y '$dir/$name.mpeg'")==0 or die "Error: failed to record : $!" ;
 
 	exit 0 ;
 
@@ -59,7 +64,7 @@ our $VERSION = "1.000" ;
 #
 sub add_si_tables
 {
-	my ($dvb, $file) = @_ ;
+	my ($dvb, $file, $seconds) = @_ ;
 	
 	## Set up the multiplex info for this single file
 

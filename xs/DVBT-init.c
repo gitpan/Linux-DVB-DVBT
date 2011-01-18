@@ -188,4 +188,20 @@ dvb_set_debug(int debug);
 	 dvb_debug = debug ;
 	 DVBT_DEBUG = debug ;
 
+# /*---------------------------------------------------------------------------------------------------*/
+# /* Return error string */
+
+SV *
+dvb_error_str()
+	INIT:
+		SV *str;
+		char *error_str ;
+
+	CODE:
+		error_str = dvb_error_str(dvb_error_code) ;
+		RETVAL = newSVpv(error_str, 0) ;
+
+	OUTPUT:
+     RETVAL
+
 

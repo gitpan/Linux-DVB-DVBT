@@ -90,7 +90,7 @@ HEAD
 		print "  $file\n" ;
 		foreach my $pid_href (@{$href->{'demux'}})
 		{
-			printf "    PID %5d [$pid_href->{'type'}]\n", $pid_href->{'pid'} ;
+			printf "    PID %5d [$pid_href->{'pidtype'}]\n", $pid_href->{'pid'} ;
 		}
 		print "\n" ;
 	}
@@ -104,6 +104,22 @@ HEAD
 
 	## Release the hardware (to allow a new recording to start)
 	$dvb->dvb_close() ;
+
+	print "Recording stats:\n" ;
+	foreach my $file (sort keys %{$multiplex_info{'files'}})
+	{
+		my $href = $multiplex_info{'files'}{$file} ;
+		print "  $file\n" ;
+		foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
+		{
+			printf "    PID %5d [$pid_href->{'pidtype'}] : %s errors / %s packets\n", 
+				$pid_href->{'pid'},
+				$pid_href->{'errors'},
+				$pid_href->{'pkts'},
+				 ;
+		}
+		print "\n" ;
+	}
 	
 	## Transcode the recordings (uses ffmpeg helper module)
 	$error = $dvb->multiplex_transcode(%multiplex_info) ;

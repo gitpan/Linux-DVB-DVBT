@@ -8,7 +8,9 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $check, $extra_check, $multiplex, $adap, $write) ;
+our $VERSION = "3.01" ;
+
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $check, $extra_check, $multiplex, $tsid_only, $adap, $write) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
@@ -16,7 +18,8 @@ use Linux::DVB::DVBT ;
 			   'cfg=s' => \$config,
 			   'check' => \$check,
 			   'extra-check' => \$extra_check,
-			   'multi|tsid' => \$multiplex,
+			   'multi' => \$multiplex,
+			   'tsid=i' => \$tsid_only,
 			   'a|adap|dvb=i' => \$adap,
 			   'write=s' => \$write,
 			   ) or pod2usage(2) ;
@@ -43,8 +46,13 @@ use Linux::DVB::DVBT ;
 	# read config
 	my $tuning_href = $dvb->get_tuning_info() ;
 	my $channels_aref = $dvb->get_channel_list() ;
+Linux::DVB::DVBT::prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 	
 	my $ok = 1 ;
+	
+	# defaults
+	$multiplex++ if $tsid_only ;
+	$check++ if $extra_check ;
 
 	# Set displayed widths
 	my %widths = (
@@ -107,7 +115,20 @@ HEAD
 		}
 		
 		my $tsids=0;
-		foreach my $tsid (sort {$a <=> $b} keys %multi)
+		my @tsid_list = sort {$a <=> $b} keys %multi ;
+		if ($tsid_only)
+		{
+			if (exists($multi{$tsid_only}))
+			{
+				@tsid_list = ($tsid_only) ;
+			}
+			else
+			{
+				print "Error : Requested TSID $tsid_only is not a valid value for this tuner\n" ;
+				exit 1 ; 
+			}
+		}
+		foreach my $tsid (@tsid_list)
 		{
 			if ($tsids)
 			{
@@ -115,8 +136,16 @@ HEAD
 $tsid_bar
 SEP
 			}
+			
+			my $tsid_info = "" ;
+			if ($VERBOSE)
+			{
+				$tsid_info .= "Freq: $tuning_href->{'ts'}{$tsid}{'frequency'} Hz" ;
+				$tsid_info .= " $tuning_href->{'ts'}{$tsid}{'modulation'}QAM" ;
+				$tsid_info = "[$tsid_info]" ;
+			}
 			print <<TSID ;
-TSID $tsid
+TSID $tsid   $tsid_info
 $tsid_bar
 TSID
 			++$tsids ;

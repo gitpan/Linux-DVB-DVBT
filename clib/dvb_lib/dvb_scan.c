@@ -20,7 +20,7 @@
 #include "dvb_scan.h"
 #include "dvb_debug.h"
 
-
+#if 0
 /* ----------------------------------------------------------------------- */
 /* map vdr config file numbers to enums                                    */
 
@@ -79,7 +79,7 @@ static fe_hierarchy_t fe_vdr_hierarchy[] = {
     [ 2 ]             = HIERARCHY_2,
     [ 4 ]             = HIERARCHY_4,
 };
-
+#endif
 /* ----------------------------------------------------------------------- */
 
 
@@ -873,7 +873,7 @@ if (dvb_debug >= 1)
 		tuned = time(NULL);
 		while (time(NULL) - tuned < scan_timeout_secs)
 		{
-			if (dvb_debug>10) fprintf(stderr,"Polling for data (timer=%d) ...\n", time(NULL) - tuned);
+			if (dvb_debug>10) fprintf(stderr,"Polling for data (timer=%d) ...\n", (int)(time(NULL) - tuned));
 
 //struct table {
 //    struct list_head    next;

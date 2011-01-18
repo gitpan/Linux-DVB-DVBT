@@ -10,11 +10,11 @@
 #include <errno.h>
 #include <iconv.h>
 
-#include "grab-ng.h"
 #include "parse-mpeg.h"
-#include "../dvb_lib/dvb_debug.h"
 
-extern int dvb_debug ;
+// dvb_lib
+#include "dvb_debug.h"
+#include "dvb_lib.h"
 
 // Enable testing of multi-frequency handling
 //#define TEST_MULTIFREQ

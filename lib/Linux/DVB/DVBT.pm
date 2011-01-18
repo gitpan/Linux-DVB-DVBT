@@ -323,7 +323,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.05';
+our $VERSION = '2.06';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -481,7 +481,7 @@ my %DEFAULTS = (
 	'frontend_params' => undef,
 	
 	# Search path for config dir
-	'config_path'	=> '/etc/dvb:~/.tv',
+	'config_path'	=> $Linux::DVB::DVBT::Config::DEFAULT_CONFIG_PATH,
 
 	# tuning info
 	'tuning'		=> undef,
@@ -733,6 +733,21 @@ my %SI_TABLES = (
 
 my %SI_LOOKUP = reverse %SI_TABLES ;
 
+my %EPG_FLAGS = (
+    'AUDIO_MONO'      => (1 << 0),
+    'AUDIO_STEREO'    => (1 << 1),
+    'AUDIO_DUAL'      => (1 << 2),
+    'AUDIO_MULTI'     => (1 << 3),
+    'AUDIO_SURROUND'  => (1 << 4),
+
+    'VIDEO_4_3'       => (1 << 8),
+    'VIDEO_16_9'      => (1 << 9),
+    'VIDEO_HDTV'      => (1 << 10),
+
+    'SUBTITLES'       => (1 << 16),
+) ;
+
+
 #============================================================================================
 
 =head2 CONSTRUCTOR
@@ -949,7 +964,26 @@ sub device_list
 	return @$devices_aref ;
 }
 
+#----------------------------------------------------------------------------
 
+=item B<is_error()>
+
+If there was an error during one of the function calls, returns the error string; otherwise
+returns "".
+
+=cut
+
+sub is_error
+{
+	my ($class) = @_ ;
+	my $error_str = dvb_error_str() ;
+	
+	if ($error_str =~ /no error/i)
+	{
+		$error_str = "" ;
+	}
+	return $error_str ;
+}
 
 
 #============================================================================================
@@ -1127,7 +1161,7 @@ prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 	#
 	#	Scan results are returned in arrays:
 	#	
-	#  freqs => 
+	#    freqs => 
 	#    { # HASH(0x844d76c)
 	#      482000000 => 
 	#        { # HASH(0x8448da4)
@@ -1135,6 +1169,30 @@ prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 	#          'strength' => 0,
 	#          'tuned' => 0,
 	#        },
+	#
+	#    '177500000' => {
+	#		'guard_interval' => 2,
+	#		'transmission' => 4,
+	#		'code_rate_high' => 16,
+	#		'tuned' => 1,
+	#		'strength' => 49420,
+	#		'modulation' => 2,
+	#		'seen' => 1,
+	#		'bandwidth' => 7,
+	#		'code_rate_low' => 16,
+	#		'hierarchy' => 0,
+	#		'inversion' => 2
+	#		}
+#readback tuning:
+#    __u32                   frequency=177500000
+#    fe_spectral_inversion_t inversion=2 (auto)
+#    fe_bandwidth_t          bandwidthy=1 (7 MHz)
+#    fe_code_rate_t          code_rate_HPy=3 (3/4)
+#    fe_code_rate_t          code_rate_LP=1 (1/2)
+#    fe_modulation_t         constellation=3 (64)
+#    fe_transmit_mode_t      transmission_mod=1 (8k)
+#    fe_guard_interval_t     guard_interval=0 (1/32)
+#    fe_hierarchy_t          hierarchy_information=0 (none)
 	#	
 	#    'pr' => 
 	#    [ 
@@ -1260,6 +1318,40 @@ print STDERR "process raw...\n" if $DEBUG>=5 ;
 		$tsids{$tsid} = $ts_href ;
 		$tsids{$tsid}{'frequency'} = undef ;
 	}	
+
+if ($VERBOSE >= 2)
+{
+print STDERR "\n========================================================\n" ;
+foreach my $ts_href (@{$raw_scan_href->{'ts'}})
+{
+	my $tsid = $ts_href->{'tsid'} ;
+	print STDERR "--------------------------------------------------------\n" ;
+	print STDERR "TSID $tsid\n" ;
+	print STDERR "--------------------------------------------------------\n" ;
+	
+	foreach my $prog_href (@{$raw_scan_href->{'pr'}})
+	{
+		my $ptsid = $prog_href->{'tsid'} ;
+		next unless $ptsid == $tsid ;
+		
+		my $name = $prog_href->{'name'} ;
+		my $pnr = $prog_href->{'pnr'} ;
+		my $lcn = $scan_href->{'lcn'}{$tsid}{$pnr} ;
+		$lcn = $lcn ? sprintf("%2d", $lcn) : "??" ;
+		
+		my $freqs_aref = $prog_href->{'freqs'} ;
+		
+		print STDERR "  $lcn : [$pnr] $name - " ;
+		foreach my $freq (@$freqs_aref)
+		{
+			print STDERR "$freq Hz " ;
+		}
+		print STDERR "\n" ;
+
+	}
+}	
+print STDERR "\n========================================================\n" ;
+}
 
 	## Use program info to map TSID to freq (choose strongest signal where necessary)
 	foreach my $prog_href (@{$raw_scan_href->{'pr'}})
@@ -1453,11 +1545,65 @@ print STDERR " + del chan \"$chan\"\n" if $DEBUG>=5 ;
 
 		delete $scan_href->{'pr'}{$chan} ;
 	}
-		
-printf STDERR "Merg flag=%d\n", $self->merge  if $DEBUG>=5 ;
-prt_data("Current Tuning=", $tuning_href, "Scan before merge=", $scan_href) if $DEBUG>=5 ;
 
-	# Merge results
+prt_data("Scan before tsid fix=", $scan_href) if $DEBUG>=5 ;
+
+
+	## Set transponder params 
+	
+	# sadly there are lies, damn lies, and broadcast information! You can't rely on the broadcast info and
+	# have to fall back on either readback from the tuner device for it's settings (if it supports readback),
+	# using the values specified in the frequency file (i.e. the tuning params), or defaulting params to 'AUTO'
+	# where the tuner will permit it.
+	
+	# this is what we used to set the frontend with
+	my $frontend_params_href = $self->frontend_params() ;
+		
+	foreach my $tsid (keys %{$scan_href->{'ts'}})
+	{
+		my $freq = $tsids{$tsid}{'frequency'} ;
+		if (exists($scan_href->{'freqs'}{$freq}))
+		{
+			# Use readback info for preference
+			foreach (keys %{$scan_href->{'freqs'}{$freq}} )
+			{
+				$tsids{$tsid}{$_} = $scan_href->{'freqs'}{$freq}{$_} ;
+			}
+		}
+		elsif ($freq == $frontend_params_href->{'frequency'})
+		{
+			# Use specified settings
+			foreach (keys %{$frontend_params_href} )
+			{
+				$tsids{$tsid}{$_} = $frontend_params_href->{$_} ;
+			}
+		}
+		else
+		{
+			# device info
+			my $dev_info_href = $self->_device_info ;
+			my $capabilities_href = $dev_info_href->{'capabilities'} ;
+
+			# Use AUTO where possible
+			foreach my $param (keys %{$frontend_params_href} )
+			{
+				next unless exists($FE_CAPABLE{$param}) ;
+
+				## check to see if we are capable of using auto
+				if ($capabilities_href->{$FE_CAPABLE{$param}})
+				{
+					# can use auto
+					$tsids{$tsid}{$param} = $AUTO ;
+				}
+			}
+		}
+	}	
+		
+		
+printf STDERR "Merge flag=%d\n", $self->merge  if $DEBUG>=5 ;
+prt_data("FE params=", $frontend_params_href, "Scan before merge=", $scan_href) if $DEBUG>=5 ;
+
+	## Merge results
 	if ($self->merge)
 	{
 		if ($self->_scan_freqs)
@@ -1740,7 +1886,14 @@ sub set_frontend
 	# Set up the frontend
 	my $rc = dvb_tune($self->{dvb}, {%params}) ;
 	
+	print STDERR "dvb_tune() returned $rc\n" if $DEBUG ;
+	
 	# If tuning went ok, then save params
+	#
+	# Currently:
+	#   -11 = Device busy
+	#	-15 / -16 = Failed to tune
+	#
 	if ($rc == 0)
 	{
 		$self->frontend_params( {%params} ) ;
@@ -2036,6 +2189,7 @@ Measures the signal quality of the specified transponder. Returns a HASH contain
 			'strength'				=> Signal strength (maximum is 0xffff)
 			'uncorrected_blocks'	=> Number of uncorrected blocks (32 bits)
 			'ok'					=> flag set if no errors occured during the measurements
+			'error'					=> Set to an error string on error; otherwise undef
 		}
 	}
 
@@ -2084,20 +2238,41 @@ sub tsid_signal_quality
 		@tsids = keys %{$tuning_href->{'ts'}} ;
 	}
 	
+	## handle errors
+	my $errmode = $self->{errmode} ;
+	$self->{errmode} = 'message' ;
+	
+	## get info
 	my %info ;
 	foreach my $tsid (@tsids)
 	{
 		## Tune frontend
 		my $frontend_params_href = $tuning_href->{'ts'}{$tsid} ;
-		if ($self->set_frontend(%$frontend_params_href, 'timeout' => $self->timeout))
+		my $error_code ;
+		if ($error_code = $self->set_frontend(%$frontend_params_href, 'timeout' => $self->timeout))
 		{
-			return $self->handle_error("Unable to tune frontend") ;
+			print STDERR "set_frontend() returned $error_code\n" if $DEBUG ;
+			
+			$info{$tsid}{'error'} = "Unable to tune frontend. " . dvb_error_str() ;
+			if ($info{$tsid}{'error'} =~ /busy/i)
+			{
+				## stop now since the device is in use
+				last ;
+			}
 		}
-		
-		## get info
-		$info{$tsid} = $self->signal_quality($tsid) ;
+		else
+		{
+			## get info
+			$info{$tsid} = $self->signal_quality($tsid) ;
+			$info{$tsid}{'error'} = undef ;
+		}
 	}
 	
+	## restore error handling
+	$self->{errmode} = $errmode ;
+	
+	
+	## return info
 	return %info ;
 }
 
@@ -2517,7 +2692,8 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 		Linux::DVB::DVBT::Utils::fix_episodes(\$title, \$synopsis, \$episode, \$num_episodes) ;
 		Linux::DVB::DVBT::Utils::fix_audio(\$title, \$synopsis, \%flags) ;
 			
-
+		my $epg_flags = $epg_entry->{'flags'} ;
+		
 		$epg{$chan}{$pid} = {
 			'pid'		=> $pid,
 			'channel'	=> $chan,
@@ -2538,6 +2714,32 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 			
 			'tva_prog'	=> $epg_entry->{'tva_prog'} || '',
 			'tva_series'=> $epg_entry->{'tva_series'} || '',
+
+			#    'AUDIO_MONO'      => (1<<0),
+			#    'AUDIO_STEREO'    => (1<<1),
+			#    'AUDIO_DUAL'      => (1<<2),
+			#    'AUDIO_MULTI'     => (1<<3),
+			#    'AUDIO_SURROUND'  => (1<<4),
+			#
+			#    'VIDEO_4_3'       => (1<< 8),
+			#    'VIDEO_16_9'      => (1<< 9),
+			#    'VIDEO_HDTV'      => (1<<10),
+			#
+			#    'SUBTITLES'       => (1<<16),
+			
+			'flags'		=> {
+				'mono'			=> $epg_flags & $EPG_FLAGS{'AUDIO_MONO'} ? 1 : 0,
+				'stereo'		=> $epg_flags & $EPG_FLAGS{'AUDIO_STEREO'} ? 1 : 0,
+				'dual-mono'		=> $epg_flags & $EPG_FLAGS{'AUDIO_DUAL'} ? 1 : 0,
+				'multi'			=> $epg_flags & $EPG_FLAGS{'AUDIO_MULTI'} ? 1 : 0,
+				'surround'		=> $epg_flags & $EPG_FLAGS{'AUDIO_SURROUND'} ? 1 : 0,
+
+				'4:3'			=> $epg_flags & $EPG_FLAGS{'VIDEO_4_3'} ? 1 : 0,
+				'16:9'			=> $epg_flags & $EPG_FLAGS{'VIDEO_16_9'} ? 1 : 0,
+				'hdtv'			=> $epg_flags & $EPG_FLAGS{'VIDEO_HDTV'} ? 1 : 0,
+
+				'subtitles'		=> $epg_flags & $EPG_FLAGS{'SUBTITLES'} ? 1 : 0,
+			},
 		} ;
 
 prt_data("EPG final entry ($chan) $pid=", $epg{$chan}{$pid}) if $DEBUG>=2 ;
@@ -3347,7 +3549,9 @@ Linux::DVB::DVBT::prt_data("multiplex_record() : multiplex_info=", \%multiplex_i
 	foreach my $file (keys %{$multiplex_info{'files'}} )
 	{
 		my $href = {
+			'_file'		=> $file,
 			'pids'		=> [],
+			'errors'	=> {},
 		} ;
 
 		# copy scalars
@@ -3377,7 +3581,11 @@ print STDERR " + + mod extension\n" if $DEBUG>=10 ;
 		# fill in the pid info
 		foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
 		{
-			push @{$href->{'pids'}}, $pid_href->{'pid'} ;
+			my $pid = $pid_href->{'pid'} ;
+			push @{$href->{'pids'}}, $pid ;
+			
+			$href->{'errors'}{$pid} = 0 ;
+			$href->{'pkts'}{$pid} = 0 ;
 		}
 		push @multiplex_info, $href ;
 		
@@ -3399,7 +3607,9 @@ Linux::DVB::DVBT::prt_data(" + info=", \@multiplex_info) if $DEBUG>=10 ;
 	#		{
 	#			destfile	=> recorded ts file
 	#			pids		=> [
-	#			
+	#				pid,
+	#				pid,
+	#				...
 	#			]
 	#			
 	#		}
@@ -3408,7 +3618,64 @@ Linux::DVB::DVBT::prt_data(" + info=", \@multiplex_info) if $DEBUG>=10 ;
 
 	## do the recordings
 	$error = dvb_record_demux($self->{dvb}, \@multiplex_info) ;
-	return $self->handle_error($error) if $error ;
+	return $self->handle_error(dvb_error_str()) if $error ;
+
+Linux::DVB::DVBT::prt_data(" + returned info=", \@multiplex_info) if $DEBUG ;
+	
+	## Pass error counts back
+	## @multiplex_info = (
+	#		{
+	#			destfile	=> recorded ts file
+	#			pids		=> [
+	#				pid1,
+	#				pid2,
+	#				...
+	#			],
+	#			errors		=> {
+	#				pid1	=> error_count1,
+	#				pid2	=> error_count2,
+	#				...
+	#			}
+	#			pkts		=> {
+	#				pid1	=> packet_count1,
+	#				pid2	=> packet_count2,
+	#				...
+	#			}
+	#			
+	#		}
+	#	
+	#	)
+	foreach my $href (@multiplex_info)
+	{
+Linux::DVB::DVBT::prt_data(" + + href=", $href) if $DEBUG ;
+		my $file = $href->{'_file'} ;
+		#files => {
+		#	$file => {
+		#		'pids'	=> [
+		#			{
+		#				'pid'	=> Stream PID
+		#				'pidtype'	=> pid type (i.e. 'audio', 'video', 'subtitle')
+		#			},
+		#			...
+		#		]
+		foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
+		{
+			my $pid = $pid_href->{'pid'} ;
+#print STDERR " - PID $pid (file=$file)\n" ;
+			$pid_href->{'pkts'} = 0 ;
+			$pid_href->{'error'} = 0 ;
+			if (exists($href->{'errors'}{$pid}))
+			{
+				$pid_href->{'errors'} = $href->{'errors'}{$pid} ;
+#print STDERR " - - errors = $href->{'errors'}{$pid}\n" ;
+			}
+			if (exists($href->{'pkts'}{$pid}))
+			{
+				$pid_href->{'pkts'} = $href->{'pkts'}{$pid} ;
+#print STDERR " - - pkts = $href->{'pkts'}{$pid}\n" ;
+			}
+		}
+	}
 	
 	return $error ;
 }

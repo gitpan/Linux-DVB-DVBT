@@ -13,12 +13,19 @@
 #include <time.h>
 
 #include <sys/time.h>
-#include <sys/ioctl.h>
-#include <linux/dvb/frontend.h>
-#include <linux/dvb/dmx.h>
+#ifndef WIN32
+	#include <sys/ioctl.h>
+	#include <linux/dvb/frontend.h>
+	#include <linux/dvb/dmx.h>
 
-#include "dvb_tune.h"
-#include "struct-dvb.h"
+	#ifdef HAVE_DVB
+		#include "dvb_tune.h"
+		#include "struct-dvb.h"
+	#endif
+#else
+	#include <win_time.h>
+#endif
+
 #include "dvb_debug.h"
 
 /*------------------------------------------------------------------*/
@@ -153,7 +160,11 @@ va_list ap;
     va_end(ap);
 }
 
+
+
 /*------------------------------------------------------------------*/
+#ifndef WIN32
+#ifdef HAVE_DVB
 
 void dump_fe_info(struct dvb_state *h)
 {
@@ -453,3 +464,5 @@ int ind=4 ;
 
 }
 /*------------------------------------------------------------------*/
+#endif
+#endif

@@ -1,17 +1,8 @@
 #ifndef DVB_STREAM
 #define DVB_STREAM
 
+#include <inttypes.h>
 #include "dvb_struct.h"
-
-//struct multiplex_record_struct {
-//    char                             *filename;
-//    unsigned int                     duration_secs;
-//    unsigned int                     offset_secs;
-//
-//    /* list of pids */
-//    int                              num_pids;
-//    unsigned int                     *pids;
-//} ;
 
 struct multiplex_file_struct {
 	int								file;
@@ -23,9 +14,12 @@ struct multiplex_pid_struct {
     struct multiplex_file_struct	 *file_info ;
     unsigned int                     pid;
     unsigned int                     done;
+    uint64_t						 errors;
+    uint64_t	                     pkts;
 
-    // debug
-    unsigned int                     pkts;
+    // internal (Perl)
+    void							 *ref ;
+
 } ;
 
 

@@ -85,6 +85,7 @@ dvb_scan(DVB *dvb, int verbose)
 			freqi->flags.tuned,
 			freqi->strength
 		) ;
+		fprintf(stderr, "#@f "); print_freqi(freqi) ;
  }
 		/* Convert structure fields into hash elements */
 		fh = (HV *)sv_2mortal((SV *)newHV());
@@ -94,14 +95,14 @@ dvb_scan(DVB *dvb, int verbose)
 		HVS(fh, tuned, newSViv(freqi->flags.tuned)) ;
 
 		// Convert frontend params into VDR values
-		HVS_INT(fh, inversion, freqi->params.inversion) ;
-		HVS_INT(fh, bandwidth, bw[ freqi->params.u.ofdm.bandwidth ] );
-		HVS_INT(fh, code_rate_high, ra_t[ freqi->params.u.ofdm.code_rate_HP ] );
-		HVS_INT(fh, code_rate_low, ra_t[ freqi->params.u.ofdm.code_rate_LP ] );
-		HVS_INT(fh, modulation, co_t[ freqi->params.u.ofdm.constellation ] );
-		HVS_INT(fh, transmission, tr[ freqi->params.u.ofdm.transmission_mode ] );
-		HVS_INT(fh, guard_interval, gu[ freqi->params.u.ofdm.guard_interval ] );
-		HVS_INT(fh, hierarchy, hi[ freqi->params.u.ofdm.hierarchy_information ] );
+		HVS_INT(fh, inversion, fe_vdr_inversion[ freqi->params.inversion ]) ;
+		HVS_INT(fh, bandwidth, fe_vdr_bandwidth[ freqi->params.u.ofdm.bandwidth ] );
+		HVS_INT(fh, code_rate_high, fe_vdr_rates[ freqi->params.u.ofdm.code_rate_HP ] );
+		HVS_INT(fh, code_rate_low, fe_vdr_rates[ freqi->params.u.ofdm.code_rate_LP ] );
+		HVS_INT(fh, modulation, fe_vdr_modulation[ freqi->params.u.ofdm.constellation ] );
+		HVS_INT(fh, transmission, fe_vdr_transmission[ freqi->params.u.ofdm.transmission_mode ] );
+		HVS_INT(fh, guard_interval, fe_vdr_guard[ freqi->params.u.ofdm.guard_interval ] );
+		HVS_INT(fh, hierarchy, fe_vdr_hierarchy[ freqi->params.u.ofdm.hierarchy_information ] );
 
 		sprintf(key, "%d", freqi->frequency) ;
 		hv_store(freqs, key, strlen(key),  newRV((SV *)fh), 0) ;

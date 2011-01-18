@@ -10,8 +10,7 @@
 #define TUNING_AUTO		VDR_MAX
 
 
-int
-xioctl(int fd, int cmd, void *arg, int mayfail);
+int xioctl(int fd, int cmd, void *arg);
 int dvb_frontend_open(struct dvb_state *h, int write);
 
 
@@ -88,6 +87,8 @@ int dvb_tune(struct dvb_state *h,
 		int timeout
 ) ;
 
+int dvb_wait_tune(struct dvb_state *h, int timeout) ;
+
 int dvb_scan_tune(struct dvb_state *h,
 		int frequency,
 		int inversion,
@@ -153,10 +154,8 @@ void dvb_demux_filter_setup(struct dvb_state *h, int video, int audio);
 int dvb_demux_filter_apply(struct dvb_state *h);
 void dvb_demux_filter_release(struct dvb_state *h);
 int dvb_demux_get_section(int fd, unsigned char *buf, int len) ;
-//int dvb_demux_req_section(struct dvb_state *h, int pid, int timeout)
 int dvb_demux_req_section(struct dvb_state *h, int fd, int pid,
 			  int sec, int mask, int oneshot, int timeout) ;
-int dvb_demux_set_size(struct dvb_state *h, int fd, unsigned long size) ;
 
 /* ======================================================================= */
 /* handle dvb dvr                                                          */

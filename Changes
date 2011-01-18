@@ -1,5 +1,11 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.06 Tue Jan 18 08:17:00 2011
+	- Fixed type rename to pidtype where used by example scripts
+	- Fixed issue where incorrect transponder bandwidth is broadcast in the network information. Now
+	  uses, in order of preference: the readback information from the tuner, frequency file information,
+	  "automatic" settings (where possible), the broadcast NI 
+
 2.05 Wed Apr 21 12:00:00 2010
 	- Corrected typo in dvbt-strength script
 	- Fixed trsncode command escaping
