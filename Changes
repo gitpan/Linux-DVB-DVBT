@@ -1,5 +1,11 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.07 Mon Mar 1 10:06:00 2011
+	- Re-organised to co-exist with Linux::DVB::DVBT::TS and Linux::DVB::DVBT::Advert
+	- Modified so that buffer overflows (i.e. code not keeping up with video stream) is
+	  silently ignored. Keeps track of all overflows in recording stats.
+	- Added option to display ffmpeg output in dvbt-multirec script
+
 2.06 Tue Jan 18 08:17:00 2011
 	- Fixed type rename to pidtype where used by example scripts
 	- Fixed issue where incorrect transponder bandwidth is broadcast in the network information. Now

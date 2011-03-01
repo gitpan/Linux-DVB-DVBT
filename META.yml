@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Linux-DVB-DVBT
-version:             2.06
+version:             2.07
 abstract:            Perl extension for DVB terrestrial recording, epg, and scanning 
 license:             ~
 author:              

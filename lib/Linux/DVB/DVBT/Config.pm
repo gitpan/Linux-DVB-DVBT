@@ -19,7 +19,7 @@ you can if you wish.
 
 use strict ;
 
-our $VERSION = '2.05' ;
+our $VERSION = '2.06' ;
 our $DEBUG = 0 ;
 
 our $DEFAULT_CONFIG_PATH = '/etc/dvb:~/.tv' ;
@@ -309,15 +309,41 @@ sub find_channel
 	## Look for channel info
 	print STDERR "find $channel_name ...\n" if $DEBUG ;
 	
-	# start by just seeing if it's the correct name...
-	if (exists($tuning_href->{'pr'}{$channel_name}))
+	my $found_channel_name = _channel_search($channel_name, $tuning_href->{'pr'}) ;
+	if ($found_channel_name)
 	{
-		$demux_params_href = $tuning_href->{'pr'}{$channel_name} ;
-		print STDERR " + found $channel_name\n" if $DEBUG ;
+		$demux_params_href = $tuning_href->{'pr'}{$found_channel_name} ;
+	}
+					
+	## If we've got the channel, look up it's frontend settings
+	if ($demux_params_href)
+	{
+		my $tsid = $demux_params_href->{'tsid'} ;
+		$frontend_params_href = {
+			%{$tuning_href->{'ts'}{$tsid}},
+			'tsid'	=> $tsid,
+		} ;
+	}
+
+	return ($frontend_params_href, $demux_params_href) ;
+}
+
+
+#----------------------------------------------------------------------
+# 
+sub _channel_search
+{
+	my ($channel_name, $search_href) = @_ ;
+	
+	my $found_channel_name ;
+	
+	# start by just seeing if it's the correct name...
+	if (exists($search_href->{$channel_name}))
+	{
+		return $channel_name ;
 	}
 	else
 	{
-
 		## Otherwise, try finding variations on the channel name
 		my %search ;
 
@@ -350,7 +376,7 @@ print STDERR " -- -- $srch\n" if $DEBUG>3 ;
 
 		print STDERR " + Searching tuning info [", keys %search, "]...\n" if $DEBUG>2 ;
 		
-		foreach my $chan (keys %{$tuning_href->{'pr'}})
+		foreach my $chan (keys %$search_href)
 		{
 			my $srch_chan = lc $chan ;
 			$srch_chan =~ s/\s+//g ;
@@ -360,28 +386,21 @@ print STDERR " -- -- $srch\n" if $DEBUG>3 ;
 				print STDERR " + + checking $search against $srch_chan \n" if $DEBUG>2 ;
 				if ($srch_chan eq $search)
 				{
-					$demux_params_href = $tuning_href->{'pr'}{$chan} ;
+					$found_channel_name = $chan ;
 					print STDERR " + found $channel_name\n" if $DEBUG ;
 					last ;
 				}
 			}
 			
-			last if $demux_params_href ;
+			last if $found_channel_name ;
 		}
 	}
 	
-	## If we've got the channel, look up it's frontend settings
-	if ($demux_params_href)
-	{
-		my $tsid = $demux_params_href->{'tsid'} ;
-		$frontend_params_href = {
-			%{$tuning_href->{'ts'}{$tsid}},
-			'tsid'	=> $tsid,
-		} ;
-	}
-
-	return ($frontend_params_href, $demux_params_href) ;
+	return $found_channel_name ;
 }
+
+
+
 
 #----------------------------------------------------------------------
 
@@ -645,13 +664,19 @@ sub audio_list
 =item B<read($search_path)>
 
 Read tuning information from config files. Look in search path and return first
-set of readable file information.
+set of readable file information in a tuning HASH ref.
+
+Returns a HASH ref of tuning information - i.e. it contains the complete information on all
+transponders (under the 'ts' field), and all programs (under the 'pr' field). [see L<Linux::DVB::DVBT::scan()> method for format].
+
 
 =cut
 
 sub read
 {
 	my ($search_path) = @_ ;
+	
+	$search_path = $DEFAULT_CONFIG_PATH unless defined($search_path) ;
 	
 	my $href ;
 	my $dir = read_dir($search_path) ;
@@ -673,7 +698,7 @@ sub read
 
 #----------------------------------------------------------------------
 
-=item B<write($search_path, $href)>
+=item B<write($search_path, $tuning_href)>
 
 Write tuning information into the first writeable area in the search path.
 
@@ -683,6 +708,7 @@ sub write
 {
 	my ($search_path, $href) = @_ ;
 
+	$search_path = $DEFAULT_CONFIG_PATH unless defined($search_path) ;
 	my $dir = write_dir($search_path) ;
 	if ($dir && $href)
 	{
@@ -696,6 +722,69 @@ sub write
 		print STDERR "Written config to $dir\n" if $DEBUG ;
 	}
 }
+
+
+#----------------------------------------------------------------------
+
+=item B<read_filename($filetype, [$search_path] )>
+
+Returns the readable filename for the specified file type, which can be one of: 'pr'=program, 'ts'=transponder.
+
+Optionally specify the search path (otherwise the default search path is used)
+
+Returns undef if invalid file type is specified, or unable to find a readable area.
+
+=cut
+
+sub read_filename
+{
+	my ($filetype, $search_path) = @_ ;
+	
+	my $filename ;
+	return $filename if (!exists($FILES{$filetype}));
+	
+	$search_path = $DEFAULT_CONFIG_PATH unless defined($search_path) ;
+	my $dir = read_dir($search_path) ;
+
+	if ($dir)
+	{
+		$filename = "$dir/$FILES{$filetype}" ;
+	}
+	return $filename ;
+}
+
+#----------------------------------------------------------------------
+
+=item B<write_filename($filetype, [$search_path] )>
+
+Returns the writeable filename for the specified file type, which can be one of: 'pr'=program, 'ts'=transponder.
+
+Optionally specify the search path (otherwise the default search path is used)
+
+Returns undef if invalid file type is specified, or unable to find a writeable area.
+
+=cut
+
+sub write_filename
+{
+	my ($filetype, $search_path) = @_ ;
+
+	my $filename ;
+	return $filename if (!exists($FILES{$filetype}));
+
+	$search_path = $DEFAULT_CONFIG_PATH unless defined($search_path) ;
+	my $dir = write_dir($search_path) ;
+
+	if ($dir)
+	{
+		$filename = "$dir/$FILES{$filetype}" ;
+	}
+	return $filename ;
+}
+
+
+
+
 
 #----------------------------------------------------------------------
 

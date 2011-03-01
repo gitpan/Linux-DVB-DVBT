@@ -88,6 +88,7 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 	SV 				**val;
 	HV				*href ;
 	HV				*errors_href ;
+	HV				*overflows_href ;
 	HV				*pkts_href ;
 	char			*str ;
     char 			key[256] ;
@@ -187,6 +188,7 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
  					pid_list[pid_index].pid  = SvIV (*piditem) ;
  					pid_list[pid_index].done = 0 ;
  					pid_list[pid_index].errors = 0 ;
+ 					pid_list[pid_index].overflows = 0 ;
  					pid_list[pid_index].pkts = 0 ;
 
  					// internal
@@ -222,6 +224,12 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 		errors_href = (HV *) SvRV (*val);
 		sprintf(string, "%"PRIu64, pid_list[i].errors) ;
 		hv_store(errors_href, key, strlen(key), newSVpv(string, 0), 0);
+
+		// set overflows (save 64 bit value as a string)
+		val = HVF(href, overflows) ;
+		overflows_href = (HV *) SvRV (*val);
+		sprintf(string, "%"PRIu64, pid_list[i].overflows) ;
+		hv_store(overflows_href, key, strlen(key), newSVpv(string, 0), 0);
 
 		// set packets (save 64 bit value as a string)
 		val = HVF(href, pkts) ;

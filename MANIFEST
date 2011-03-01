@@ -10,15 +10,18 @@ fallback/const-xs.inc
 
 lib/Linux/DVB/DVBT.pm
 lib/Linux/DVB/DVBT/Config.pm
+lib/Linux/DVB/DVBT/Constants.pm
 lib/Linux/DVB/DVBT/Utils.pm
 lib/Linux/DVB/DVBT/Ffmpeg.pm
 
 DVBT.xs
 xs/DVBT-common.h
+xs/DVBT-const.c
 xs/DVBT-epg.c
 xs/DVBT-init.c
 xs/DVBT-record.c
 xs/DVBT-scan.c
+xs/DVBT-specific.h
 xs/DVBT-tuning.c
 
 clib/dvb_lib/dvb_debug.c
@@ -37,13 +40,14 @@ clib/dvb_lib/dvb_struct.h
 clib/dvb_lib/dvb_tune.c
 clib/dvb_lib/dvb_tune.h
 clib/dvb_lib/dvb.h
+clib/dvb_lib/Subdir.mk
 clib/dvb_lib/Makefile
 clib/dvb_lib/struct-dvb.c
 clib/dvb_lib/struct-dvb.h
 clib/dvb_lib/ts.h
+clib/dvb_lib/list.h
 
 clib/libng/Subdir.mk
-clib/libng/list.h
 clib/libng/parse-dvb.c
 clib/libng/parse-mpeg.c
 clib/libng/parse-mpeg.h

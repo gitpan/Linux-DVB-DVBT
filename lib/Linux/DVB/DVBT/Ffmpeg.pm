@@ -65,8 +65,9 @@ use Data::Dumper ;
 # GLOBALS
 #============================================================================================
 
-our $VERSION = '2.07' ;
+our $VERSION = '2.08' ;
 our $DEBUG = 0 ;
+our $DEBUG_FFMPEG = 0 ;
 
 # margin on video length checks (in seconds) - allow for 3 minutes of padding
 our $DURATION_MARGIN = 180 ;
@@ -775,7 +776,7 @@ sub run_transcoder
 		$rc = $1 ;
 	}
 
-if ($DEBUG >= 10)
+if ($DEBUG_FFMPEG)
 {
 	print STDERR "-------------------------------------------\n" ;
 	foreach (@$lines_aref)

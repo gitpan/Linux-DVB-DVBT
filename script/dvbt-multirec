@@ -8,15 +8,17 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 # Script illustrating the use of the Linux::DVB::DVBT package for recording channels
 
 use Linux::DVB::DVBT ;
+use Linux::DVB::DVBT::Ffmpeg ;
 
-our $VERSION = "1.000" ;
+our $VERSION = "1.003" ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $adap, $anypid, $info) ;
+	my ($help, $man, $DEBUG, $DEBUG_FFMPEG, $VERBOSE, $config, $adap, $anypid, $info) ;
 	my ($tsid, $lang, $keep) ;
 	my $out = 'av' ;
 
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
+			   'dbg-ffmpeg=s' => \$DEBUG_FFMPEG,
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'cfg=s' => \$config,
@@ -39,6 +41,8 @@ our $VERSION = "1.000" ;
 	Linux::DVB::DVBT->debug($DEBUG) ;
 	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
 	Linux::DVB::DVBT->verbose($VERBOSE) ;
+	
+	$Linux::DVB::DVBT::Ffmpeg::DEBUG_FFMPEG = $DEBUG_FFMPEG ;
 
 	my $error ;
 	
@@ -112,9 +116,10 @@ HEAD
 		print "  $file\n" ;
 		foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
 		{
-			printf "    PID %5d [$pid_href->{'pidtype'}] : %s errors / %s packets\n", 
+			printf "    PID %5d [$pid_href->{'pidtype'}] : %s errors / %s overflows / %s packets\n", 
 				$pid_href->{'pid'},
 				$pid_href->{'errors'},
+				$pid_href->{'overflows'},
 				$pid_href->{'pkts'},
 				 ;
 		}

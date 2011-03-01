@@ -14,6 +14,7 @@
 
 #include "dvb_lib.h"
 
+#define DVB_LIB_VER		"2.00"
 
 static void adapter_name(int adap, char *adapter_name, int len) ;
 static void frontend_name(int frontend, char *frontend_name, int len, char *adapter_name) ;

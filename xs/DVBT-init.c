@@ -204,4 +204,15 @@ dvb_error_str()
 	OUTPUT:
      RETVAL
 
+# /*---------------------------------------------------------------------------------------------------*/
+# /* Get file flags */
+
+void
+dvb_file_flags()
+
+	CODE:
+     fprintf(stderr, "O_LARGEFILE 0x%08x\n", O_LARGEFILE) ;
+     fprintf(stderr, "O_WRONLY    0x%08x\n", O_WRONLY) ;
+     fprintf(stderr, "O_TRUNC     0x%08x\n", O_TRUNC) ;
+     fprintf(stderr, "O_CREAT     0x%08x\n", O_CREAT) ;
 

@@ -41,9 +41,12 @@ static char *DVB_ERRORS[256] = {
 	[-ERR_SELECT]			= "error waiting for data",
 	[-ERR_TIMEOUT]			= "timed out waiting for data",
 	[-ERR_EOF]				= "unexpected EOF",
+	[-ERR_OVERFLOW]			= "dvb buffer overflow",
 
 	[-ERR_FILE]				= "file error",
 	[-ERR_FILE_SEEK]		= "file seek error",
+	[-ERR_FILE_NO_PKTS]		= "file no ts packets",
+	[-ERR_FILE_ZERO]		= "file zero length",
 
 	[-ERR_TUNING_TIMEOUT]	= "frontend tuning timed out",
 	[-ERR_TUNING_TIMEOUT0]	= "frontend is not tuned (no timeout specified)",

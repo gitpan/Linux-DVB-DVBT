@@ -26,10 +26,134 @@
 
 #define TIMEOUT_SECS	3
 
+#ifdef PROFILE_STREAM
 
-static int getbuff(struct dvb_state *h, char *buffer, int *count) ;
-static int input_timeout (int filedes, unsigned int seconds) ;
+#undef BUFFSIZE
+#define BUFFSIZE 188
 
+#define BINS_TIME			10
+#define clear_bins(bins)	memset(bins, 0, (BUFFSIZE+1)*sizeof(unsigned))
+#define inc_bin(bins, bin)	if ((bin>=0) && (bin <= BUFFSIZE)) { ++bins[bin]; }
+
+/* ----------------------------------------------------------------------- */
+void show_bins(unsigned *bins)
+{
+unsigned bin ;
+
+	printf("Read histogram: ") ;
+	for (bin=0; bin <= BUFFSIZE; ++bin)
+	{
+		if (bins[bin])
+		{
+			printf("%d=%d, ", bin, bins[bin]) ;
+		}
+	}
+	printf("\n") ;
+}
+#endif
+
+/* ----------------------------------------------------------------------- */
+// Wait for data ready or timeout
+int
+input_timeout (int filedes, unsigned int seconds)
+{
+   fd_set set;
+   struct timeval timeout;
+
+   /* Initialize the file descriptor set. */
+   FD_ZERO (&set);
+   FD_SET (filedes, &set);
+
+   /* Initialize the timeout data structure. */
+   timeout.tv_sec = seconds;
+   timeout.tv_usec = 0;
+
+   /* select returns 0 if timeout, 1 if input available, -1 if error. */
+   return TEMP_FAILURE_RETRY (select (FD_SETSIZE,
+                                      &set, NULL, NULL,
+                                      &timeout));
+}
+
+
+
+
+/* ----------------------------------------------------------------------- */
+int getbuff(struct dvb_state *h, char *buffer, int *count)
+{
+int rc ;
+int status ;
+int data_ready ;
+fe_status_t  fe_status  = 0;
+
+
+	status = 0 ;
+
+	// wait for data (or time out)
+	data_ready = input_timeout(h->dvro, TIMEOUT_SECS) ;
+	if (data_ready != 1)
+	{
+		if (dvb_debug) fprintf(stderr,"reading %d bytes\n", *count);
+		if (data_ready < 0)
+		{
+			//perror("read");
+			RETURN_DVB_ERROR(ERR_SELECT);
+		}
+		else
+		{
+			//fprintf_timestamp(stderr,"timed out\n");
+			RETURN_DVB_ERROR(ERR_TIMEOUT);
+		}
+#ifdef PROFILE_STREAM
+perror("data ready error : ");
+#endif
+	}
+
+	// got to here so data is available
+	rc = read(h->dvro, buffer, *count);
+
+	// return actual read amount
+	*count = 0 ;
+	if (rc > 0)
+	{
+		*count = rc ;
+	}
+	else
+	{
+#ifdef PROFILE_STREAM
+perror("read error : ");
+#endif
+		if (errno == EOVERFLOW)
+		{
+			// ignore overflow error
+			status = ERR_OVERFLOW ;
+			rc = 1 ;
+		}
+		else
+		{
+			// some problem - show frontend status
+			if (-1 != ioctl(h->fdro, FE_READ_STATUS, &fe_status))
+			{
+				if (dvb_debug) fprintf_timestamp(stderr, ">>> tuning status == 0x%04x\n", fe_status) ;
+			}
+		}
+	}
+
+if (dvb_debug >= 3) fprintf(stderr, "getbuff(): request=%d read=%d\n", *count, rc) ;
+
+	switch (rc) {
+	case -1:
+		//fprintf_timestamp(stderr,"reading %d bytes\n", count);
+		//perror("read");
+		RETURN_DVB_ERROR(ERR_READ);
+	case 0:
+		//fprintf_timestamp(stderr,"EOF\n");
+		RETURN_DVB_ERROR(ERR_EOF);
+
+	default:
+		break;
+	}
+	return(status) ;
+}
 
 /* ----------------------------------------------------------------------- */
 int write_stream(struct dvb_state *h, char *filename, int sec)
@@ -38,7 +162,7 @@ time_t start, end, now, prev;
 char buffer[BUFFSIZE];
 int file;
 int count;
-int rc, wrc;
+int rc, nwrite;
 unsigned done ;
 
     if (sec <= 0)
@@ -73,7 +197,7 @@ unsigned done ;
 			//fprintf(stderr,"EOF\n");
 			RETURN_DVB_ERROR(ERR_EOF);
 		default:
-			wrc=write(file, buffer, rc);
+			nwrite = write(file, buffer, rc);
 			count += rc;
 			break;
 		}
@@ -104,7 +228,7 @@ unsigned done ;
 /* ----------------------------------------------------------------------- */
 int write_stream_demux(struct dvb_state *h, struct multiplex_pid_struct *pid_list, unsigned num_entries)
 {
-time_t now, prev;
+time_t now, prev, end_time;
 char buffer[BUFFSIZE];
 char *bptr ;
 int status, final_status;
@@ -116,6 +240,11 @@ int running ;
 //unsigned byte_num ;
 int buffer_len ;
 int bytes_read ;
+
+#ifdef PROFILE_STREAM
+unsigned read_bins[BUFFSIZE+1] ;
+time_t bins_time ;
+#endif
 
     if (-1 == h->dvro)
     {
@@ -129,19 +258,59 @@ int bytes_read ;
     // sticky error
     final_status = 0 ;
 
+#ifdef PROFILE_STREAM
+    clear_bins(read_bins) ;
+    bins_time = time(NULL) + BINS_TIME ;
+#endif
+
+	// find end time
+    end_time = 0 ;
+	for (pid_index=0; pid_index < num_entries; ++pid_index)
+	{
+		if (end_time < pid_list[pid_index].file_info->end)
+		{
+			end_time = pid_list[pid_index].file_info->end;
+		}
+	}
+
     // main loop
     running = num_entries ;
-//    sync = 1 ;
 	buffer_len = 0 ;
 	bptr = buffer ;
     while (running > 0)
     {
+		// start of each packet
+		now = time(NULL);
+
 		// check for request for new bytes
 		if (buffer_len < TS_PACKET_LEN)
 		{
 			// next packets
 			bytes_read = BUFFSIZE ;
 			status = getbuff(h, buffer, &bytes_read) ;
+
+			// special case of buffer overflow - update counts then continue
+			if (status == ERR_OVERFLOW)
+			{
+				// increment counts
+				for (pid_index=0; pid_index < num_entries; ++pid_index)
+				{
+					if (!pid_list[pid_index].done)
+					{
+						pid_list[pid_index].overflows++;
+					}
+				}
+				status = ERR_NONE ;
+
+				// check for end
+				if (now > end_time)
+				{
+					running = 0 ;
+					break ;
+				}
+				continue ;
+			}
+
 			if (!final_status) final_status = status ;
 			buffer_len = bytes_read ;
 			bptr = buffer ;
@@ -149,14 +318,14 @@ int bytes_read ;
 			if (dvb_debug >= 10)
 				fprintf(stderr, "Reload buffer : 0x%02x (bptr @ %p) %d bytes left\n", bptr[0], bptr, buffer_len) ;
 
+#ifdef PROFILE_STREAM
+			inc_bin(read_bins, bytes_read) ;
+#endif
 		}
 
 
 		if (dvb_debug >= 10)
 			fprintf(stderr, "Start of loop : 0x%02x (bptr @ %p) %d bytes left\n", bptr[0], bptr, buffer_len) ;
-
-		// start of each packet
-		now = time(NULL);
 
 		// reset to a value that won't ever match
 		ts_pid = NULL_PID ;
@@ -230,7 +399,7 @@ int bytes_read ;
 							if (now <= pid_list[pid_index].file_info->end)
 							{
 								fprintf(stderr, "recording (%d secs remaining)",
-									(int)(pid_list[pid_index].file_info->end - now) ) ;
+									(int)(pid_list[pid_index].file_info->end - now)) ;
 							}
 						}
 						else
@@ -242,6 +411,17 @@ int bytes_read ;
 					fprintf(stderr, " [buff len=%d]\n", buffer_len) ;
 				}
 			}
+
+#ifdef PROFILE_STREAM
+			if (now >= bins_time)
+			{
+				show_bins(read_bins) ;
+				clear_bins(read_bins) ;
+				bins_time = time(NULL) + BINS_TIME ;
+			}
+
+//			usleep(10000) ;
+#endif
 
 			// skip if done
 			if (!pid_list[pid_index].done)
@@ -299,89 +479,4 @@ int bytes_read ;
 
     return final_status;
 }
-
-/* ----------------------------------------------------------------------- */
-static int getbuff(struct dvb_state *h, char *buffer, int *count)
-{
-int rc ;
-int status ;
-int data_ready ;
-fe_status_t  fe_status  = 0;
-
-
-	status = 0 ;
-
-	// wait for data (or time out)
-	data_ready = input_timeout(h->dvro, TIMEOUT_SECS) ;
-	if (data_ready != 1)
-	{
-		if (dvb_debug) fprintf(stderr,"reading %d bytes\n", *count);
-		if (data_ready < 0)
-		{
-			//perror("read");
-			RETURN_DVB_ERROR(ERR_SELECT);
-		}
-		else
-		{
-			//fprintf_timestamp(stderr,"timed out\n");
-			RETURN_DVB_ERROR(ERR_TIMEOUT);
-		}
-	}
-
-	// got to here so data is available
-	rc = read(h->dvro, buffer, *count);
-
-	// return actual read amount
-	*count = 0 ;
-	if (rc > 0)
-	{
-		*count = rc ;
-	}
-	else
-	{
-		// some problem - show frontend status
-	    if (-1 != ioctl(h->fdro, FE_READ_STATUS, &fe_status))
-	    {
-			if (dvb_debug) fprintf_timestamp(stderr, ">>> tuning status == 0x%04x\n", fe_status) ;
-	    }
-	}
-	
-if (dvb_debug >= 3) fprintf(stderr, "getbuff(): request=%d read=%d\n", *count, rc) ;
-	
-	switch (rc) {
-	case -1:
-		//fprintf_timestamp(stderr,"reading %d bytes\n", count);
-		//perror("read");
-		RETURN_DVB_ERROR(ERR_READ);
-	case 0:
-		//fprintf_timestamp(stderr,"EOF\n");
-		RETURN_DVB_ERROR(ERR_EOF);
-
-	default:
-		break;
-	}
-	return(status) ;
-}
-
-/* ----------------------------------------------------------------------- */
-// Wait for data ready or timeout
-static int input_timeout (int filedes, unsigned int seconds)
-{
-   fd_set set;
-   struct timeval timeout;
-
-   /* Initialize the file descriptor set. */
-   FD_ZERO (&set);
-   FD_SET (filedes, &set);
-
-   /* Initialize the timeout data structure. */
-   timeout.tv_sec = seconds;
-   timeout.tv_usec = 0;
-
-   /* select returns 0 if timeout, 1 if input available, -1 if error. */
-   return TEMP_FAILURE_RETRY (select (FD_SETSIZE,
-                                      &set, NULL, NULL,
-                                      &timeout));
-}
-
 

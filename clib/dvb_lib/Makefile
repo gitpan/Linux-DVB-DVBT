@@ -1,8 +1,11 @@
-CFLAGS   := -g
-#CFLAGS   += -pedantic
-#CFLAGS   += -std=gnu99
-#CFLAGS   += -O3
+CFLAGS   := -ggdb
+ifdef DEBUG
 CFLAGS   += -O0
+else
+CFLAGS   += -O3
+endif
+CFLAGS   += -pedantic
+CFLAGS   += -std=gnu99
 CFLAGS   += -fPIC
 CFLAGS   += -I.
 CFLAGS   += -D_LARGEFILE_SOURCE
@@ -13,29 +16,30 @@ CFLAGS   += -DHAVE_DVB
 ifdef TESTDEF
 	CFLAGS += -D $(TESTDEF)
 endif
+ifdef PROFILE_STREAM
+	CFLAGS += -DPROFILE_STREAM
+endif
 
-OBJS-libdvb_lib := \
- struct-dvb.o \
- dvb_tune.o \
- dvb_stream.o \
- dvb_epg.o \
- dvb_debug.o  \
- dvb_scan.o \
- dvb_lib.o \
- dvb_error.o
+# libdvb_lib
+libdvb_lib := .
+include $(libdvb_lib)/Subdir.mk
 
 # libng
 libng := ../libng
 include $(libng)/Subdir.mk
 
+OBJS := \
+$(OBJS-libdvb_lib) \
+$(OBJS-libng)
 
-libdvb_lib.a: $(OBJS-libdvb_lib) $(OBJS-libng)
-	$(AR) cr libdvb_lib.a $(OBJS-libdvb_lib) $(OBJS-libng)
+
+libdvb_lib.a: $(OBJS)
+	$(AR) cr libdvb_lib.a $(OBJS)
 	ranlib libdvb_lib.a
 
 clean::
-	rm -f libdvb_lib.a
-	rm -f *.o
+	rm -f $(libdvb_lib)/*.a
+	rm -f $(libdvb_lib)/*.o
 	rm -f $(libng)/*.a
 	rm -f $(libng)/*.o
 

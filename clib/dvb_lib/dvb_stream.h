@@ -15,6 +15,7 @@ struct multiplex_pid_struct {
     unsigned int                     pid;
     unsigned int                     done;
     uint64_t						 errors;
+    uint64_t						 overflows;
     uint64_t	                     pkts;
 
     // internal (Perl)

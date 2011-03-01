@@ -1,19 +1,6 @@
 /*---------------------------------------------------------------------------------------------------*/
-#include <linux/dvb/frontend.h>
-#include <linux/dvb/dmx.h>
-
+#include <unistd.h>
 #include "list.h"
-
-#include "dvb_struct.h"
-#include "dvb_lib.h"
-#include "ts.h"
-
-#define DEFAULT_TIMEOUT		900
-
-// If large file support is not included, then make the value do nothing
-#ifndef O_LARGEFILE
-#define O_LARGEFILE	0
-#endif
 
 /*---------------------------------------------------------------------------------------------------*/
 
@@ -92,68 +79,6 @@
 
 
 /*---------------------------------------------------------------------------------------------------*/
-
-static int DVBT_DEBUG = 0 ;
-
-static int fe_vdr_bandwidth[] = {
-	[ BANDWIDTH_AUTO  ] = VDR_MAX,
-	[ BANDWIDTH_8_MHZ ] = 8,
-	[ BANDWIDTH_7_MHZ ] = 7,
-	[ BANDWIDTH_6_MHZ ] = 6,
-};
-
-static int fe_vdr_rates[] = {
-	[ FEC_AUTO ] = VDR_MAX,
-	[ FEC_1_2  ] = 12,
-	[ FEC_2_3  ] = 23,
-	[ FEC_3_4  ] = 34,
-	[ FEC_4_5  ] = 45,
-	[ FEC_5_6  ] = 56,
-	[ FEC_6_7  ] = 67,
-	[ FEC_7_8  ] = 78,
-	[ FEC_8_9  ] = 89,
-};
-
-static int fe_vdr_modulation[] = {
-	[ QAM_AUTO ] = VDR_MAX,
-	[ QPSK     ] = 0,
-	[ QAM_16   ] = 16,
-	[ QAM_32   ] = 32,
-	[ QAM_64   ] = 64,
-	[ QAM_128  ] = 128,
-	[ QAM_256  ] = 256,
-};
-
-static int fe_vdr_transmission[] = {
-	[ TRANSMISSION_MODE_AUTO ] = VDR_MAX,
-	[ TRANSMISSION_MODE_2K   ] = 2,
-	[ TRANSMISSION_MODE_8K   ] = 8,
-};
-
-static int fe_vdr_guard[] = {
-	[ GUARD_INTERVAL_AUTO ] = VDR_MAX,
-	[ GUARD_INTERVAL_1_4  ] = 4,
-	[ GUARD_INTERVAL_1_8  ] = 8,
-	[ GUARD_INTERVAL_1_16 ] = 16,
-	[ GUARD_INTERVAL_1_32 ] = 32,
-};
-
-static int fe_vdr_hierarchy[] = {
-	[ HIERARCHY_AUTO ] = VDR_MAX,
-	[ HIERARCHY_NONE ] = 0,
-	[ HIERARCHY_1 ]    = 1,
-	[ HIERARCHY_2 ]    = 2,
-	[ HIERARCHY_4 ]    = 4,
-};
-
-static int fe_vdr_inversion[] = {
-	[ INVERSION_OFF  ] = 0,
-	[ INVERSION_ON   ] = 1,
-	[ INVERSION_AUTO   ] = VDR_MAX,
-};
-
-
-/*---------------------------------------------------------------------------------------------------*/
 static char *_to_string(char *str)
 {
 int i, j, len = strlen(str);
@@ -168,19 +93,4 @@ static char ret_str[8192] ;
    }
    return ret_str ;
 }
-
-/*---------------------------------------------------------------------------------------------------*/
-// MACROS for DVBT-advert
-
-#define HVS_INT_SETTING(h, name, i, prefix)		HVS_INT(h, name, i)
-#define HVS_INT_RESULT(h, name, i)				HVS_INT(h, name, i)
-
-
-// Store result
-#define HVS_FRAME_RESULT(h, NAME, IDX)		HVS_INT(h, NAME, user_data->results_array[IDX].frame_results.NAME)
-#define HVS_LOGO_RESULT(h, NAME, IDX)		HVS_INT(h, NAME, user_data->results_array[IDX].logo_results.NAME)
-#define HVS_AUDIO_RESULT(h, NAME, IDX)		HVS_INT(h, NAME, user_data->results_array[IDX].audio_results.NAME)
-#define HVS_RESULT_START
-#define HVS_RESULT_END
-
 

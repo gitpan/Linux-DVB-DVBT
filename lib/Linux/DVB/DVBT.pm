@@ -313,6 +313,7 @@ use POSIX qw(strftime);
 use Linux::DVB::DVBT::Config ;
 use Linux::DVB::DVBT::Utils ;
 use Linux::DVB::DVBT::Ffmpeg ;
+use Linux::DVB::DVBT::Constants ;
 
 #============================================================================================
 # EXPORTER
@@ -323,7 +324,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.06';
+our $VERSION = '2.07';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -3552,6 +3553,7 @@ Linux::DVB::DVBT::prt_data("multiplex_record() : multiplex_info=", \%multiplex_i
 			'_file'		=> $file,
 			'pids'		=> [],
 			'errors'	=> {},
+			'overflows'	=> {},
 		} ;
 
 		# copy scalars
@@ -3585,6 +3587,7 @@ print STDERR " + + mod extension\n" if $DEBUG>=10 ;
 			push @{$href->{'pids'}}, $pid ;
 			
 			$href->{'errors'}{$pid} = 0 ;
+			$href->{'overflows'}{$pid} = 0 ;
 			$href->{'pkts'}{$pid} = 0 ;
 		}
 		push @multiplex_info, $href ;
@@ -3636,6 +3639,11 @@ Linux::DVB::DVBT::prt_data(" + returned info=", \@multiplex_info) if $DEBUG ;
 	#				pid2	=> error_count2,
 	#				...
 	#			}
+	#			overflows		=> {
+	#				pid1	=> overflow_count1,
+	#				pid2	=> overflow_count2,
+	#				...
+	#			}
 	#			pkts		=> {
 	#				pid1	=> packet_count1,
 	#				pid2	=> packet_count2,
@@ -3663,11 +3671,17 @@ Linux::DVB::DVBT::prt_data(" + + href=", $href) if $DEBUG ;
 			my $pid = $pid_href->{'pid'} ;
 #print STDERR " - PID $pid (file=$file)\n" ;
 			$pid_href->{'pkts'} = 0 ;
-			$pid_href->{'error'} = 0 ;
+			$pid_href->{'errors'} = 0 ;
+			$pid_href->{'overflows'} = 0 ;
 			if (exists($href->{'errors'}{$pid}))
 			{
 				$pid_href->{'errors'} = $href->{'errors'}{$pid} ;
 #print STDERR " - - errors = $href->{'errors'}{$pid}\n" ;
+			}
+			if (exists($href->{'overflows'}{$pid}))
+			{
+				$pid_href->{'overflows'} = $href->{'overflows'}{$pid} ;
+#print STDERR " - - errors = $href->{'overflows'}{$pid}\n" ;
 			}
 			if (exists($href->{'pkts'}{$pid}))
 			{
@@ -3752,7 +3766,6 @@ Linux::DVB::DVBT::prt_data("Call ts_transcode for file=$file with : info=", $mul
 	}
 	return $error ;
 }
-
 
 
 #============================================================================================
@@ -4160,6 +4173,12 @@ sub _si_pid
 	}
 
 	return $pid_href ;
+}
+
+#-----------------------------------------------------------------------------
+sub _no_once_warning
+{
+	return \%Linux::DVB::DVBT::Constants::CONSTANTS ;
 }
 
 # ============================================================================================

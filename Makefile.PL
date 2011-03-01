@@ -51,6 +51,21 @@ To skip install, rerun with option -n given to Makefile.PL.
 EOW
 }
 
+# -d = debug 
+my $MOD_DEFINE="-DHAVE_DVB" ;
+my $MAKE_DEFINE="HAVE_DVB=1" ;
+if ( 
+	grep $_ eq '-d', @ARGV
+) 
+{
+	@ARGV = grep $_ ne '-d', @ARGV;
+	warn "Buidling version with extra debugging enabled...\n";
+	$MOD_DEFINE .= " -DDEBUG" ;
+	$MAKE_DEFINE .= " DEBUG=1" ;
+} 
+
+## temp
+#$MAKE_DEFINE .= " PROFILE_STREAM=1" ;
 
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
@@ -70,7 +85,7 @@ WriteMakefile(
       (ABSTRACT_FROM  => "lib/$modpath.pm", # retrieve abstract from module
        AUTHOR         => 'Steve Price <cpan@sdprice.plus.com>') : ()),
     LIBS              => ['-lrt'], # e.g., '-lm'
-    DEFINE            => '-DHAVE_DVB', # e.g., '-DHAVE_SOMETHING'
+    DEFINE            => $MOD_DEFINE, # e.g., '-DHAVE_SOMETHING'
     INC               => '-I./clib/dvb_lib -I./clib/libng', # e.g., '-I. -I/usr/include/other'
     EXE_FILES         => [ map "script/$_", @programs_to_install ],
  
@@ -96,7 +111,7 @@ endif
 
 ## make libs
 $(MYEXTLIB): clib/dvb_lib/Makefile 
-	cd clib/dvb_lib && $(MAKE) $(MAKE_TEST_DEF) CCFLAGS="$(CCFLAGS)" CCCDLFLAGS="$(CCCDLFLAGS)"
+	cd clib/dvb_lib && $(MAKE) $(MAKE_TEST_DEF) '.$MAKE_DEFINE.' CCFLAGS="$(CCFLAGS)" CCCDLFLAGS="$(CCCDLFLAGS)"
 
 ## Clean up
 clean:: dvb_lib_clean                                                                                                   
