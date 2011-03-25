@@ -1,5 +1,15 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.08 Tue Mar 25 12:46:00 2011
+	- re-write of scan routine to better handle the case where multiple frequencies (TSIDs) contain
+	  the same channels. Also handles channel renaming properly now. 
+	- Fixed bug with multiplex recording where frontend is not retuned if the same script records from
+	  a new TSID
+	- Added better channel checking in dvbt-chans script (for the --extra-check option)
+	- Added -list and -del options to dvbt-chans script
+	- Added new script 'dvbt-tsid-qual' to show multiplex channel quality (or error levels)
+	
+
 2.07 Mon Mar 1 10:06:00 2011
 	- Re-organised to co-exist with Linux::DVB::DVBT::TS and Linux::DVB::DVBT::Advert
 	- Modified so that buffer overflows (i.e. code not keeping up with video stream) is

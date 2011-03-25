@@ -79,12 +79,24 @@ dvb_scan(DVB *dvb, int verbose)
 
  if (DVBT_DEBUG >= 10)
  {
-		fprintf(stderr, "#@f FREQ: %d Hz seen=%d tuned=%d (Strength=%d)\n",
+		fprintf(stderr, "#@f FREQ: %d Hz seen=%d tuned=%d (Strength=%d) [",
 			freqi->frequency,
 			freqi->flags.seen,
 			freqi->flags.tuned,
 			freqi->strength
 		) ;
+		fprintf(stderr, "inv=%d bw=%d crh=%d crl=%d con=%d tr=%d g=%d hi=%d",
+		    freqi->params.inversion,
+			freqi->params.u.ofdm.bandwidth,
+			freqi->params.u.ofdm.code_rate_HP,
+			freqi->params.u.ofdm.code_rate_LP,
+			freqi->params.u.ofdm.constellation,
+			freqi->params.u.ofdm.transmission_mode,
+			freqi->params.u.ofdm.guard_interval,
+			freqi->params.u.ofdm.hierarchy_information
+		) ;
+		fprintf(stderr, "]\n") ;
+		fprintf(stderr, "#@f Mod=%d\n", co_t[ freqi->params.u.ofdm.constellation ] );
  }
 		/* Convert structure fields into hash elements */
 		fh = (HV *)sv_2mortal((SV *)newHV());
@@ -120,7 +132,7 @@ dvb_scan(DVB *dvb, int verbose)
 
 			// round up frequency to nearest kHz
 			// HVS_I(rh, stream, frequency) ;
-			frequency = (int)(  ((float)stream->frequency / 1000.0) + 0.5 ) * 1000 ;
+			frequency = ROUND_FREQUENCY(stream->frequency) ;
 
  if (DVBT_DEBUG >= 10)
  {
@@ -307,7 +319,7 @@ dvb_scan(DVB *dvb, int verbose)
 		        finfo = list_entry(fitem, struct freq_info, next);
 
 				// round up frequency to nearest kHz
-				frequency = (int)(  ((float)(finfo->frequency) / 1000.0) + 0.5 ) * 1000 ;
+				frequency = ROUND_FREQUENCY(finfo->frequency) ;
 
  if (DVBT_DEBUG >= 10)
  {

@@ -60,6 +60,7 @@ script/dvbt-devices
 script/dvbt-chans
 script/dvbt-multirec
 script/dvbt-strength
+script/dvbt-tsid-qual
 script/run-scan
 
 doxygen/Doxyfile

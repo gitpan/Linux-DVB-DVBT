@@ -1,4 +1,3 @@
-#use 5.008008;
 use 5.006;
 use ExtUtils::MakeMaker qw(prompt WriteMakefile);
 use Config;
@@ -27,7 +26,7 @@ if ($^O !~ /linux/i)
 check_new_version() ;
 
 
-my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans dvbt-multirec dvbt-strength);
+my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans dvbt-multirec dvbt-strength dvbt-tsid-qual);
 my $install_bin = 1;
 
 if ( 

@@ -5,6 +5,11 @@
 #include "dvb_struct.h"
 #include "parse-mpeg.h"
 
+
+// round up frequency to nearest kHz
+#define ROUND_FREQUENCY(freq)	(int)(((float)freq / 1000.0) + 0.5 ) * 1000
+
+
 // Default is to use 'auto'
 #define VDR_MAX 		999
 #define TUNING_AUTO		VDR_MAX

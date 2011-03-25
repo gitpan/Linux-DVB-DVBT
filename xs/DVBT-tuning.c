@@ -200,3 +200,13 @@ dvb_signal_quality(DVB *dvb)
  OUTPUT:
    RETVAL
 
+# /*---------------------------------------------------------------------------------------------------*/
+# /* Round up frequency */
+int
+dvb_round_freq(int freqin)
+
+ CODE:
+   RETVAL = ROUND_FREQUENCY(freqin) ;
+ OUTPUT:
+   RETVAL
+

@@ -324,7 +324,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.07';
+our $VERSION = '2.08';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -456,11 +456,15 @@ my @FIELD_LIST = qw/dvb
 					prune_channels
 					add_si
 					
+					scan_allow_duplicates
+					scan_prefer_more_chans
+					
 					_scan_freqs
 					_device_index
 					_device_info
 					_demux_filters
 					_multiplex_info
+					_scan_info
 					/ ;
 my %FIELDS = map {$_=>1} @FIELD_LIST ;
 
@@ -505,6 +509,10 @@ my %DEFAULTS = (
 	
 	# Automatically add SI tables to recording
 	'add_si'		=> 1,
+
+	# scan merge options
+	'scan_allow_duplicates'	=> 0,
+	'scan_prefer_more_chans' => 0,
 	
 	######################################
 	# Internal
@@ -523,6 +531,9 @@ my %DEFAULTS = (
 	
 	# list of multiplex recordings scheduled
 	'_multiplex_info'	=> {},
+	
+	# reasons for scan choosing the freq it does for each chan
+	'_scan_info'		=> {},
 ) ;
 
 # Frequency must be at least 100 MHz
@@ -1134,6 +1145,16 @@ sub scan
 {
 	my $self = shift ;
 
+	my $scan_info_href = $self->_scan_info() ;
+	$scan_info_href->{'chans'} ||= {} ;
+	$scan_info_href->{'tsids'} ||= {} ;
+	$scan_info_href->{'tsid_order'} ||= [] ;
+
+	my %scan_merge_options = (
+		'duplicates'	=> $self->scan_allow_duplicates(),
+		'num_chans'		=> $self->scan_prefer_more_chans(),
+	) ;
+
 	# Get any existing info
 	my $tuning_href = $self->get_tuning_info() ;
 
@@ -1320,7 +1341,7 @@ print STDERR "process raw...\n" if $DEBUG>=5 ;
 		$tsids{$tsid}{'frequency'} = undef ;
 	}	
 
-if ($VERBOSE >= 2)
+if ($VERBOSE >= 3)
 {
 print STDERR "\n========================================================\n" ;
 foreach my $ts_href (@{$raw_scan_href->{'ts'}})
@@ -1333,7 +1354,7 @@ foreach my $ts_href (@{$raw_scan_href->{'ts'}})
 	foreach my $prog_href (@{$raw_scan_href->{'pr'}})
 	{
 		my $ptsid = $prog_href->{'tsid'} ;
-		next unless $ptsid == $tsid ;
+		next unless $ptsid eq $tsid ;
 		
 		my $name = $prog_href->{'name'} ;
 		my $pnr = $prog_href->{'pnr'} ;
@@ -1361,13 +1382,25 @@ print STDERR "\n========================================================\n" ;
 		my $name = $prog_href->{'name'} ;
 		my $pnr = $prog_href->{'pnr'} ;
 		
+		$scan_info_href->{'chans'}{$name} ||= {
+			'comments'	=> [],
+		} ;
+		$scan_info_href->{'tsids'}{$tsid} ||= {
+			'comments'	=> [],
+		} ;
+		
 		my $freqs_aref = delete $prog_href->{'freqs'} ;
+		unless (@$freqs_aref)
+		{
+			push @{$scan_info_href->{'chans'}{$name}{'comments'}}, "no freqs : TSID $tsid" ;
+		}
 		next unless @$freqs_aref ;
 		my $freq = @{$freqs_aref}[0] ;
 		
 		# handle multiple freqs
 		if (@$freqs_aref >= 2)
 		{
+			push @{$scan_info_href->{'chans'}{$name}{'comments'}}, "multiple freqs : TSID $tsid" ;
 			foreach my $new_freq (@$freqs_aref)
 			{
 				if ($new_freq != $freq)
@@ -1379,6 +1412,9 @@ print STDERR "\n========================================================\n" ;
 					{
 						print STDERR "  Program \"$name\" ($pnr) with multiple freqs : using new signal $new_strength (old $old_strength) change freq from $freq to $new_freq\n" if $VERBOSE ;
 						$freq = $new_freq ;
+
+						push @{$scan_info_href->{'chans'}{$name}{'comments'}}, "multiple freqs : TSID $tsid : using new signal $new_strength (old $old_strength) change freq from $freq to $new_freq" ;
+						push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, "multiple freqs : using new signal $new_strength (old $old_strength) change freq from $freq to $new_freq" ;
 					}
 				}
 			}
@@ -1392,8 +1428,14 @@ print STDERR "\n========================================================\n" ;
 		}
 		
 		# Set transponder freq
+		if ( (!defined($tsids{$tsid}{'frequency'})) || ($tsids{$tsid}{'frequency'} != $freq) )
+		{
+			push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, "set freq $freq" ;
+		}
 		$tsids{$tsid}{'frequency'} = $freq ; 
 		$scan_href->{'ts'}{$tsid} = $tsids{$tsid} ;
+
+		push @{$scan_info_href->{'chans'}{$name}{'comments'}}, "set freq $freq : TSID $tsid" ;
 	}
 	
 
@@ -1477,6 +1519,7 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
 	
 					if (!$lcn_href->{'visible'})
 					{
+						push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "LCN not visible - deleting chan" ;
 						++$delete ;
 					}			
 				}	
@@ -1515,6 +1558,7 @@ print STDERR " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_hre
 				## video
 				if (!$scan_href->{'pr'}{$chan}{'video'} || !$scan_href->{'pr'}{$chan}{'audio'})
 				{
+					push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "no video/audio pids - deleting chan" ;
 					++$delete ;
 				}
 			}
@@ -1523,6 +1567,7 @@ print STDERR " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_hre
 				## audio
 				if (!$scan_href->{'pr'}{$chan}{'audio'})
 				{
+					push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "no audio pids - deleting chan" ;
 					++$delete ;
 				}
 			}
@@ -1532,6 +1577,7 @@ print STDERR " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_hre
 		{
 			# remove none video/radio types
 			++$delete ;
+			push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "non-video/radio - deleting chan" ;
 		}
 
 		# skip delete if pruning not required
@@ -1560,9 +1606,11 @@ prt_data("Scan before tsid fix=", $scan_href) if $DEBUG>=5 ;
 	# this is what we used to set the frontend with
 	my $frontend_params_href = $self->frontend_params() ;
 		
+	# NOTE: Only really expect there to be at most 1 entry in the 'ts' record. It should be the single TSID at this frequency
 	foreach my $tsid (keys %{$scan_href->{'ts'}})
 	{
 		my $freq = $tsids{$tsid}{'frequency'} ;
+		
 		if (exists($scan_href->{'freqs'}{$freq}))
 		{
 			# Use readback info for preference
@@ -1570,6 +1618,8 @@ prt_data("Scan before tsid fix=", $scan_href) if $DEBUG>=5 ;
 			{
 				$tsids{$tsid}{$_} = $scan_href->{'freqs'}{$freq}{$_} ;
 			}
+			
+			push @{$scan_info_href->{'tsid_order'}}, " + Got TSID $tsid at $freq Hz" ;
 		}
 		elsif ($freq == $frontend_params_href->{'frequency'})
 		{
@@ -1578,6 +1628,8 @@ prt_data("Scan before tsid fix=", $scan_href) if $DEBUG>=5 ;
 			{
 				$tsids{$tsid}{$_} = $frontend_params_href->{$_} ;
 			}
+
+			push @{$scan_info_href->{'tsid_order'}}, " + Got TSID $tsid at $freq Hz" ;
 		}
 		else
 		{
@@ -1604,18 +1656,19 @@ prt_data("Scan before tsid fix=", $scan_href) if $DEBUG>=5 ;
 printf STDERR "Merge flag=%d\n", $self->merge  if $DEBUG>=5 ;
 prt_data("FE params=", $frontend_params_href, "Scan before merge=", $scan_href) if $DEBUG>=5 ;
 
+
 	## Merge results
 	if ($self->merge)
 	{
 		if ($self->_scan_freqs)
 		{
 			## update the old information with the new iff new has better signal
-			$scan_href = Linux::DVB::DVBT::Config::merge_scan_freqs($scan_href, $tuning_href, $VERBOSE) ;
+			$scan_href = Linux::DVB::DVBT::Config::merge_scan_freqs($scan_href, $tuning_href, \%scan_merge_options, $VERBOSE, $scan_info_href) ;
 		}
 		else
 		{
 			## just update the old information with the new
-			$scan_href = Linux::DVB::DVBT::Config::merge($scan_href, $tuning_href) ;
+			$scan_href = Linux::DVB::DVBT::Config::merge($scan_href, $tuning_href, $scan_info_href) ;
 		}	
 prt_data("Merged=", $scan_href) if $DEBUG>=5 ;
 	}
@@ -1674,6 +1727,18 @@ sub scan_from_file
 prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBUG>=2 ;
 
 
+	#    $freqs_href = 
+	#    { # HASH(0x844d76c)
+	#      482000000 => 
+	#        { # HASH(0x8448da4)
+	#          'seen' => 1,
+	#          'strength' => 0,
+	#          'tuned' => 0,
+	#        },
+	#
+	my $freqs_href = {} ;
+	
+
 	## parse file
 	open my $fh, "<$freq_file" or return $self->handle_error( "Error: Unable to read frequency file $freq_file : $!") ;
 	my $line ;
@@ -1685,7 +1750,19 @@ prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBU
 
 		if ($line =~ m%^\s*T\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)%i)
 		{
-			my $freq = $1 ;
+			my $freq = dvb_round_freq($1) ;
+			
+			if (exists($freqs_href->{$freq}))
+			{
+				print STDERR "Note: frequency $freq Hz already seen, skipping\n" ;
+				next ;
+			}
+			$freqs_href->{$freq} = {
+	          'seen' => 0,
+	          'strength' => 0,
+	          'tuned' => 0,
+			} ;
+			
 
 			## setting all params doesn't necessarily work since the freq file is quite often out of date!				
 			my %params = (
@@ -1724,9 +1801,15 @@ prt_data("Tuning params=", \%tuning_params) if $DEBUG>=2 ;
 
 	## prep for scan
 	dvb_scan_new($self->{dvb}, $VERBOSE) ;
+	
+	## Info
+	my $scan_info_href = $self->_scan_info() ;
+	$scan_info_href->{'file_freqs'} = [ @tuning_list ] ;
+	$scan_info_href->{'freqs'} = [ ] ;
+	$scan_info_href->{'chans'} = { } ;
+	$scan_info_href->{'tsid_order'} ||= [] ;
 
 	## tune into each frequency & perform the scan
-	my $freqs_href = {} ;
 	my $saved_merge = $self->merge ;
 	while (@tuning_list)
 	{
@@ -1743,7 +1826,6 @@ print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 			# make sure frequency is valid
 			if ($tuning_params_href->{'frequency'} >= $MIN_FREQ)
 			{
-
 				# convert file entry into a frontend param
 				foreach my $param (keys %$tuning_params_href)
 				{
@@ -1757,7 +1839,7 @@ print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 						$tuning_params{$param} = $tuning_params_href->{$param} ;
 					}
 				}
-				$tuning_params{'frequency'} = $tuning_params_href->{'frequency'} ;
+				$tuning_params{'frequency'} = dvb_round_freq($tuning_params_href->{'frequency'}) ;
 				
 				# set tuning
 				print STDERR "Setting frequency: $tuning_params{frequency} Hz\n" if $self->verbose ;
@@ -1769,6 +1851,9 @@ print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 			{
 				$self->frontend_params( {%tuning_params} ) ;
 				$tuned = 1 ;
+
+				push @{$scan_info_href->{'freqs'}}, $tuning_params_href ;
+				push @{$scan_info_href->{'tsid_order'}}, "Set freq to $tuning_params{'frequency'} Hz" ;
 			}
 			else
 			{
@@ -1784,7 +1869,10 @@ print STDERR "Attempt tune: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 		}
 		
 		last if !$tuned ;
-	
+
+
+print STDERR "Scan merge : ", $self->merge(),"\n" if $DEBUG>=2 ;
+			
 		# Scan
 		$self->_scan_freqs(1) ;
 		$self->scan() ;
@@ -1801,18 +1889,21 @@ print STDERR "Attempt tune: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 		my %freq_list ;
 		foreach my $href (@tuning_list)
 		{
-			$freq_list{$href->{'frequency'}} = 1 ;
+			my $freq_round = dvb_round_freq($href->{'frequency'}) ;
+			$freq_list{$freq_round} = 1 ;
 		}
-		foreach my $freq (keys %$freqs_href)
+		foreach my $freq (sort {$a <=> $b} keys %$freqs_href)
 		{
 			next if $freqs_href->{$freq}{'seen'} ;
-			if (!exists($freq_list{$freq}) )
+			
+			my $freq_round = dvb_round_freq($freq) ;
+			if (!exists($freq_list{$freq_round}) )
 			{
 				push @tuning_list, {
-					'frequency'		=> $freq,
+					'frequency'		=> $freq_round,
 					%{$freqs_href->{$freq}},
 				} ;
-print STDERR " + adding freq $freq\n" if $DEBUG>=2 ;
+print STDERR " + adding freq $freq_round\n" if $DEBUG>=2 ;
 			}
 		} 
 
@@ -1828,6 +1919,58 @@ print STDERR "Loop end: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 	## clear ready for next scan
 	dvb_scan_new($self->{dvb}, $VERBOSE) ;
 
+prt_data("## Scan Info ##", $scan_info_href) if $DEBUG>=2 ;
+
+	if ($VERBOSE)
+	{
+		print "\n\n" ;
+		print "SCANNING INFORMATION\n" ;
+		print "====================\n\n" ;
+		
+		print "Frequency Scan\n" ;
+		print "--------------\n" ;
+		my $set=0 ;
+		foreach my $line (@{$scan_info_href->{'tsid_order'}})
+		{
+			my $this_set=0 ;
+			if ($line =~ /Set freq/i)
+			{
+				$this_set=1 ;
+			}
+			if ($set && $this_set)
+			{
+				print "  ** No TSIDs **\n" ;		
+			}	
+			$set = $this_set ;
+			print "\n" if $this_set ;
+			print "  $line\n" ;		
+		}
+		print "\n" ;
+
+		print "TSID Info\n";
+		print "---------\n";
+		foreach my $tsid (sort {int($a) <=> int($b)} keys %{$scan_info_href->{'tsids'}})
+		{
+			print "\n  TSID $tsid\n" ;		
+			foreach my $line (@{$scan_info_href->{'tsids'}{$tsid}{'comments'}})
+			{
+				print "    $line\n" ;		
+			}
+		}
+		print "\n";
+
+		print "Channel Info\n";
+		print "------------\n";
+		foreach my $chan (sort keys %{$scan_info_href->{'chans'}})
+		{
+			print "\n  $chan\n" ;		
+			foreach my $line (@{$scan_info_href->{'chans'}{$chan}{'comments'}})
+			{
+				print "    $line\n" ;		
+			}
+		}
+		print "\n";
+	}
 
 	## return tuning settings	
 	return $self->tuning() ;
@@ -2812,7 +2955,9 @@ sub add_demux_filter
 	my $self = shift ;
 	my ($pid, $pid_type, $tsid, $demux_params_href) = @_ ;
 
-printf STDERR "add_demux_filter($pid, $pid_type)\n", $pid if $DEBUG ;
+	$tsid ||= 0 ;
+	
+printf STDERR "add_demux_filter(pid=$pid, type=$pid_type, tsid=$tsid)\n", $pid if $DEBUG ;
 
 	## valid pid?
 	if ( ($pid < 0) || ($pid > $MAX_PID) )
@@ -2829,6 +2974,16 @@ printf STDERR "add_demux_filter($pid, $pid_type)\n", $pid if $DEBUG ;
 
 	## start with current tuning params
 	my $frontend_href = $self->frontend_params() ;
+prt_data("frontend_href=", $frontend_href) if $DEBUG >= 5 ;
+
+	# re-tune if not the same tsid
+	if ($frontend_href)
+	{
+#		$frontend_href = undef if $frontend_href->{'tsid'} != $tsid ;
+		$frontend_href = undef if $frontend_href->{'tsid'} ne $tsid ;
+	}
+	
+	# check tuning
 	if (!$frontend_href)
 	{
 print STDERR " frontend not yet tuned...\n" if $DEBUG >= 5 ;
@@ -3324,7 +3479,8 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 
 				# check in same multiplex
 				$tsid ||= $frontend_params_href->{'tsid'} ;
-				if ($tsid != $frontend_params_href->{'tsid'})
+#				if ($tsid != $frontend_params_href->{'tsid'})
+				if ($tsid ne $frontend_params_href->{'tsid'})
 				{
 					return $self->handle_error("Channel $channel_name (on $frontend_params_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
 				}
@@ -3410,7 +3566,8 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 						# find entry with matching TSID
 						foreach (@pid_info)
 						{
-							if ($_->{'tsid'} == $tsid)
+#							if ($_->{'tsid'} == $tsid)
+							if ($_->{'tsid'} eq $tsid)
 							{
 								$pid_href = $_ ;
 								last ;
@@ -3437,7 +3594,8 @@ prt_data(" + Add pid = ", $pid_href) if $DEBUG >= 15 ;
 
 					# check multiplex
 					$tsid ||= $pid_href->{'tsid'} ;
-					if (!defined($tsid) || !defined($pid_href->{'tsid'}) || ($tsid != $pid_href->{'tsid'}) )
+#					if (!defined($tsid) || !defined($pid_href->{'tsid'}) || ($tsid != $pid_href->{'tsid'}) )
+					if (!defined($tsid) || !defined($pid_href->{'tsid'}) || ($tsid ne $pid_href->{'tsid'}) )
 					{
 						return $self->handle_error("PID $pid (on $pid_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
 					}

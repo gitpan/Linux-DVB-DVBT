@@ -8,20 +8,24 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "3.01" ;
+our $VERSION = "3.02" ;
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $check, $extra_check, $multiplex, $tsid_only, $adap, $write) ;
-	GetOptions('v|verbose=s' => \$VERBOSE,
-			   'debug=s' => \$DEBUG,
+	my ($help, $man, $DEBUG, $DEBUG_SCRIPT, $VERBOSE, $config, $check, $extra_check, $multiplex, $tsid_only, $adap, $write) ;
+	my ($list, $del_tsid) ;
+	GetOptions('v|verbose=i' => \$VERBOSE,
+			   'dbg-script=i' => \$DEBUG_SCRIPT,
+			   'debug=i' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'cfg=s' => \$config,
 			   'check' => \$check,
 			   'extra-check' => \$extra_check,
 			   'multi' => \$multiplex,
-			   'tsid=i' => \$tsid_only,
+			   'tsid=s' => \$tsid_only,
 			   'a|adap|dvb=i' => \$adap,
 			   'write=s' => \$write,
+			   'ls|list' => \$list,
+			   'del|delete=s' => \$del_tsid,
 			   ) or pod2usage(2) ;
 
 
@@ -47,6 +51,46 @@ our $VERSION = "3.01" ;
 	my $tuning_href = $dvb->get_tuning_info() ;
 	my $channels_aref = $dvb->get_channel_list() ;
 Linux::DVB::DVBT::prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
+
+
+	## Option to delete a TSID
+	if ($del_tsid)
+	{
+		if (!Linux::DVB::DVBT::Config::tsid_delete($del_tsid, $tuning_href))
+		{
+			print STDERR "Unable to find TSID $del_tsid in config\n" ;
+			exit 1 ;
+		}
+		else
+		{
+			print STDERR "Saving updated config...\n" ;
+			Linux::DVB::DVBT::Config::write($dvb->config_path(), $tuning_href) ;
+		}
+	}
+
+	## Just produce a list of TSIDS
+	if ($list)
+	{
+
+		print "--------------------------------------------------------------------\n" ;
+		print "TSIDs\n" ;
+		print "--------------------------------------------------------------------\n" ;
+		my @tsid_list = sort {Linux::DVB::DVBT::Config::tsid_sort($a,$b)} keys %{$tuning_href->{'ts'}} ;
+		foreach my $tsid (@tsid_list)
+		{
+			my $tsid_info = "" ;
+			#if ($VERBOSE)
+			{
+				$tsid_info .= "Freq: $tuning_href->{'ts'}{$tsid}{'frequency'} Hz" ;
+				$tsid_info .= " $tuning_href->{'ts'}{$tsid}{'modulation'}QAM" ;
+				$tsid_info = "[$tsid_info]" ;
+			}
+			my $tsid_str = Linux::DVB::DVBT::Config::tsid_str($tsid);
+			print "TSID $tsid_str    $tsid_info\n" ;
+		}
+		print "--------------------------------------------------------------------\n" ;
+		exit 0 ;
+	}
 	
 	my $ok = 1 ;
 	
@@ -59,7 +103,7 @@ Linux::DVB::DVBT::prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 		'check'		=> 1,
 		'lcn'		=> 3,
 		'chan'		=> 30,
-		'tsid'		=> 5,
+		'tsid'		=> 6,
 		'pnr'		=> 5,
 		'type'		=> 6,
 		'pids'		=> 56,
@@ -96,7 +140,7 @@ Channel List
 ============
 
 $horiz_bar
- LCN | Channel Name                   |  TSID-PNR   | Type   | PIDs                                                 
+ LCN | Channel Name                   |   TSID-PNR   | Type   | PIDs                                                 
 $horiz_bar
 HEAD
 	
@@ -115,7 +159,8 @@ HEAD
 		}
 		
 		my $tsids=0;
-		my @tsid_list = sort {$a <=> $b} keys %multi ;
+		#my @tsid_list = sort {$a <=> $b} keys %multi ;
+		my @tsid_list = sort {Linux::DVB::DVBT::Config::tsid_sort($a,$b)} keys %multi ;
 		if ($tsid_only)
 		{
 			if (exists($multi{$tsid_only}))
@@ -222,15 +267,34 @@ sub print_chan
 		}
 	}
 
-	if ($extra_check)
+	if ($extra_check && $check_flag)
 	{
+		my $extra_ok = 1 ;
+
 		## Check we can record
 		my $file = "/tmp/test.ts" ;
-		my $duration = "0:0:10" ;
+		my $duration_secs = 10 ;
+		my $duration = "0:0:$duration_secs" ;
 		unlink $file ;
 	
-		## Select the channel
-		$dvb->select_channel($chan) ;
+#		## Select the channel
+#		$dvb->select_channel($chan) ;
+		
+		## Parse command line
+		my @chan_spec ;
+		my $error ;
+		$error ||= $dvb->multiplex_parse(\@chan_spec, "f=$file", "ch='$chan'", "len=$duration");
+		print "ERROR: $error\n" if $error && $DEBUG_SCRIPT ;
+		
+		## Select the channel(s)
+		my %options = (
+			'out'			=> "av",
+		) ;
+		$error ||= $dvb->multiplex_select(\@chan_spec, %options) ;
+		print "ERROR: $error\n" if $error && $DEBUG_SCRIPT ;
+		
+		## Get multiplex info
+		my %multiplex_info = $dvb->multiplex_info() ;
 		
 		## Record
 		eval {
@@ -239,20 +303,95 @@ sub print_chan
 			open(STDERR, '>', \$stderr) or die "Can't open STDERR: $!";
 	
 	
-			$dvb->record($file, $duration) ;
+#			$dvb->record($file, $duration) ;
+
+			## Record
+			$error ||= $dvb->multiplex_record(%multiplex_info) ;
 		} ;
+		if ($@)
+		{
+			print "ERROR: $@\n" if $DEBUG_SCRIPT ;
+		}
 		
 		$checkstr .= " : Record test " ;
-		if (-s $file > 100000)
+		my $pkts_str = "" ;
+		if ($error)
+		{
+			$extra_ok = 0 ;
+			$pkts_str = "$error" ;
+		}
+		else
+		{
+			my $expected_vpkts = ($duration_secs * 1000) - 1000 ;
+			my $expected_apkts = $expected_vpkts / 10 ;
+			if ($ch_href->{type} eq 'radio')
+			{
+				$expected_vpkts = -1 ;
+				$expected_apkts = $expected_vpkts / 20 ;
+			}
+			
+			
+			foreach my $file (sort keys %{$multiplex_info{'files'}})
+			{
+				my $href = $multiplex_info{'files'}{$file} ;
+				print "  $file\n" if $DEBUG_SCRIPT ;
+				foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
+				{
+					if ($DEBUG_SCRIPT)
+					{				
+						printf "    PID %5d [$pid_href->{'pidtype'}] : %s errors / %s overflows / %s packets\n", 
+							$pid_href->{'pid'},
+							$pid_href->{'errors'},
+							$pid_href->{'overflows'},
+							$pid_href->{'pkts'},
+							 ;
+					}
+					
+					if ($pid_href->{'pidtype'} eq 'video')
+					{
+						if ($pid_href->{'pkts'} < $expected_vpkts)
+						{
+							$extra_ok = 0 ;
+							$pkts_str .= " video: $pid_href->{'pkts'} / $expected_vpkts packets " ;
+						}
+					}
+					elsif ($pid_href->{'pidtype'} eq 'audio')
+					{
+						if ($pid_href->{'pkts'} < $expected_apkts)
+						{
+							$extra_ok = 0 ;
+							$pkts_str .= " audio: ($pid_href->{'pkts'} / $expected_apkts packets " ;
+						}
+					}
+					
+				}
+				print "\n" if $DEBUG_SCRIPT ;
+			
+			}
+		}
+
+		if ($extra_ok)
 		{
 			$checkstr .= "PASS" ;
 		}
 		else
 		{
-			$checkstr .= "FAIL" ;
-			$ok = 0 ;
+			$checkstr .= "FAIL - $pkts_str" ;
 			$check_flag = 0 ;
+			$ok = 0 ;
 		}
+
+#		if (-s $file > 100000)
+#		{
+#			$checkstr .= "PASS" ;
+#		}
+#		else
+#		{
+#			$checkstr .= "FAIL" ;
+#			$ok = 0 ;
+#			$check_flag = 0 ;
+#		}
+
 		unlink $file ;
 	}
 	
@@ -274,7 +413,7 @@ sub print_chan
 	{
 		$avstr .= "subtitle=$tuning_href->{'pr'}{$chan}{'subtitle'} " ;
 	}
-	printf "%-$widths{check}s%$widths{lcn}d | %-$widths{chan}s | %$widths{tsid}d-%-$widths{pnr}d | %-$widths{type}s | $avstr $checkstr\n", 
+	printf "%-$widths{check}s%$widths{lcn}d | %-$widths{chan}s | %$widths{tsid}s-%-$widths{pnr}d | %-$widths{type}s | $avstr $checkstr\n", 
 		$check_flag ? " " : "*",
 		$ch_href->{'channel_num'},
 		$chan,
@@ -314,9 +453,13 @@ Options:
        -verbose level       set verbosity level
        -help                brief help message
        -man                 full documentation
+       -cfg <config>        use specified configuration directory
        -check               check validity of channels
        -extra-check         checks channels can be recorded
+       -tsid <tsid>         show only the specified multiplex
        -multi|tsid          group channels into their multiplex
+       -list                show just the list of TSIDs (multiplexes)
+       -del <tsid>          deletes the specified TSID
        
 =head1 OPTIONS
 
@@ -347,10 +490,28 @@ record the correct channel!)
 
 Does extra checking by recording a short amount of program for each channel
 
-=item B<-multi|tsid>
+=item B<-multi>
 
 Groups the channels into their associate multiplex (or transponder, or TSID group). This is useful for determining
 which channels may be recorded together at the same time using the multiplex record facility.
+
+=item B<-tsid>
+
+Specify the TSID and only the results for that multiplex will be shown
+
+=item B<-list>
+
+Shows the summary list of available TSIDs
+
+=item B<-del>
+
+Delete the specified TSID from the configuration file. Also deletes any channels related to that TSID. 
+
+=item B<-cfg>
+
+Specify an alternate configuration directory (containing the dvb-ts, dvb-pr files) to use, rather than using the default.
+
+
 
 
 =back

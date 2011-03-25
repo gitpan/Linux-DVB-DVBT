@@ -19,7 +19,9 @@ you can if you wish.
 
 use strict ;
 
-our $VERSION = '2.06' ;
+use Data::Dumper ;
+
+our $VERSION = '2.07' ;
 our $DEBUG = 0 ;
 
 our $DEFAULT_CONFIG_PATH = '/etc/dvb:~/.tv' ;
@@ -44,6 +46,7 @@ my %NUMERALS = (
 	'nine'	=> 9,
 ) ;
 
+our @SCAN_INFO_FIELDS = qw/pr ts lcn freqs/ ;
 
 #============================================================================================
 
@@ -155,7 +158,8 @@ sub chan_from_pid
 
 	foreach my $chan (keys %{$tuning_href->{'pr'}})
 	{
-		if ($tsid == $tuning_href->{'pr'}{$chan}{'tsid'})
+#		if ($tsid == $tuning_href->{'pr'}{$chan}{'tsid'})
+		if ($tsid eq $tuning_href->{'pr'}{$chan}{'tsid'})
 		{
 			foreach my $stream (qw/video audio teletext subtitle/)
 			{
@@ -783,6 +787,87 @@ sub write_filename
 }
 
 
+#----------------------------------------------------------------------
+
+=item B<tsid_sort($tsid_a, $tsid_b)>
+
+Sorts TSIDs. As I now allow duplicate TSIDs in scans, and the duplicates
+are suffixed with a letter to make it obvious, numeric sorting is not possible.
+
+This function can be used to correctly sort the TSIDs into order. Returns the usual
+-1, 0, 1 depending on if a is <, ==, or > b
+
+=cut
+
+sub tsid_sort
+{
+	my ($tsid_a, $tsid_b) = @_ ;
+	
+	my $a_int = int($tsid_a) ;
+	my $b_int = int($tsid_b) ;
+	
+	return 
+		$a_int <=> $b_int
+			||
+		$tsid_a cmp $tsid_b
+	 ;
+}
+
+#----------------------------------------------------------------------
+
+=item B<tsid_str($tsid)>
+
+Format the tsid number/name into a string. As I now allow duplicate TSIDs in 
+scans, and the duplicates are suffixed with a letter to make it obvious which
+are duplicates. This routine formats the numeric part and always adds a suffix
+character (or space if none present).
+
+=cut
+
+sub tsid_str
+{
+	my ($tsid) = @_ ;
+	
+	my ($tsid_int, $tsid_suffix) = ($tsid, " ") ;
+	if ($tsid =~ /(\d+)([a-z])/i)
+	{
+		($tsid_int, $tsid_suffix) = ($1, $2) ;
+	}
+
+	return sprintf "%5d$tsid_suffix", $tsid_int ;
+}
+
+#----------------------------------------------------------------------
+
+=item B<tsid_delete($tsid, $tuning_href)>
+
+Remove the specified TSID from the tuning information. Also removes any channels
+that are under that TSID. 
+
+=cut
+
+sub tsid_delete
+{
+	my ($tsid, $tuning_href) = @_ ;
+	
+	my $ok = 0;
+	if (exists($tuning_href->{'ts'}{$tsid}))
+	{
+		$ok = 1 ;
+		my $info_href = _scan_info($tuning_href) ;
+	
+		delete $tuning_href->{'ts'}{$tsid} ;
+			
+		foreach my $pnr (keys %{$info_href->{'tsid'}{$tsid}{'pr'}} )
+		{
+			my $chan = $info_href->{'tsid'}{$tsid}{'pr'}{$pnr} ;
+			delete $tuning_href->{'pr'}{$chan} ;
+		}
+
+	}
+	
+	return $ok ;
+}
 
 
 
@@ -797,7 +882,9 @@ the HASH ref.
 
 sub merge
 {
-	my ($new_href, $old_href) = @_ ;
+	my ($new_href, $old_href, $scan_info_href) = @_ ;
+
+	$scan_info_href ||= {} ;
 
 #	region: 'ts' => 
 #		section: '4107' =>
@@ -829,93 +916,97 @@ sub merge
 Merge tuning information - checks to ensure new program info has the 
 best strength, and that new program has all of it's settings
 
-	'pr' =>
+	'pr' => {
 	      BBC ONE => 
 	        {
 	          pnr => 4171,
 	          tsid => 4107,
-	          tuned_freq => 57800000,
+	          lcn => 1,
 	          ...
 	        },
-	'ts' => 
+	     $chan => ...
+	},
+	'lcn' => { 
+	      4107 => {
+	      	4171 => {
+		          service_type => 2,   
+				  visible => 1,            
+		          lcn => 46,               
+		          ...
+		        },
+	        },
+	        
+	     $tsid => {
+	     	$pnr => ...
+	     }
+	},
+	'ts' => {
 	      4107 =>
 	        { 
 	          tsid => 4107,   
 			  frequency => 57800000,            
+	          strength => 46829,               
 	          ...
 	        },
-	'freqs' => 
+	     $tsid => ..
+	},
+	'freqs' => {
 	      57800000 =>
 	        { 
-	          strength => aaaa,               
+	          strength => 46829,               
 	          snr => bbb,               
 	          ber => ccc,               
 	          ...
 	        },
+	      $freq => ...
+	},
 
 
 
 =cut
 
+
 sub merge_scan_freqs
 {
-	my ($new_href, $old_href, $verbose) = @_ ;
+	my ($new_href, $old_href, $options_href, $verbose, $scan_info_href) = @_ ;
 
+	$scan_info_href ||= {} ;
+	$scan_info_href->{'chans'} ||= {} ;
+	$scan_info_href->{'tsids'} ||= {} ;
+	
 print STDERR "merge_scan_freqs()\n" if $DEBUG ;
 
 	if ($old_href && $new_href)
 	{
-		foreach my $region (keys %$new_href)
+print STDERR Data::Dumper->Dump(["New:", $new_href, "Old:", $old_href]) if $DEBUG>=2 ;
+		
+		## gather information on new & existing
+		my %old_new_info ;
+		$old_new_info{'new'} = _scan_info($new_href) ;
+		$old_new_info{'old'} = _scan_info($old_href) ;
+		
+		## Copy special fields first
+		my %fields = map {$_ => 1} @SCAN_INFO_FIELDS ;
+		
+		# ts
+		delete $fields{'ts'} ;
+		_merge_tsid($new_href, $old_href, $options_href, $verbose, $scan_info_href, \%old_new_info) ;
+		
+		# pr
+		delete $fields{'pr'} ;
+		_merge_chan($new_href, $old_href, $options_href, $verbose, $scan_info_href, \%old_new_info) ;
+		
+		# merge the rest
+		foreach my $region (keys %fields)
 		{
 			foreach my $section (keys %{$new_href->{$region}})
 			{
-				## merge programs/streams differently if they already exist
-				my $overwrite = 1 ;
-				if ( (($region eq 'pr')||($region eq 'ts')) && exists($old_href->{$region}{$section}) )
-				{
-print STDERR " + found 2 instances of {$region}{$section}\n" if $DEBUG ;
-					# check for signal quality to compare
-					my ($new_freq, $old_freq) ;
-					foreach (qw/frequency tuned_freq/)
-					{
-						$new_freq = $new_href->{$region}{$section}{$_} if exists($new_href->{$region}{$section}{$_}) ;	
-						$old_freq = $old_href->{$region}{$section}{$_} if exists($old_href->{$region}{$section}{$_}) ;	
-					}
-					if ($new_freq && $old_freq)
-					{
-						# just compare signal strength (for now!)
-						my ($new_strength, $old_strength) ;
-						foreach my $href ($new_href, $old_href)
-						{
-							$new_strength = $href->{'freqs'}{$new_freq}{'strength'} if exists($href->{'freqs'}{$new_freq}{'strength'} ) ;	
-							$old_strength = $href->{'freqs'}{$old_freq}{'strength'} if exists($href->{'freqs'}{$old_freq}{'strength'} ) ;	
-						}
-						if ($new_strength && $old_strength)
-						{
-print STDERR " + checking $region $section  : Strength NEW=$new_strength  OLD=$old_strength\n" if $DEBUG ;
-							if ($old_strength >= $new_strength)
-							{
-print STDERR " + + keep stronger signal (OLD)\n" if $DEBUG ;
-
-								$new_strength = $new_strength * 100 / 65535 ;
-								$old_strength = $old_strength * 100 / 65535 ;
-								
-								print STDERR "  Found 2 \"$section\" : keeping old signal $old_freq Hz $old_strength % (new $new_freq Hz $new_strength %)\n" if $verbose ;
-
-								$overwrite = 0 ;
-							}
-						}
-					}
-				}
-				
-				if ($overwrite)
-				{
 print STDERR " + Overwrite existing {$region}{$section} with new ....\n" if $DEBUG ;
-					## Just overwrite
-					foreach my $field (keys %{$new_href->{$region}{$section}})
-					{
-						$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
-					}
+
+				## Just overwrite
+				foreach my $field (keys %{$new_href->{$region}{$section}})
+				{
+					$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
 				}
 			}
 		}
@@ -927,6 +1018,649 @@ print STDERR "merge_scan_freqs() - DONE\n" if $DEBUG ;
 	
 	return $old_href ;
 }
+
+		
+#----------------------------------------------------------------------
+sub _merge_tsid
+{
+	my ($new_href, $old_href, $options_href, $verbose, $scan_info_href, $new_old_info_href) = @_ ;
+
+	$scan_info_href->{'chans'} ||= {} ;
+	$scan_info_href->{'tsids'} ||= {} ;
+	
+print STDERR "_merge_tsid()\n" if $DEBUG ;
+print STDERR Data::Dumper->Dump(["_merge_tsid()", $new_href->{'ts'}]) if $DEBUG>=2 ;			
+
+
+	## Compare new with old
+	foreach my $tsid (keys %{$new_old_info_href->{'new'}{'tsid'}})
+	{
+		my $new_chans = scalar(keys %{$new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}}) ;
+		my $old_chans = 0 ;
+		
+		my $new_strength = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'strength'} ;
+		my $old_strength = 0 ;
+		
+		my $new_freq = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'freq'} ;
+		my $old_freq ;
+	
+		my $overlap = 0 ;
+		if ( exists($new_old_info_href->{'old'}{'tsid'}{$tsid}) )
+		{
+			$overlap = 1 ;
+			$old_chans = scalar(keys %{$new_old_info_href->{'old'}{'tsid'}{$tsid}{'pr'}}) ;
+			$old_strength = $new_old_info_href->{'old'}{'tsid'}{$tsid}{'strength'} ;
+			$old_freq = $new_old_info_href->{'old'}{'tsid'}{$tsid}{'freq'} ;
+			
+			if ($old_freq == $new_freq)
+			{
+				$overlap = 0 ;
+			}
+		}
+		
+		$scan_info_href->{'tsids'}{$tsid} ||= {
+			'comments'	=> [],
+		} ;
+	
+		my $delete = 0 ;
+		my $duplicate = 0 ;
+		my $reason = "" ;
+		
+		if (!$overlap)
+		{
+			$reason = "[merge] TSID $tsid : creating new freq $new_freq (contains $new_chans chans)" ;
+		}
+		else
+		{
+			## overlap - do something 
+			if ($options_href->{'duplicates'})
+			{
+				$duplicate = 1 ;
+				$reason = "[duplicate] TSID $tsid : tsid already exists (new freq $new_freq, old freq $old_freq), creating duplicate" ;
+			}
+			else
+			{
+				# do we overwrite based on number of channels a multiplex contains OR on the signal strength
+				if (!$options_href->{'num_chans'} || ($new_chans == $old_chans))
+				{
+					# overwrite based on signal strength
+					if ($new_strength < $old_strength)
+					{
+						$delete = 1 ;
+						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength < existing freq $old_freq strength $old_strength - new freq ignored" ;
+					}
+					else
+					{
+						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength >= existing freq $old_freq strength $old_strength - using new freq" ;
+					}
+				}
+				
+				# compare number of channels
+				elsif ($new_chans < $old_chans)
+				{
+					$delete = 1 ;
+					$reason = "[overlap] TSID $tsid : new freq $new_freq has only $new_chans chans (existing freq $old_freq has $old_chans chans) - new freq ignored" ;
+				}
+				else
+				{
+					$reason = "[overlap] TSID $tsid : new freq $new_freq has $new_chans chans (existing freq $old_freq has $old_chans chans) - using new freq" ;
+				}
+			}
+		}	
+	
+		## delete if required
+		if ($delete)
+		{
+			delete $new_href->{'ts'}{$tsid} ;
+				
+			foreach my $pnr (keys %{$new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}} )
+			{
+				my $chan = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}{$pnr} ;
+				$scan_info_href->{'chans'}{$chan} ||= {
+					'comments'	=> [],
+				} ;
+				push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
+				
+				delete $new_href->{'pr'}{$chan} ;
+			}
+		}
+		## duplicate if required
+		elsif ($duplicate)
+		{
+			## Create a dummy name for this tsid
+			my $suffix = 'a' ;
+			my $tsid_dup = "$tsid$suffix" ;
+			while (exists($new_old_info_href->{'old'}{'tsid'}{$tsid_dup}))
+			{
+				++$suffix ;
+				$tsid_dup = "$tsid$suffix" ;
+			}
+			$reason .= " TSID $tsid_dup" ;
+			
+			
+			## rename tsid
+			
+			# ts
+			my $tsid_href = delete $new_href->{'ts'}{$tsid} ;
+			$new_href->{'ts'}{$tsid_dup} = $tsid_href ;
+			$new_href->{'ts'}{$tsid_dup}{'tsid'} = $tsid_dup ;
+				
+			# pr
+			foreach my $pnr (keys %{$new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}} )
+			{
+				my $chan = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}{$pnr} ;
+				$scan_info_href->{'chans'}{$chan} ||= {
+					'comments'	=> [],
+				} ;
+				push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
+				
+				$new_href->{'pr'}{$chan}{'tsid'} = $tsid_dup ;
+			}
+			
+			# lcn
+			my $lcn_href = delete $new_href->{'lcn'}{$tsid} ;
+			$new_href->{'lcn'}{$tsid_dup} = $lcn_href ;
+
+			## rename chan
+			
+			# pr
+			foreach my $pnr (keys %{$new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}} )
+			{
+				my $chan = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}{$pnr} ;
+
+				my $count = 1 ;
+				my $chan_dup = "$chan ($count)";
+				while (exists($new_old_info_href->{'old'}{'pr'}{$chan_dup}))
+				{
+					++$count ;
+					$chan_dup = "$chan ($count)";
+				}
+				
+				push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "[duplicate] Renamed $chan to $chan_dup" ;
+				
+				my $chan_href = delete $new_href->{'pr'}{$chan} ;
+				$new_href->{'pr'}{$chan_dup} = $chan_href  ;
+				$new_href->{'pr'}{$chan_dup}{'name'} = $chan_dup  ;
+			}
+			
+
+print STDERR " + duplicate TSID\n" if $DEBUG ;
+print STDERR Data::Dumper->Dump(["After tsid rename ", $new_href]) if $DEBUG>=2 ;			
+			
+		}
+		else
+		{
+			## ok to copy
+			foreach my $pnr (keys %{$new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}} )
+			{
+				my $chan = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}{$pnr} ;
+				$scan_info_href->{'chans'}{$chan} ||= {
+					'comments'	=> [],
+				} ;
+				push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
+			}
+		}
+
+		# update TSID debug info
+		push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, $reason ;
+	}
+		
+	## Do merge
+	foreach my $tsid (keys %{$new_href->{'ts'}})
+	{
+		## Just overwrite
+		foreach my $field (keys %{$new_href->{'ts'}{$tsid}})
+		{
+			$old_href->{'ts'}{$tsid}{$field} = $new_href->{'ts'}{$tsid}{$field} ; 
+		}
+	}
+
+}
+
+
+#----------------------------------------------------------------------
+sub _merge_chan
+{
+	my ($new_href, $old_href, $options_href, $verbose, $scan_info_href, $new_old_info_href) = @_ ;
+
+	$scan_info_href->{'chans'} ||= {} ;
+	$scan_info_href->{'tsids'} ||= {} ;
+	
+print STDERR "_merge_chan()\n" if $DEBUG ;
+print STDERR Data::Dumper->Dump(["_merge_chan()", $new_href->{'pr'}]) if $DEBUG>=2 ;			
+		
+	## Do merge
+	foreach my $chan (keys %{$new_href->{'pr'}})
+	{
+		## Check for channel rename
+		my $tsid = $new_href->{'pr'}{$chan}{'tsid'} ;
+		my $pnr = $new_href->{'pr'}{$chan}{'pnr'} ;
+
+print STDERR " + check {$tsid-$pnr} = $chan \n" if $DEBUG ;
+					
+		if (exists($new_old_info_href->{'old'}{'tsid-pnr'}{"$tsid-$pnr"}) && ($new_old_info_href->{'old'}{'tsid-pnr'}{"$tsid-$pnr"} ne $chan))
+		{
+			# Rename
+			my $old_chan = $new_old_info_href->{'old'}{'tsid-pnr'}{"$tsid-$pnr"} ;
+			push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "[merge] channel renamed from \"$old_chan\" to \"$chan\" " ;
+			delete $old_href->{'pr'}{$old_chan} ;											
+print STDERR " + + delete $old_chan \n" if $DEBUG ;
+		}
+
+		## Check for channel TSID change
+		my $overlap = 0 ;
+		if (exists($old_href->{'pr'}{$chan}))
+		{
+			$overlap = 1 ;
+			if ($new_href->{'pr'}{$chan}{'tsid'} eq $old_href->{'pr'}{$chan}{'tsid'})
+			{
+				$overlap = 0 ;
+			}
+		}
+				
+		$scan_info_href->{'chans'}{$chan} ||= {
+			'comments'	=> [],
+		} ;
+			
+		my $reason ;
+		my $copy_chan = $chan ;
+		if (!$overlap)
+		{
+			$reason = "[merge] creating new channel info" ;
+		}
+		else
+		{
+			## overlap - do something 
+			if ($options_href->{'duplicates'})
+			{
+				# duplicate
+				$reason = "[duplicate] Channel $chan already exists (new TSID $new_href->{'pr'}{$chan}{'tsid'}, old TSID $old_href->{'pr'}{$chan}{'tsid'}), creating duplicate" ;
+			
+
+				my $count = 1 ;
+				$copy_chan = "$chan ($count)";
+				while (exists($old_href->{'pr'}{$copy_chan}))
+				{
+					++$count ;
+					$copy_chan = "$chan ($count)";
+				}
+				
+				$reason .= " New channel name $copy_chan" ;
+			}
+			else
+			{
+				# overwrite
+				$reason = "[overlap] overwriting existing channel info with new (old: TSID $old_href->{'pr'}{$chan}{tsid})" ;
+			}
+		}
+		push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
+
+			
+		## Now overwrite
+		foreach my $field (keys %{$new_href->{'pr'}{$chan}})
+		{
+			$old_href->{'pr'}{$copy_chan}{$field} = $new_href->{'pr'}{$chan}{$field} ; 
+		}
+		$old_href->{'pr'}{$copy_chan}{'name'} = $copy_chan ;
+	}
+
+}
+
+
+
+
+#----------------------------------------------------------------------
+sub _scan_info
+{
+	my ($scan_href) = @_ ;
+	
+	## Get info on existing
+	my %tsid_map ;
+	foreach my $chan (keys %{$scan_href->{'pr'}})
+	{
+		my $tsid = $scan_href->{'pr'}{$chan}{'tsid'} ;
+		my $pnr = $scan_href->{'pr'}{$chan}{'pnr'} ;
+		$tsid_map{"$tsid-$pnr"} = $chan ;
+	}
+		
+	## Various ways of looking at tsid info
+	my %ts_info ;
+	foreach my $tsid (keys %{$scan_href->{'ts'}})
+	{
+		my $freq = $scan_href->{'ts'}{$tsid}{'frequency'} ;
+		$ts_info{$tsid} = {
+			'pr'		=> {},
+			'freq'		=> $scan_href->{'ts'}{$tsid}{'frequency'},
+			'strength'	=> $scan_href->{'ts'}{$tsid}{'strength'}
+		} ;
+	}
+	foreach my $chan (keys %{$scan_href->{'pr'}})
+	{
+		my $tsid = $scan_href->{'pr'}{$chan}{'tsid'} ;
+		my $pnr = $scan_href->{'pr'}{$chan}{'pnr'} ;
+		$ts_info{$tsid}{'pr'}{$pnr} = $chan ;
+	}
+			
+	
+	## Various ways of looking at channel info
+	my %chan_info ;
+	foreach my $chan (keys %{$scan_href->{'pr'}})
+	{
+		my $tsid = $scan_href->{'pr'}{$chan}{'tsid'} ;
+		$chan_info{$chan} = $tsid ;
+	}
+	
+	my %info = (
+		'tsid-pnr'	=> \%tsid_map,
+		'tsid'		=> \%ts_info,
+		'chan'		=> \%chan_info,
+	) ;
+	return \%info ;
+}
+
+
+#sub merge_scan_freqs
+#{
+#	my ($new_href, $old_href, $verbose, $scan_info_href) = @_ ;
+#
+#	$scan_info_href ||= {} ;
+#	$scan_info_href->{'chans'} ||= {} ;
+#	$scan_info_href->{'tsids'} ||= {} ;
+#	
+#print STDERR "merge_scan_freqs()\n" if $DEBUG ;
+#
+#	if ($old_href && $new_href)
+#	{
+#print STDERR Data::Dumper->Dump(["New:", $new_href, "Old:", $old_href]) ;
+#		
+#		## Get info on existing
+#		my %tsid_map ;
+#print STDERR "TSID MAP:\n" if $DEBUG ;
+#		foreach my $chan (keys %{$old_href->{'pr'}})
+#		{
+#			my $tsid = $old_href->{'pr'}{$chan}{'tsid'} ;
+#			my $pnr = $old_href->{'pr'}{$chan}{'pnr'} ;
+#			$tsid_map{"$tsid-$pnr"} = $chan ;
+#print STDERR "  {$tsid-$pnr}  $chan\n" if $DEBUG ;
+#		}
+#		
+### Various ways of looking at tsid info
+#my %old_ts_info ;
+#foreach my $tsid (keys %{$old_href->{'ts'}})
+#{
+#	my $freq = $old_href->{'ts'}{$tsid}{'frequency'} ;
+#	$old_ts_info{$tsid} = {
+#		'pr'		=> {},
+#		'freq'		=> $old_href->{'ts'}{$tsid}{'frequency'},
+#		'strength'	=> $old_href->{'ts'}{$tsid}{'strength'}
+#	} ;
+#}
+#foreach my $chan (keys %{$old_href->{'pr'}})
+#{
+#	my $tsid = $old_href->{'pr'}{$chan}{'tsid'} ;
+#	my $pnr = $old_href->{'pr'}{$chan}{'pnr'} ;
+#	$old_ts_info{$tsid}{'pr'}{$pnr} = $chan ;
+#}
+#		
+#my %new_ts_info ;
+#foreach my $tsid (keys %{$new_href->{'ts'}})
+#{
+#	my $freq = $new_href->{'ts'}{$tsid}{'frequency'} ;
+#	$new_ts_info{$tsid} = {
+#		'pr'		=> {},
+#		'freq'		=> $new_href->{'ts'}{$tsid}{'frequency'},
+#		'strength'	=> $new_href->{'ts'}{$tsid}{'strength'}
+#	} ;
+#}
+#foreach my $chan (keys %{$new_href->{'pr'}})
+#{
+#	my $tsid = $new_href->{'pr'}{$chan}{'tsid'} ;
+#	my $pnr = $new_href->{'pr'}{$chan}{'pnr'} ;
+#	$new_ts_info{$tsid}{'pr'}{$pnr} = $chan ;
+#}
+#
+### Various ways of looking at channel info
+#my %old_chan_info ;
+#foreach my $chan (keys %{$old_href->{'pr'}})
+#{
+#	my $tsid = $old_href->{'pr'}{$chan}{'tsid'} ;
+#	$old_chan_info{$chan} = $tsid ;
+#}
+#my %new_chan_info ;
+#foreach my $chan (keys %{$new_href->{'pr'}})
+#{
+#	my $tsid = $new_href->{'pr'}{$chan}{'tsid'} ;
+#	$new_chan_info{$chan} = $tsid ;
+#}
+#		
+#		
+### Compare new with old
+#foreach my $tsid (keys %new_ts_info)
+#{
+#	my $new_chans = scalar(keys %{$new_ts_info{$tsid}{'pr'}}) ;
+#	my $old_chans = 0 ;
+#	
+#	my $new_strength = $new_ts_info{$tsid}{'strength'} ;
+#	my $old_strength = 0 ;
+#	
+#	my $new_freq = $new_ts_info{$tsid}{'freq'} ;
+#	my $old_freq ;
+#
+##	next unless exists($old_ts_info{$tsid}) ;
+#	if ( exists($old_ts_info{$tsid}) )
+#	{
+#		$old_chans = scalar(keys %{$old_ts_info{$tsid}{'pr'}}) ;
+#		$old_strength = $old_ts_info{$tsid}{'strength'} ;
+#		$old_freq = $old_ts_info{$tsid}{'freq'} ;
+#	}
+#	
+#	$scan_info_href->{'tsids'}{$tsid} ||= {
+#		'comments'	=> [],
+#	} ;
+#
+#	my $delete = 0 ;
+#	my $reason = "" ;
+#	if ($new_chans < $old_chans)
+#	{
+#		$delete = 1 ;
+#		
+#		$reason = "[overlap] TSID $tsid : new freq $new_freq has only $new_chans chans (existing freq $old_freq has $old_chans chans) - new freq ignored" ;
+##		push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, "[merge] TSID $tsid : new freq $new_freq has only $new_chans chans (existing freq $old_freq has $old_chans chans)" ;
+#	}
+#	elsif ($new_chans == $old_chans)
+#	{
+#		if ($new_strength < $old_strength)
+#		{
+#			$delete = 1 ;
+#			
+#			$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength < existing freq $old_freq strength $old_strength - new freq ignored" ;
+##			push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, "[merge] TSID $tsid : new freq $new_freq strength $new_strength < existing freq $old_freq strength $old_strength" ;
+#		}
+#		else
+#		{
+#			$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength >= existing freq $old_freq strength $old_strength - using new freq" ;
+#		}
+#	}
+#	elsif (!defined($old_freq) )
+#	{
+#		$reason = "[overlap] TSID $tsid : creating new freq $new_freq (contains $new_chans chans)" ;
+#	}
+#	else
+#	{
+#		$reason = "[overlap] TSID $tsid : new freq $new_freq has $new_chans chans (existing freq $old_freq has $old_chans chans) - using new freq" ;
+#	}
+#
+#	push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, $reason ;
+#
+#	## delete if required
+#	if ($delete)
+#	{
+##		push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, $reason ;
+#		delete $new_href->{'ts'}{$tsid} ;
+#			
+#		foreach my $pnr (keys %{$new_ts_info{$tsid}{'pr'}} )
+#		{
+#			my $chan = $new_ts_info{$tsid}{'pr'}{$pnr} ;
+#			$scan_info_href->{'chans'}{$chan} ||= {
+#				'comments'	=> [],
+#			} ;
+#			push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
+#			
+#			delete $new_href->{'pr'}{$chan} ;
+#		}
+#	}
+#	else
+#	{
+#		foreach my $pnr (keys %{$new_ts_info{$tsid}{'pr'}} )
+#		{
+#			my $chan = $new_ts_info{$tsid}{'pr'}{$pnr} ;
+#			$scan_info_href->{'chans'}{$chan} ||= {
+#				'comments'	=> [],
+#			} ;
+#			push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
+#		}
+#	}
+#
+#}
+#		
+#		## Do merge
+#		foreach my $region (keys %$new_href)
+#		{
+#			foreach my $section (keys %{$new_href->{$region}})
+#			{
+#				## Check for channel rename
+#				if ($region eq 'pr')
+#				{
+#					my $chan = $section ;
+#					my $tsid = $new_href->{'pr'}{$chan}{'tsid'} ;
+#					my $pnr = $new_href->{'pr'}{$chan}{'pnr'} ;
+#
+#print STDERR " + check {$tsid-$pnr} = $chan \n" if $DEBUG ;
+#					
+#					if (exists($tsid_map{"$tsid-$pnr"}) && ($tsid_map{"$tsid-$pnr"} ne $chan))
+#					{
+#						# Rename
+#						my $old_chan = $tsid_map{"$tsid-$pnr"} ;
+#						push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "[merge] channel renamed from \"$old_chan\" to \"$chan\" " ;
+#						delete $old_href->{'pr'}{$old_chan} ;											
+#print STDERR " + + delete $old_chan \n" if $DEBUG ;
+#					}
+#				}
+#
+###??????????????##
+## Handle case where new TSID number (on new freq) has same chan - default just overwrites because it's a later find (doesn't match because TSID number is different)		
+###??????????????##
+#		
+#				## Check for channel TSID change
+#				
+#				#???????????
+#				
+#				## merge programs/streams differently if they already exist
+#				my $overwrite = 1 ;
+#				if ( (($region eq 'pr')||($region eq 'ts')) && exists($old_href->{$region}{$section}) )
+#				{
+#print STDERR " + found 2 instances of {$region}{$section}\n" if $DEBUG ;
+#					# check for signal quality to compare
+#					my ($new_freq, $old_freq) ;
+#					foreach (qw/frequency tuned_freq/)
+#					{
+#						$new_freq = $new_href->{$region}{$section}{$_} if exists($new_href->{$region}{$section}{$_}) ;	
+#						$old_freq = $old_href->{$region}{$section}{$_} if exists($old_href->{$region}{$section}{$_}) ;	
+#					}
+#					if ($new_freq && $old_freq)
+#					{
+#						# just compare signal strength (for now!)
+#						my ($new_strength, $old_strength) ;
+#						foreach my $href ($new_href, $old_href)
+#						{
+#							$new_strength = $href->{'freqs'}{$new_freq}{'strength'} if exists($href->{'freqs'}{$new_freq}{'strength'} ) ;	
+#							$old_strength = $href->{'freqs'}{$old_freq}{'strength'} if exists($href->{'freqs'}{$old_freq}{'strength'} ) ;	
+#						}
+#						if ($new_strength && $old_strength)
+#						{
+#print STDERR " + checking $region $section  : Strength NEW=$new_strength  OLD=$old_strength\n" if $DEBUG ;
+#							if ($old_strength >= $new_strength)
+#							{
+#print STDERR " + + keep stronger signal (OLD)\n" if $DEBUG ;
+#
+#								$new_strength = $new_strength * 100 / 65535 ;
+#								$old_strength = $old_strength * 100 / 65535 ;
+#								
+#								print STDERR "  Found 2 \"$section\" : keeping old signal $old_freq Hz $old_strength % (new $new_freq Hz $new_strength %)\n" if $verbose ;
+#
+#								$overwrite = 0 ;
+#
+#								if ($region eq 'pr')
+#								{
+#									$scan_info_href->{'chans'}{$section} ||= [] ;
+#									push @{$scan_info_href->{'chans'}{$section}{'comments'}}, "[merge] keeping old signal $old_freq Hz $old_strength % (new $new_freq Hz $new_strength %)" ;
+#								}
+#							}
+#						}
+#					}
+#				}
+#				
+#				if ($overwrite)
+#				{
+#print STDERR " + Overwrite existing {$region}{$section} with new ....\n" if $DEBUG ;
+#
+#					if ($region eq 'pr')
+#					{
+#						$scan_info_href->{'chans'}{$section} ||= [] ;
+#						
+#						if (exists($old_href->{$region}{$section}))
+#						{
+#							push @{$scan_info_href->{'chans'}{$section}{'comments'}}, "[merge] overwriting existing channel info with new (old: TSID $old_href->{$region}{$section}{tsid})" ;
+#
+#if ($DEBUG)
+#{
+#	print STDERR " + OLD= \n" ;
+#	foreach (keys %{$old_href->{$region}{$section}})
+#	{
+#		print STDERR " + + $_ = $old_href->{$region}{$section}{$_}\n" ;
+#	}
+#	
+#}
+#						}
+#						else
+#						{
+#							push @{$scan_info_href->{'chans'}{$section}{'comments'}}, "[merge] creating new channel info with new" ;
+#						}
+#					}
+#
+#					## Just overwrite
+#					foreach my $field (keys %{$new_href->{$region}{$section}})
+#					{
+#						$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
+#					}
+#
+#				}
+#			}
+#		}
+#	}
+#
+#	$old_href = $new_href if (!$old_href) ;
+#	
+#print STDERR "merge_scan_freqs() - DONE\n" if $DEBUG ;
+#	
+#	return $old_href ;
+#}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 #----------------------------------------------------------------------
@@ -1092,7 +1826,7 @@ sub read_dvb_ts
 		chomp $line ;
 		next if $line =~ /^\s*#/ ; # skip comments
 		 
-		if ($line =~ /\[(\d+)\]/)
+		if ($line =~ /\[([\da-z]+)\]/i)
 		{
 			$tsid=$1;
 		}
@@ -1148,7 +1882,7 @@ sub read_dvb_pr
 		chomp $line ;
 		next if $line =~ /^\s*#/ ; # skip comments
 		 
-		if ($line =~ /\[([\d]+)\-([\d]+)\]/)
+		if ($line =~ /\[([\da-z]+)\-([\d]+)\]/i)
 		{
 			($tsid, $pnr)=($1,$2);
 		}

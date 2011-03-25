@@ -83,7 +83,7 @@ if (dvb_debug>=10)
 }
 
 	// round up frequency to nearest kHz
-	frequency = (int)(  ((float)frequency / 1000.0) + 0.5 ) * 1000 ; 
+	frequency = ROUND_FREQUENCY(frequency) ;
 
     list_for_each(item,&freq_list) {
 		freqi = list_entry(item, struct freqitem, next);

@@ -7,19 +7,23 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "1.000" ;
+our $VERSION = "1.002" ;
 
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $check, $noprune, $adap) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $merge, $check, $noprune, $adap) ;
+	my ($allow_duplicates, $prefer_more_chans) ;
 	GetOptions('v|verbose=i' => \$VERBOSE,
 			   'debug=i' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'clean' => \$clean,
+			   'merge' => \$merge,
 			   'cfg=s' => \$config,
 			   'noprune' => \$noprune,
 			   'check' => \$check,
 			   'a|adap|dvb=i' => \$adap,
+			   'dup=i' => \$allow_duplicates,
+			   'more_chans=i' => \$prefer_more_chans,
 			   ) or pod2usage(2) ;
 
 	# force checking on
@@ -49,7 +53,18 @@ $VERBOSE ||= 1 ;
 	
 	$dvb->set('prune_channels' => 0) if $noprune ;
 	$dvb->config_path($config) if $config ;
-	$dvb->merge(0) if $clean ;
+	if (defined($clean))
+	{
+		$dvb->merge(0) if $clean ;
+	}
+	elsif (defined($merge))
+	{
+		$dvb->merge($merge) ;
+	}
+	
+	$dvb->scan_allow_duplicates($allow_duplicates) if defined($allow_duplicates) ;
+	$dvb->scan_prefer_more_chans($prefer_more_chans) if defined($prefer_more_chans) ;
+	
 	
 	## Do the scan
 	my $freqfile = $ARGV[0] ;
@@ -66,11 +81,11 @@ $VERBOSE ||= 1 ;
 	foreach my $ch_href (@$channels_aref)
 	{
 		my $chan = $ch_href->{'channel'} ;
+		my $tsid = $tuning_href->{'pr'}{$chan}{'tsid'} ;
 		my $checkstr = "" ;
 		if ($check)
 		{
 			$checkstr .= " ..." ;
-			my $tsid = $tuning_href->{'pr'}{$chan}{'tsid'} ;
 			if (exists($tuning_href->{'ts'}{$tsid}))
 			{
 				$checkstr .= "ok" ;
@@ -81,7 +96,13 @@ $VERBOSE ||= 1 ;
 				$ok = 0 ;
 			}
 		}
-		printf STDERR "%3d : %-40s %5d-%-5d $ch_href->{type} $checkstr\n", 
+		
+		my $freqstr = "" ;
+		if ($VERBOSE)
+		{
+			$freqstr = sprintf "%10d Hz", $tuning_href->{'ts'}{$tsid}{'frequency'} ;
+		}
+		printf STDERR "%3d : %-40s %6s-%-5d $ch_href->{type} $freqstr $checkstr\n", 
 			$ch_href->{'channel_num'},
 			$chan,
 			$tuning_href->{'pr'}{$chan}{'tsid'},
