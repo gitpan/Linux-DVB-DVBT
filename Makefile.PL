@@ -3,120 +3,96 @@ use ExtUtils::MakeMaker qw(prompt WriteMakefile);
 use Config;
 use strict;
 
-my $name = 'Linux-DVB-DVBT' ;
+use lib './plib' ;
+use Makeutils ;
 
-my $mod = $name ;
-$mod =~ s%\-%::%g ;
+	my $clib = "./clib" ;
 
-my $modpath = $name ;
-$modpath =~ s%\-%/%g ;
+	# Set up info for this module
+	my $modinfo_href = init('Linux-DVB-DVBT') ;
+
+	# See if newer version is available
+	check_new_version() ;
+
+	## Options
+	get_makeopts() ;
+
+	## Check for current settings
+	get_config() ;
+
+	## Programs to install
+	add_install_progs("script/", [
+		qw/dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans dvbt-multirec dvbt-strength dvbt-tsid-qual/
+	]);
+
+	## Defines
+	add_defines({
+		'HAVE_DVB'		=> 1,
+		'HAVE_MPEG2'		=> 0,
+		'HAVE_AUDIO'		=> 0,
+		'_LARGEFILE_SOURCE'	=> '',			
+		'_FILE_OFFSET_BITS'	=> 64,			
+		'_GNU_SOURCE'		=> '',			
+	}) ;
+	
+	
+	## Add libraries
+	add_clibs($clib, {
+		'dvb_lib'			=> 1,
+		'libng'				=> 1,
+		'libmpeg2_stubs'	=> 1,
+		'mpeg2audio_stubs'	=> 1,
+		'dvb_ts_lib'	=> { 
+			'config'		=> {
+				'file'			=> 'config.h',
+				'func'			=> \&create_ts_config_h,
+			},
+		},
+	}) ;
+
+	## Write Makefile
+	
+	# See lib/ExtUtils/MakeMaker.pm for details of how to influence
+	# the contents of the Makefile that is written.
+	WriteMakefile(
+	    NAME              => $modinfo_href->{'mod'},
+	    VERSION_FROM      => "lib/$modinfo_href->{'modpath'}.pm", # finds $VERSION
+	    PREREQ_PM         => {
+			'File::Basename'		=> 0,
+			'File::Path' 			=> 0,
+			'File::Spec' 			=> 0,
+			'POSIX'					=> 0,
+			'Data::Dumper'			=> 0,
+			'Test::Pod::Coverage'	=> 1.08,
+			'Pod::Coverage' 		=> 0.18,
+			'Test::Pod' 			=> 1.22,
+	    }, # e.g., Module::Name => 1.1
+	    ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
+	      (ABSTRACT_FROM  => "lib/$modinfo_href->{'modpath'}.pm", # retrieve abstract from module
+	       AUTHOR         => 'Steve Price <cpan@sdprice.plus.com>') : ()),
+	    LIBS              => ['-lrt'], # e.g., '-lm'
+	    DEFINE            => $modinfo_href->{'mod_defines'},
+	    INC               => $modinfo_href->{'includes'},
+	    EXE_FILES         => $modinfo_href->{'programs'},
+	 
+	    CCFLAGS			  => $modinfo_href->{'CCFLAGS'},
+	    OPTIMIZE	  	  => $modinfo_href->{'OPTIMIZE'},
+	    OBJECT            => $modinfo_href->{'objects'}, 
+	);
 
 
-# Check OS
-#
-#    *  No support for OS
-#    * OS unsupported 
-if ($^O !~ /linux/i)
+	exit 0 ;
+
+#-----------------------------------------------------------------------------------------------------------------------
+sub MY::makemakerdflt 
 {
-	print "No support for OS\n" ;
-	exit 1 ;
+	my $makemakerdflt = get_makemakerdflt() ;
+	return $makemakerdflt ;
 }
 
-# See if newer version is available
-check_new_version() ;
-
-
-my @programs_to_install = qw(dvbt-epg dvbt-ffrec dvbt-record dvbt-scan dvbt-devices dvbt-chans dvbt-multirec dvbt-strength dvbt-tsid-qual);
-my $install_bin = 1;
-
-if ( 
-	grep $_ eq '-n', @ARGV
-	or grep /^LIB=/, @ARGV and not grep /^INSTALLSCRIPT=/, @ARGV 
-) 
-{
-	@ARGV = grep $_ ne '-n', @ARGV;
-	warn "Skipping installation of scripts...\n";
-	@programs_to_install = ();
-} 
-else 
-{
-	warn <<EOW;
-
-This Perl module comes with several scripts which I would try to install in
-directory $Config{installscript}.
-
-To skip install, rerun with option -n given to Makefile.PL.
-
-EOW
-}
-
-# -d = debug 
-my $MOD_DEFINE="-DHAVE_DVB" ;
-my $MAKE_DEFINE="HAVE_DVB=1" ;
-if ( 
-	grep $_ eq '-d', @ARGV
-) 
-{
-	@ARGV = grep $_ ne '-d', @ARGV;
-	warn "Buidling version with extra debugging enabled...\n";
-	$MOD_DEFINE .= " -DDEBUG" ;
-	$MAKE_DEFINE .= " DEBUG=1" ;
-} 
-
-## temp
-#$MAKE_DEFINE .= " PROFILE_STREAM=1" ;
-
-# See lib/ExtUtils/MakeMaker.pm for details of how to influence
-# the contents of the Makefile that is written.
-WriteMakefile(
-    NAME              => $mod,
-    VERSION_FROM      => "lib/$modpath.pm", # finds $VERSION
-    PREREQ_PM         => {
-		'File::Basename'	=> 0,
-		'File::Path' 		=> 0,
-		'File::Spec' 		=> 0,
-		'POSIX'			=> 0,
-		'Test::Pod::Coverage'	=> 1.08,
-		'Pod::Coverage' => 0.18,
-		'Test::Pod' => 1.22,
-    }, # e.g., Module::Name => 1.1
-    ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
-      (ABSTRACT_FROM  => "lib/$modpath.pm", # retrieve abstract from module
-       AUTHOR         => 'Steve Price <cpan@sdprice.plus.com>') : ()),
-    LIBS              => ['-lrt'], # e.g., '-lm'
-    DEFINE            => $MOD_DEFINE, # e.g., '-DHAVE_SOMETHING'
-    INC               => '-I./clib/dvb_lib -I./clib/libng', # e.g., '-I. -I/usr/include/other'
-    EXE_FILES         => [ map "script/$_", @programs_to_install ],
- 
- 
-    ##CCFLAGS			  => '-g -O0',
-    OPTIMIZE	  => '-ggdb',
-	# Un-comment this if you add C files to link with later:
-    # OBJECT            => '$(O_FILES)', # link all the C files too
-
-    MYEXTLIB          => 'clib/dvb_lib/libdvb_lib$(LIB_EXT)', 
-
-);
-
-## ADDED SDP
+#-----------------------------------------------------------------------------------------------------------------------
 sub MY::postamble {
 '
-# If make is called with TESTDEF defined then it passes this definition down to the library build to allow
-# special test builds
-MAKE_TEST_DEF=
-ifdef TESTDEF
-	MAKE_TEST_DEF="TESTDEF=$(TESTDEF)"
-endif
-
-## make libs
-$(MYEXTLIB): clib/dvb_lib/Makefile 
-	cd clib/dvb_lib && $(MAKE) $(MAKE_TEST_DEF) '.$MAKE_DEFINE.' CCFLAGS="$(CCFLAGS)" CCCDLFLAGS="$(CCCDLFLAGS)"
-
-## Clean up
-clean:: dvb_lib_clean                                                                                                   
-                                                                                                                        
-dvb_lib_clean: FORCE                                                                                                    
-	cd clib/dvb_lib && $(MAKE) clean                                                                                     
 
 ## Optional doxygen documentation 
 doxygen: FORCE
@@ -131,57 +107,78 @@ cpandoc: FORCE
 }
 
 
-sub check_new_version
+
+#-----------------------------------------------------------------------------------------------------------------------
+sub create_ts_config_h
 {
-	my $version = ExtUtils::MM_Unix->parse_version("lib/$modpath.pm");
+	my ($fname, %current_config) = @_ ;
 
-	print "Installing Version: $version\n" ;
-	
-	## Check for newer version
-	eval {
-		require LWP::UserAgent;
-	} ;
-	if (!$@)
-	{
-		print "Checking for later version...\n" ;
-		
-		## specify user name so that I can filter out my builds
-		my $user = $ENV{USER} || $ENV{USERNAME} || 'nobody' ;
+	open my $fh, ">$fname" or die "Error: Unable to write $fname : $!" ;
 
-		# CPAN testers
-		my $cpan = $ENV{'PERL5_CPAN_IS_RUNNING'}||0 ;
-		
-		## check for OS-specific versions
-		my $os = $^O ;
-		my $url = "http://quartz.homelinux.com/CPAN/index.php?ver=$version&mod=$name&user=$user&os=$os&cpan=$cpan" ;
-		 
-		my $ua = LWP::UserAgent->new;
-		$ua->agent("CPAN-$name/$version") ;
-		$ua->timeout(10);
-		$ua->env_proxy;
-		 
-		my $response = $ua->get($url);
-		if ($response->is_success) 
-		{
-			my $content = $response->content ;
-			if ($content =~ m/Current version : ([\d\.]+)/m)
-			{
-				print "Latest CPAN version is $1\n" ;
-			}
-			if ($content =~ m/Newer version/m)
-			{
-				print "** NOTE: A newer version than this is available. Please downloaded latest version **\n" ;
-			}
-			else
-			{
-				print "Got latest version\n" ;
-			}
-		}
-		else
-		{
-			print "Unable to connect, assuming latest\n" ;
-			#print $response->status_line;
-		}
-	}
+	#-------------------------------------------------------------
+	## File
+	print $fh <<CONFIG_H ;
+/* $Config{archname} */
+#ifndef CONFIG_H
+#define CONFIG_H
 	
+/* Architecture */
+#define $current_config{ARCH}
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+$current_config{HAVE_INTTYPES_H}
+
+/* Define to 1 if you have the <stdint.h> header file. */
+$current_config{HAVE_STDINT_H}
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+$current_config{HAVE_STDLIB_H}
+
+/* Define to 1 if you have the <strings.h> header file. */
+$current_config{HAVE_STRINGS_H}
+
+/* Define to 1 if you have the <string.h> header file. */
+$current_config{HAVE_STRING_H}
+
+/* Define to 1 if the system has the type `struct timeval'. */
+$current_config{HAVE_STRUCT_TIMEVAL}
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+$current_config{HAVE_SYS_STAT_H}
+
+/* Define to 1 if you have the <sys/timeb.h> header file. */
+$current_config{HAVE_SYS_TIMEB_H}
+
+/* Define to 1 if you have the <sys/time.h> header file. */
+$current_config{HAVE_SYS_TIME_H}
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+$current_config{HAVE_SYS_TYPES_H}
+
+/* Define to 1 if you have the <time.h> header file. */
+$current_config{HAVE_TIME_H}
+
+/* Define to 1 if you have the <unistd.h> header file. */
+$current_config{HAVE_UNISTD_H}
+
+
+/* Set up large file support */
+$current_config{off64_t}
+$current_config{lseek64}
+
+// If large file support is not included, then make the value do nothing
+#ifndef O_LARGEFILE
+#define O_LARGEFILE	0
+#endif
+
+#ifndef O_BINARY
+#define O_BINARY	0
+#endif
+
+
+#endif
+
+CONFIG_H
+
+	close $fh ;
 }

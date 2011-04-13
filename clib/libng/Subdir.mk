@@ -1,8 +1,6 @@
-ifndef libng
-libng := .
-endif
+libng ?= .
 
-CFLAGS += -I$(libng)
+CFLAGCFLAGS += -I$(libng)
 
 
 OBJS-libng := \

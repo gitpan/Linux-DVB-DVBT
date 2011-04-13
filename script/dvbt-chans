@@ -8,7 +8,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "3.02" ;
+our $VERSION = "3.03" ;
 
 	my ($help, $man, $DEBUG, $DEBUG_SCRIPT, $VERBOSE, $config, $check, $extra_check, $multiplex, $tsid_only, $adap, $write) ;
 	my ($list, $del_tsid) ;
@@ -105,7 +105,7 @@ Linux::DVB::DVBT::prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 		'chan'		=> 30,
 		'tsid'		=> 6,
 		'pnr'		=> 5,
-		'type'		=> 6,
+		'type'		=> 7,
 		'pids'		=> 56,
 	) ;
 	
@@ -140,7 +140,7 @@ Channel List
 ============
 
 $horiz_bar
- LCN | Channel Name                   |   TSID-PNR   | Type   | PIDs                                                 
+ LCN | Channel Name                   |   TSID-PNR   | Type    | PIDs                                                 
 $horiz_bar
 HEAD
 	

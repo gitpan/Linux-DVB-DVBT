@@ -8,7 +8,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "1.00" ;
+our $VERSION = "1.01" ;
 our $RECORD_SECS = 4 ;
 
 	my ($help, $man, $DEBUG, $DEBUG_SCRIPT, $VERBOSE, $config, $tsid_only, $adap) ;
@@ -20,6 +20,7 @@ our $RECORD_SECS = 4 ;
 			   'cfg=s' => \$config,
 			   'tsid=s' => \$tsid_only,
 			   'a|adap|dvb=i' => \$adap,
+			   'len=i' => \$RECORD_SECS,
 			   ) or pod2usage(2) ;
 
 
@@ -36,7 +37,8 @@ our $RECORD_SECS = 4 ;
 	##
 	my $dvb = Linux::DVB::DVBT->new(
 		'adapter_num' 	=> $adap,
-		'add_si'		=> 0,		# Do NOT add SI tables
+		'add_si'		=> 0,				# Do NOT add SI tables
+		'errmode'		=> 'message',
 	) ;
 	
 	$dvb->config_path($config) if $config ;
@@ -55,7 +57,7 @@ Linux::DVB::DVBT::prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 		'chan'		=> 30,
 		'tsid'		=> 6,
 		'pnr'		=> 5,
-		'type'		=> 6,
+		'type'		=> 7,
 		'pids'		=> 56,
 	) ;
 	
@@ -88,103 +90,100 @@ Linux::DVB::DVBT::prt_data("Current tuning info=", $tuning_href) if $DEBUG>=5 ;
 
 	print <<HEAD ;
 $horiz_bar
- LCN | Channel Name                   | Type   | Channel Quality                                                 
+ LCN | Channel Name                   | Type    | Channel Quality                                                 
 $horiz_bar
 HEAD
 	
-	my $got_pmt = 0 ;
-	my ($tv, $radio)=(0,0) ;
-
 	my %summary ;
 
-		## print channels grouped into multiplexes
-		my %multi ;
-		foreach my $ch_href (@$channels_aref)
+	## print channels grouped into multiplexes
+	my %multi ;
+	foreach my $ch_href (@$channels_aref)
+	{
+		my $chan = $ch_href->{'channel'} ;
+		my $tsid = $tuning_href->{'pr'}{$chan}{'tsid'} ;
+		$multi{$tsid} ||= [] ;
+		push @{$multi{$tsid}}, $ch_href ;
+	}
+	
+	my $tsids=0;
+	my @tsid_list = sort {$a <=> $b} keys %multi ;
+	if ($tsid_only)
+	{
+		if (exists($multi{$tsid_only}))
 		{
-			my $chan = $ch_href->{'channel'} ;
-			my $tsid = $tuning_href->{'pr'}{$chan}{'tsid'} ;
-			$multi{$tsid} ||= [] ;
-			push @{$multi{$tsid}}, $ch_href ;
+			@tsid_list = ($tsid_only) ;
 		}
-		
-		my $tsids=0;
-		my @tsid_list = sort {$a <=> $b} keys %multi ;
-		if ($tsid_only)
+		else
 		{
-			if (exists($multi{$tsid_only}))
-			{
-				@tsid_list = ($tsid_only) ;
-			}
-			else
-			{
-				print "Error : Requested TSID $tsid_only is not a valid value for this tuner\n" ;
-				exit 1 ; 
-			}
+			print "Error : Requested TSID $tsid_only is not a valid value for this tuner\n" ;
+			exit 1 ; 
 		}
-		foreach my $tsid (@tsid_list)
+	}
+	foreach my $tsid (@tsid_list)
+	{
+		if ($tsids)
 		{
-			if ($tsids)
-			{
-				print <<SEP ;
+			print <<SEP ;
 $tsid_bar
 SEP
-			}
-			
-			my $tsid_info = "" ;
-				$tsid_info .= "Freq: $tuning_href->{'ts'}{$tsid}{'frequency'} Hz" ;
-				$tsid_info .= " $tuning_href->{'ts'}{$tsid}{'modulation'}QAM" ;
-				$tsid_info = "[$tsid_info]" ;
-			print <<TSID ;
+		}
+		
+		my $tsid_info = "" ;
+			$tsid_info .= "Freq: $tuning_href->{'ts'}{$tsid}{'frequency'} Hz" ;
+			$tsid_info .= " $tuning_href->{'ts'}{$tsid}{'modulation'}QAM" ;
+			$tsid_info = "[$tsid_info]" ;
+		print <<TSID ;
 TSID $tsid   $tsid_info
 $tsid_bar
 TSID
-			++$tsids ;
-			my %totals = (
-				'chans'			=> 0,
-				'pkts'			=> 0.0,
-				'unrecorded'	=> 0,
-				'errors'		=> 0,
-				'overflows'		=> 0,
-			) ;
-			foreach my $ch_href (@{$multi{$tsid}})
+		++$tsids ;
+		my %totals = (
+			'chans'			=> 0,
+			'pkts'			=> 0.0,
+			'unrecorded'	=> 0,
+			'errors'		=> 0,
+			'overflows'		=> 0,
+		) ;
+		foreach my $ch_href (@{$multi{$tsid}})
+		{
+			my ($tv, $radio) = (0, 0) ;
+			my %info = print_chan($tuning_href, $ch_href, \$tv, \$radio) ;
+			$totals{'chans'} += ($tv || $radio ? 1 : 0) ;
+			foreach my $type (qw/video audio/)
 			{
-				my %info = print_chan($tuning_href, $ch_href, \$tv, \$radio) ;
-				++$totals{'chans'} ;
-				foreach my $type (qw/video audio/)
+				if ($info{$type}{'recorded'})
 				{
-					if ($info{$type}{'recorded'})
+					foreach my $field (qw/errors overflows/)
 					{
-						foreach my $field (qw/errors overflows/)
-						{
-							$totals{$field} += $info{$type}{$field} ;
-						}
-						$totals{'pkts'} += 1.0*$info{$type}{'pkts'} ;
+						$totals{$field} += $info{$type}{$field} ;
 					}
-					else
-					{
-						++$totals{'unrecorded'} ;
-					}
+					$totals{'pkts'} += 1.0*$info{$type}{'pkts'} ;
 				}
-			}	
+				else
+				{
+					++$totals{'unrecorded'} ;
+				}
+			}
+		}	
 
-			my $summary = sprintf "%3d chans %5.0f pkts %3d unrecorded %4d errors %4d overflows",
-				$totals{'chans'},
-				$totals{'pkts'} / $totals{'chans'},
-				$totals{'unrecorded'},
-				$totals{'errors'},
-				$totals{'overflows'};
-				
-			$summary{$tsid} = $summary ;
+		my $summary = sprintf "%3d chans %5.0f pkts %3d unrecorded %4d errors %4d overflows",
+			$totals{'chans'},
+			$totals{'pkts'} / $totals{'chans'},
+			$totals{'unrecorded'},
+			$totals{'errors'},
+			$totals{'overflows'};
 			
-			print <<TSID ;
+		$summary{$tsid} = $summary ;
+		
+		print <<TSID ;
 $tsid_bar
 TSID $tsid Summary: $summary
 $tsid_bar
 
 TSID
 
-		}
-		
+	}
 
 	print <<TAIL ;
 $horiz_bar
@@ -214,6 +213,8 @@ sub print_chan
 {
 	my ($tuning_href, $ch_href, $tv_ref, $radio_ref) = @_ ;
 
+
+	my $error = 0 ;
 	my %info = (
 		'audio'		=> {
 			'recorded'		=> 0,
@@ -222,7 +223,8 @@ sub print_chan
 			'pkts'			=> 0,
 		},
 		'video'		=> {
-			'recorded'		=> 0,
+			# don't mess up the stats!
+			'recorded'		=> 1,
 			'errors'		=> 0,
 			'overflows'		=> 0,
 			'pkts'			=> 0,
@@ -230,6 +232,23 @@ sub print_chan
 	) ;	
 	my $chan = $ch_href->{'channel'} ;
 
+	print STDERR "print_chan($chan) - $ch_href->{type}\n" if $DEBUG_SCRIPT ;
+
+	if ($ch_href->{type} eq 'radio')
+	{
+		$$radio_ref = 1 ;
+	}
+	elsif ($ch_href->{type} eq 'tv')
+	{
+		$$tv_ref = 1 ;
+	}
+	
+
+	my $qualstr = "**Unable to record**" ;
+	if ($$tv_ref || $$radio_ref)
+	{
+		my %multiplex_info ;
+		
 		## Check we can record
 		my $file = "/tmp/test.ts" ;
 		my $duration_secs = $RECORD_SECS ;
@@ -237,46 +256,75 @@ sub print_chan
 		unlink $file ;
 	
 		## Parse command line
+		print STDERR " + multiplex_parse\n" if $DEBUG_SCRIPT ;
 		my @chan_spec ;
-		my $error ;
-		$error ||= $dvb->multiplex_parse(\@chan_spec, "f=$file", "ch='$chan'", "len=$duration");
-		print "ERROR: $error\n" if $error && $DEBUG_SCRIPT ;
+		$error = $dvb->multiplex_parse(\@chan_spec, "f=$file", "ch='$chan'", "len=$duration");
+		print STDERR "ERROR: $error\n" if $error && $DEBUG_SCRIPT ;
 		
-		## Select the channel(s)
-		my %options = (
-			'out'			=> "av",
-		) ;
-		$error ||= $dvb->multiplex_select(\@chan_spec, %options) ;
-		print "ERROR: $error\n" if $error && $DEBUG_SCRIPT ;
-		
-		## Get multiplex info
-		my %multiplex_info = $dvb->multiplex_info() ;
-		
-		## Record
-		eval {
-			my $stderr ;
-			local *STDERR ;
-			open(STDERR, '>', \$stderr) or die "Can't open STDERR: $!";
-
-			## Record
-			$error ||= $dvb->multiplex_record(%multiplex_info) ;
-		} ;
-		if ($@)
+		if (!$error)
 		{
-			print "ERROR: $@\n" if $DEBUG_SCRIPT ;
+			print STDERR " + multiplex_select\n" if $DEBUG_SCRIPT ;
+
+			## Select the channel(s)
+			my %options = (
+				'out'			=> "av",
+			) ;
+			$error ||= $dvb->multiplex_select(\@chan_spec, %options) ;
+			print STDERR "ERROR: $error\n" if $error && $DEBUG_SCRIPT ;
 		}
 		
 		if (!$error)
 		{
+			print STDERR " + multiplex_info\n" if $DEBUG_SCRIPT ;
+		
+			## Get multiplex info
+			%multiplex_info = $dvb->multiplex_info() ;
+			if ($DEBUG_SCRIPT >= 2)
+			{ 
+				Linux::DVB::DVBT::prt_data("info", \%multiplex_info) ;
+			}
+			
+			if ($ch_href->{type} eq 'tv')
+			{
+				$info{'video'}{'recorded'}=0 ;
+			}
+	
+			
+			## Record
+			print STDERR " + multiplex_record\n" if $DEBUG_SCRIPT ;
+			eval {
+				my $stderr ;
+				local *STDERR ;
+				open(STDERR, '>', \$stderr) or die "Can't open STDERR: $!";
+	
+				## Record
+				$error ||= $dvb->multiplex_record(%multiplex_info) ;
+			} ;
+			if ($@)
+			{
+				print STDERR "ERROR: $@\n" if $DEBUG_SCRIPT ;
+			}
+			
+			if ($DEBUG_SCRIPT >= 2)
+			{ 
+				Linux::DVB::DVBT::prt_data("info", \%multiplex_info) ;
+			}
+		}
+		
+		if (!$error)
+		{
+			my $pids = 0 ;
+			print STDERR " + process results...\n" if $DEBUG_SCRIPT ;
 			foreach my $file (sort keys %{$multiplex_info{'files'}})
 			{
 				my $href = $multiplex_info{'files'}{$file} ;
-				print "  $file\n" if $DEBUG_SCRIPT ;
+				print STDERR "  $file\n" if $DEBUG_SCRIPT ;
 				foreach my $pid_href (@{$multiplex_info{'files'}{$file}{'pids'}})
 				{
+					++$pids ;
 					if ($DEBUG_SCRIPT)
 					{				
-						printf "    PID %5d [$pid_href->{'pidtype'}] : %s errors / %s overflows / %s packets\n", 
+						printf STDERR "    PID %5d [$pid_href->{'pidtype'}] : %s errors / %s overflows / %s packets\n", 
 							$pid_href->{'pid'},
 							$pid_href->{'errors'},
 							$pid_href->{'overflows'},
@@ -294,51 +342,55 @@ sub print_chan
 					}
 					
 				}
-				print "\n" if $DEBUG_SCRIPT ;
+				print STDERR "\n" if $DEBUG_SCRIPT ;
+			}
 			
+			if (!$pids)
+			{
+				$error = "No pids recorded\n" ;
+				print STDERR "No pids recorded\n" if $DEBUG_SCRIPT ;
 			}
 		}
-
-
 		unlink $file ;
 	
-	my $qualstr = "**Unable to record**" ;
-	if (!$error)
-	{
-		my $vstr = "" ;
-		if ($info{'video'}{'recorded'})
+		if (!$error)
 		{
-			$vstr = sprintf "video: %5d (%3d e %3d o) ", 
-				$info{'video'}{'pkts'},
-				$info{'video'}{'errors'},
-				$info{'video'}{'overflows'} ;
+			print STDERR " + create string...\n" if $DEBUG_SCRIPT ;
+			my $vstr = "" ;
+			if ($info{'video'}{'recorded'})
+			{
+				$vstr = sprintf "video: %5d (%3d e %3d o) ", 
+					$info{'video'}{'pkts'},
+					$info{'video'}{'errors'},
+					$info{'video'}{'overflows'} ;
+			}
+			
+			my $astr = "" ;
+			if ($info{'audio'}{'recorded'})
+			{
+				$astr = sprintf "audio: %5d (%3d e %3d o) ", 
+					$info{'audio'}{'pkts'},
+					$info{'audio'}{'errors'},
+					$info{'audio'}{'overflows'} ;
+			}
+	
+			$qualstr = "$vstr$astr" ;
+			
+			
 		}
-		
-		my $astr = "" ;
-		if ($info{'audio'}{'recorded'})
-		{
-			$astr = sprintf "audio: %5d (%3d e %3d o) ", 
-				$info{'audio'}{'pkts'},
-				$info{'audio'}{'errors'},
-				$info{'audio'}{'overflows'} ;
-		}
-
-		$qualstr = "$vstr$astr" ;
-		
-		if ($ch_href->{type} eq 'radio')
-		{
-			# don't mess up the stats!
-			$info{'video'}{'recorded'}=1 ;
-		}
-		
 	}
+	else
+	{
+		print STDERR " + skipped special\n" if $DEBUG_SCRIPT ;
+		$qualstr = "**Special channel skipped**" ;
+	}	
 	
 	printf "%-$widths{check}s%$widths{lcn}d | %-$widths{chan}s | %-$widths{type}s | $qualstr \n", 
 		$error ? "*" : " ",
 		$ch_href->{'channel_num'},
 		$chan,
 		$ch_href->{type} ;
-	
+
 	return %info ;
 	
 }

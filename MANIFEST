@@ -3,6 +3,7 @@ README
 COPYING
 Changes
 Makefile.PL
+plib/Makeutils.pm
 ppport.h
 typemap
 fallback/const-c.inc
@@ -24,6 +25,7 @@ xs/DVBT-scan.c
 xs/DVBT-specific.h
 xs/DVBT-tuning.c
 
+clib/dvb_lib/Subdir.mk
 clib/dvb_lib/dvb_debug.c
 clib/dvb_lib/dvb_debug.h
 clib/dvb_lib/dvb_epg.c
@@ -40,7 +42,6 @@ clib/dvb_lib/dvb_struct.h
 clib/dvb_lib/dvb_tune.c
 clib/dvb_lib/dvb_tune.h
 clib/dvb_lib/dvb.h
-clib/dvb_lib/Subdir.mk
 clib/dvb_lib/Makefile
 clib/dvb_lib/struct-dvb.c
 clib/dvb_lib/struct-dvb.h
@@ -51,6 +52,37 @@ clib/libng/Subdir.mk
 clib/libng/parse-dvb.c
 clib/libng/parse-mpeg.c
 clib/libng/parse-mpeg.h
+
+clib/dvb_ts_lib/Subdir.mk
+clib/dvb_ts_lib/ts/tspics.c
+clib/dvb_ts_lib/ts/tspics.h
+clib/dvb_ts_lib/ts_cut.c
+clib/dvb_ts_lib/ts_cut.h
+clib/dvb_ts_lib/ts_parse.c
+clib/dvb_ts_lib/ts_parse.h
+clib/dvb_ts_lib/ts_skip.c
+clib/dvb_ts_lib/ts_skip.h
+clib/dvb_ts_lib/ts_split.c
+clib/dvb_ts_lib/ts_split.h
+clib/dvb_ts_lib/ts_bits.h
+clib/dvb_ts_lib/ts_bits.c
+clib/dvb_ts_lib/tables/parse_si_eit.c
+clib/dvb_ts_lib/tables/parse_si_eit.h
+clib/dvb_ts_lib/tables/parse_si_sdt.c
+clib/dvb_ts_lib/tables/parse_si_sdt.h
+clib/dvb_ts_lib/dvbsnoop/crc32.c
+clib/dvb_ts_lib/dvbsnoop/crc32.h
+clib/dvb_ts_lib/si/parse_desc.c
+clib/dvb_ts_lib/si/parse_desc.h
+
+clib/libmpeg2_stubs/Subdir.mk
+clib/libmpeg2_stubs/include/mpeg2.h
+clib/libmpeg2_stubs/include/mpeg2convert.h
+clib/libmpeg2_stubs/mpeg2_stubs.c
+
+clib/mpeg2audio_stubs/Subdir.mk
+clib/mpeg2audio_stubs/mpegaudio.h
+clib/mpeg2audio_stubs/mpegaudio_stubs.c
 
 script/dvbt-scan
 script/dvbt-epg

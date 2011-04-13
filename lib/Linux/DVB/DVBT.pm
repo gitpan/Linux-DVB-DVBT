@@ -324,7 +324,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.08';
+our $VERSION = '2.09';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -3434,6 +3434,7 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 	my $tsid = $options{'tsid'} ;
 	
 	## process each entry
+	my $demux_count = 0 ;
 	foreach my $spec_href (@$chan_spec_aref)
 	{
 		my $file = $spec_href->{'file'} ;
@@ -3610,7 +3611,17 @@ prt_data(" + Add pid = ", $pid_href) if $DEBUG >= 15 ;
 					$files{$file}{'pids'}++ ;
 				}
 			}
+			
+			# add up all of the demux filters 
+			$demux_count += scalar(@{$href->{'demux'}}) ;
 		}		
+	}
+	
+	# check that at least one demux filter has been added
+	if ( !$demux_count )
+	{
+		$error = "No demux filters added (are you trying to record a special channel?)" ;
+		return $self->handle_error($error) ;
 	}
 	
 	## Add in SI tables (if required) to the multiplex info

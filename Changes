@@ -1,5 +1,10 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.09 Wed Apr 13 11:26:00 2011
+	- Bug fix of dvbt-tsid-qual
+	- Now using new Makeutils.pm helper package to create Makefile
+	- Bolted in dvb_ts_lib to provide transport stream decoding for future features
+
 2.08 Tue Mar 25 12:46:00 2011
 	- re-write of scan routine to better handle the case where multiple frequencies (TSIDs) contain
 	  the same channels. Also handles channel renaming properly now. 
