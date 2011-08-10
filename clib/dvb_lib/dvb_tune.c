@@ -956,6 +956,10 @@ void dvb_fini(struct dvb_state *h)
 //    dvb_demux_filter_release(h);
 
 
+    // Clear out freq list
+    clear_freqlist() ;
+
+    // Close DVB
     dvb_dvr_release(h);
     free(h);
 

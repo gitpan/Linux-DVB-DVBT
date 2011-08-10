@@ -324,7 +324,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.09';
+our $VERSION = '2.10';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -2183,6 +2183,8 @@ sub get_tuning_info
 	{
 		$tuning_href = Linux::DVB::DVBT::Config::read($self->config_path) ;
 		
+		prt_data("get_tuning_info()", $tuning_href) if $DEBUG >= 20 ;
+		
 		# save if got something
 		$self->tuning($tuning_href) if $tuning_href ;
 	}
@@ -2591,7 +2593,8 @@ EPG HASH format is:
 		'end'			=> end time
 		'duration'		=> duration
 		
-		'title'			=> title string
+		'title'			=> title string (program/series/film title)
+		'subtitle'		=> Usually the epsiode name
 		'text'			=> synopsis string
 		'etext'			=> extra text (not usually used)
 		'genre'			=> genre string
@@ -2603,6 +2606,8 @@ EPG HASH format is:
 		
 		'tva_prog'		=> TV Anytime program id
 		'tva_series'	=> TV Anytime series id
+		
+		'flags'			=> HASH ref to flags (see below)
 	}
 
 i.e. The information is keyed on channel name and program id (pid)
@@ -2618,6 +2623,24 @@ For example:
 This allows for a simple regexp to extract the information (e.g. in a TV listings application 
 you may want to only use the major category in the main view, then show the extra genre information in
 a more detailed view)
+
+The flags HASH format is:
+
+	# audio information
+	'mono'			=> flag set if program is in mono
+	'stereo'		=> flag set if program is in stereo
+	'dual-mono'		=> flag set if program is in 2 channel mono
+	'multi'			=> flag set if program is in multi-lingual, multi-channel audio
+	'surround'		=> flag set if program is in surround sound
+	
+	# video information
+	'4:3'			=> flag set if program is in 4:3 
+	'16:9'			=> flag set if program is in 16:9 
+	'hdtv'			=> flag set if program is in high definition 
+	
+	'subtitles'		=> flag set if subtitles (for the hard of hearing) are available for this program
+				
+	'new'			=> flag set if description mentions that this is a new program/series
 
 Dates HASH format is:
 
@@ -2830,11 +2853,13 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 		
 		my $episode ;
 		my $num_episodes ;
+		my $new_program = 0 ;
 		my %flags ;
 		
 		Linux::DVB::DVBT::Utils::fix_title(\$title, \$synopsis) ;
 		Linux::DVB::DVBT::Utils::fix_episodes(\$title, \$synopsis, \$episode, \$num_episodes) ;
 		Linux::DVB::DVBT::Utils::fix_audio(\$title, \$synopsis, \%flags) ;
+		Linux::DVB::DVBT::Utils::fix_synopsis(\$title, \$synopsis, \$new_program) ;
 			
 		my $epg_flags = $epg_entry->{'flags'} ;
 		
@@ -2883,6 +2908,8 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 				'hdtv'			=> $epg_flags & $EPG_FLAGS{'VIDEO_HDTV'} ? 1 : 0,
 
 				'subtitles'		=> $epg_flags & $EPG_FLAGS{'SUBTITLES'} ? 1 : 0,
+				
+				'new'			=> $new_program,
 			},
 		} ;
 
@@ -3146,6 +3173,61 @@ Each stream definition must start with a filename, followed by either channel na
 you must specify the duration of the stream. Finally, an offset time can be specified that delays the start of 
 the stream (for example, if the start time of the programs to be recorded are staggered).
 
+The list of recognised arguments is:
+
+=over 4
+
+=item f|file
+
+Filename
+
+=item c|chan
+
+Channel name
+
+=item p|pid
+
+PID number
+
+=item lan|lang
+
+L</Language Specification>
+
+=item out
+
+L</Output Specification>
+
+=item len|duration
+
+Recording duration (specified in HH:MM or HH:MM:SS format, or as minutes)
+
+=item off|offset
+
+Start offset (specified in HH:MM or HH:MM:SS format, or as minutes)
+
+=item title
+
+Title name (reserved for future use)
+
+=item ev|event
+
+Event id used for timeslipping (see L</Timeslip Specification>)
+
+=item tslip|timeslip
+
+Program start/end/both extended (see L</Timeslip Specification>)
+
+=item max|max_timeslip
+
+Maximum timeslip time (specified in HH:MM or HH:MM:SS format, or as minutes)  (see L</Timeslip Specification>)
+
+=back
+
+=back
+
+
+=head3 Output Specification
+ 
 A file defined by channel name(s) may optionally also contain a language spec and an output spec: 
 
 The output spec determines which type of streams are included in the recording. By default, "video" and "audio" tracks are recorded. You can
@@ -3160,6 +3242,9 @@ For example, any of the following specs define video, audio, and subtitles:
 
 Note that, if the file format explicitly defines the type of streams required, then there is no need to specify an output spec. For example,
 specifying that the file format is mp3 will ensure that only the audio is recorded.
+
+
+=head3 Language Specification
 
 In a similar fashion, the language spec determines the audio streams to be recorded in the program. Normally, the default audio stream is included 
 in the recorded file. If you want either an alternative audio track, or additional audio tracks, then you use the language spec to 
@@ -3193,6 +3278,64 @@ Results in an error. The english tracks have already been skipped to match the f
 Note that the output spec overrides the language spec. If the output does not include audio, then the language spec is ignored.
 
 
+=head3 Timeslip Specification
+ 
+Timeslip recording uses the now/next live EPG information to track the start and end of the program being recorded. This information
+is transmit by the broadcaster and (hopefully) is a correct reflection of the broadcast of the program. Using this feature should then
+allow recordings to be adjusted to account for late start of a program (for example, due to extended news or sports events).
+
+To use the feature you MUST specify the event id of the program to be recorded. This information is the same event id that is gathered
+by the L</epg()> function. By default, the timeslip will automatically extend the end of the recording by up to 1 hour (recording stops
+automatically when the now/next information indicates the real end of the program).
+
+=over 4
+
+=item event=41140
+
+Sets the event id to be 41140
+
+=back
+
+Optionally you can specify a different maximum timeslip time using the 'max_timeslip' argument. Specify the time in minutes (or HH:MM or HH:MM:SS).
+Note that this has a different effect depending on the B<timeslip> setting (which specifies the program 'edge'):
+
+=over 4
+
+=item max_timeslip=2:00
+
+Sets the maximum timslip time to be 2 hours (i.e. by default, the recording end can be extended by up to 2 hours)
+
+=back
+
+
+Also, you can set the 'edge' of the program that is to be timeslipped using the B<timeslip> parameter:
+
+=over 4
+
+=item timeslip=end
+
+Timeslips only the end of the recording. This means that the recording will record for the normal duration, and then check to see if
+the specified event (B<event_id>) has finished broadcasting. If not, the recording continues until the program finishes OR the maximum timeslip
+duration has expired.
+
+This is the default.
+
+=item timeslip=start
+
+Timeslips only the start of the recording. This means that the recording will not start until the event begins broadcasting. Once started, the 
+specified duration will be recorded.
+
+Note that this can mean that you miss a few seconds at the start of the program (which is why the default is to just extend the end of the recording).
+
+=item timeslip=both
+
+Performs both start and end recording timeslipping.
+
+=back
+
+
+=head3 Examples
+
 Example valid sets of arguments are:
 
 =over 4
@@ -3211,6 +3354,8 @@ Record pids 600 & 601 into file f3.ts, record for 30 minutes
 
 =back
 
+=over 4
+
 =cut
 
 my %multiplex_params = (
@@ -3222,6 +3367,11 @@ my %multiplex_params = (
 	'^(len|duration)'	=> 'duration',
 	'^off'				=> 'offset',
 	'^title'			=> 'title',
+	
+	'^ev'				=> 'event_id',
+	'^(tslip|timeslip)'	=> 'timeslip',
+	'^max'				=> 'max_timeslip',
+	
 ) ;
 sub multiplex_parse
 {
@@ -3262,9 +3412,13 @@ sub multiplex_parse
 			{
 				$current_chan_href = undef ;
 				$current_file_href = {
-					'file'		=> $value,
-					'chans'		=> [],
-					'pids'		=> [],
+					'file'			=> $value,
+					'chans'			=> [],
+					'pids'			=> [],
+					
+					'event_id'		=> -1,
+					'timeslip'		=> 'off',
+					'max_timeslip'	=> 0,
 				} ;
 				push @$chan_spec_aref, $current_file_href ;
 				next ;
@@ -3293,6 +3447,35 @@ sub multiplex_parse
 			if ($var eq 'pid')
 			{
 				push @{$current_file_href->{'pids'}}, $value ;
+				next ;
+			}
+			
+			# event_id setting
+			if ($var eq 'event_id')
+			{
+				$current_file_href->{'event_id'} = $value ;
+				next ;
+			}
+			
+			# timeslip setting
+			if ($var eq 'timeslip')
+			{
+				$current_file_href->{'timeslip'} = 'end' ;
+				if ($value =~ /both/i)
+				{
+					$current_file_href->{'timeslip'} = 'both' ;
+				}
+				if ($value =~ /start/i)
+				{
+					$current_file_href->{'timeslip'} = 'start' ;
+				}
+				next ;
+			}
+			
+			# maximum slippage setting
+			if ($var eq 'max_timeslip')
+			{
+				$current_file_href->{'max_timeslip'} = $value ;
 				next ;
 			}
 			
@@ -3341,10 +3524,10 @@ sub multiplex_parse
 		{
 			return $self->handle_error("File \"$file\" has no channels/pids specified") ;
 		}
-		if (@{$spec_href->{'pids'}} && @{$spec_href->{'chans'}})
-		{
-			return $self->handle_error("File \"$file\" has both channels and pids specified at the same time") ;
-		}
+#		if (@{$spec_href->{'pids'}} && @{$spec_href->{'chans'}})
+#		{
+#			return $self->handle_error("File \"$file\" has both channels and pids specified at the same time") ;
+#		}
 	}
 		
 	return 0 ;
@@ -3440,6 +3623,8 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 		my $file = $spec_href->{'file'} ;
 		if ($file)
 		{
+			my $need_eit = 0 ;
+			
 			## get entry for this file (or create it)
 			my $href = $self->_multiplex_file_href($file) ;
 			
@@ -3456,8 +3641,50 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 			$href->{'offset'} ||= Linux::DVB::DVBT::Utils::time2secs($spec_href->{'offset'} || 0) ;
 			$href->{'duration'} ||= Linux::DVB::DVBT::Utils::time2secs($spec_href->{'duration'} || 0) ;
 
-			# beta: title
+			# title
 			$href->{'title'} ||= $spec_href->{'title'} ;
+			
+
+			# types of streams present
+			$href->{'audio'} = 0 ;
+			$href->{'video'} = 0 ;
+			$href->{'subtitle'} = 0 ;
+			
+			# list of channel names
+			$href->{'channels'} = [] ;
+			
+
+			# event_id
+			$href->{'event_id'} ||= $spec_href->{'event_id'} || -1 ;
+			
+			# timeslip
+			$href->{'timeslip_start'} ||= 0 ;
+			$href->{'timeslip_end'} ||= 0 ;
+			if ($href->{'event_id'} >= 0)
+			{
+				## only enable timeslip if we've got an event id
+				if ($spec_href->{'timeslip'} =~ /start|both/)
+				{
+					$href->{'timeslip_start'} = 1 ;
+				}
+				if ($spec_href->{'timeslip'} =~ /end|both/)
+				{
+					$href->{'timeslip_end'} = 1 ;
+				}
+				
+				## default to slip end
+				if (!$href->{'timeslip_start'} && !$href->{'timeslip_end'})
+				{
+					$href->{'timeslip_end'} = 1 ;
+				}
+				
+				## need to add EIT to perform the timeslip
+				++$need_eit ;
+			}
+
+			# slippage time (default = 1 hour)
+#			$href->{'max_timeslip'} ||= $spec_href->{'max_timeslip'} || 3600 ;
+			$href->{'max_timeslip'} = Linux::DVB::DVBT::Utils::time2secs($spec_href->{'max_timeslip'} || 3600) ;
 			
 			# calc total length
 			my $period = $href->{'offset'} + $href->{'duration'} ;
@@ -3471,6 +3698,8 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 				my $lang = $chan_href->{'lang'}  || $def_lang ;
 				my $out = $chan_href->{'out'} || $def_out ;
 				
+				push @{$href->{'channels'}}, $channel_name ;
+				
 				# find channel
 				my ($frontend_params_href, $demux_params_href) = Linux::DVB::DVBT::Config::find_channel($channel_name, $tuning_href) ;
 				if (! $frontend_params_href)
@@ -3480,7 +3709,6 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 
 				# check in same multiplex
 				$tsid ||= $frontend_params_href->{'tsid'} ;
-#				if ($tsid != $frontend_params_href->{'tsid'})
 				if ($tsid ne $frontend_params_href->{'tsid'})
 				{
 					return $self->handle_error("Channel $channel_name (on $frontend_params_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
@@ -3493,7 +3721,10 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 				return $self->handle_error($error) if $error ;
 
 				# save settings
-				$href->{'dest_file'} = $dest_file ;
+				my $ext = (fileparse($dest_file, '\..*'))[2] ;
+				
+				$href->{'destfile'} = $dest_file ;
+				$href->{'destext'} = $ext ;
 				$href->{'out'} = $out ;
 				$href->{'lang'} = $lang ;
 
@@ -3501,6 +3732,19 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 				my @pids ;
 				$error = Linux::DVB::DVBT::Config::out_pids($demux_params_href, $out, $lang, \@pids) ;
 				return $self->handle_error($error) if $error ;
+				
+				if ($need_eit)
+				{
+					push @pids, {
+						'pid' => $SI_TABLES{'EIT'}, 
+						'pidtype' => 'EIT', 
+							
+						'demux_params'	=> undef,
+					} ;
+					
+					## clear flag otherwise we'll record it twice!
+					$need_eit = 0 ;
+				}
 
 prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 				
@@ -3514,6 +3758,12 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 					# keep demux filter info
 					push @{$href->{'demux'}}, $self->{_demux_filters}[-1] ;
 					
+					# keep track of the stream types for this file
+					$href->{'video'}=1 if ($pid_href->{'pidtype'} eq 'video') ;
+					$href->{'audio'}=1 if ($pid_href->{'pidtype'} eq 'audio') ;
+					$href->{'subtitle'}=1 if ($pid_href->{'pidtype'} eq 'subtitle') ;
+					
+					
 					++$files{$file}{'chans'} ;
 				}
 			}
@@ -3521,13 +3771,19 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 
 			# pids
 			$spec_href->{'pids'} ||= [] ;
+			if ($need_eit)
+			{
+				push @{$spec_href->{'pids'}}, $SI_TABLES{'EIT'} ;
+			}
+
+			
 			foreach my $pid (@{$spec_href->{'pids'}})
 			{
-				# add error if already got pids for this file
-				if ( $files{$file}{'chans'} )
-				{
-					return $self->handle_error("Cannot mix chan definitions with pid definitions for file \"$file\"") ;
-				}
+#				# add error if already got pids for this file
+#				if ( $files{$file}{'chans'} )
+#				{
+#					return $self->handle_error("Cannot mix chan definitions with pid definitions for file \"$file\"") ;
+#				}
 
 				# array of: { 'pidtype'=>$type, 'tsid' => $tsid, ... } for this pid value
 				my $pid_href ;
@@ -3607,6 +3863,12 @@ prt_data(" + Add pid = ", $pid_href) if $DEBUG >= 15 ;
 					
 					# keep demux filter info
 					push @{$href->{'demux'}}, $self->{_demux_filters}[-1] ;
+
+					# keep track of the stream types for this file
+					$href->{'video'}=1 if ($pid_href->{'pidtype'} eq 'video') ;
+					$href->{'audio'}=1 if ($pid_href->{'pidtype'} eq 'audio') ;
+					$href->{'subtitle'}=1 if ($pid_href->{'pidtype'} eq 'subtitle') ;
+					
 					
 					$files{$file}{'pids'}++ ;
 				}
@@ -3686,6 +3948,20 @@ Returns HASH of the currently defined multiplex filters. HASH is of the form:
 where there is an entry for each file, each entry containing a recording duration (in seconds),
 an offset time (in seconds), and an array of pids that define the streams required for the file.
 
+After recording, the multiplex info HASH 'pids' information also contains:
+
+		'pids'	=> [
+			{
+				'pid'	=> Stream PID
+				'pidtype'	=> pid type (i.e. 'audio', 'video', 'subtitle')
+
+				'pkts'    	=> Number of recorded packets
+				'errors'  	=> Transport stream error count
+				'overflows' => Count of DVBT buffer overflows during recording
+				'timeslip_start_secs' => Number of seconds the recording start has been slipped by
+				'timeslip_end_secs'   => Number of seconds the recording end has been slipped by
+			},
+
 =cut
 
 sub multiplex_info
@@ -3715,20 +3991,42 @@ sub multiplex_record
 Linux::DVB::DVBT::prt_data("multiplex_record() : multiplex_info=", \%multiplex_info) if $DEBUG>=10 ;
 
 	# process information ready for C code 
+	my @stats_fields = qw/errors overflows pkts timeslip_start_secs timeslip_end_secs/ ;
 	my @multiplex_info ;
 	foreach my $file (keys %{$multiplex_info{'files'}} )
 	{
 		my $href = {
-			'_file'		=> $file,
-			'pids'		=> [],
-			'errors'	=> {},
-			'overflows'	=> {},
+			'_file'				=> $file,
+			'pids'				=> [],
 		} ;
+		
+		foreach my $field (@stats_fields)
+		{
+			$href->{$field} = {} ;
+		}
 
 		# copy scalars
+		#
 		foreach (qw/offset duration destfile/)
 		{
-			$href->{$_} = $multiplex_info{'files'}{$file}{$_} ;
+			$href->{$_} = $multiplex_info{'files'}{$file}{$_} || 0 ;
+		}
+		
+		
+		# copy service_id (i.e. pnr)
+		foreach my $demux_href (@{$multiplex_info{'files'}{$file}{'demux'}})
+		{
+			if (exists($demux_href->{'demux_params'}) && $demux_href->{'demux_params'})
+			{
+				$href->{'pnr'} = $demux_href->{'demux_params'}{'pnr'} ;
+			}
+		}
+		
+		## Set event information
+		##
+		foreach (qw/event_id timeslip_start timeslip_end max_timeslip/)
+		{
+			$href->{$_} = $multiplex_info{'files'}{$file}{$_} || 0 ;
 		}
 		
 		# placeholder in case we need to record to intermediate .ts file
@@ -3755,9 +4053,10 @@ print STDERR " + + mod extension\n" if $DEBUG>=10 ;
 			my $pid = $pid_href->{'pid'} ;
 			push @{$href->{'pids'}}, $pid ;
 			
-			$href->{'errors'}{$pid} = 0 ;
-			$href->{'overflows'}{$pid} = 0 ;
-			$href->{'pkts'}{$pid} = 0 ;
+			foreach my $field (@stats_fields)
+			{
+				$href->{$field}{$pid} = 0 ;
+			}
 		}
 		push @multiplex_info, $href ;
 		
@@ -3789,7 +4088,12 @@ Linux::DVB::DVBT::prt_data(" + info=", \@multiplex_info) if $DEBUG>=10 ;
 	#	)
 
 	## do the recordings
-	$error = dvb_record_demux($self->{dvb}, \@multiplex_info) ;
+	my $options_href = {} ;
+	if (exists($multiplex_info{'options'}))
+	{
+		$options_href = $multiplex_info{'options'} ;
+	}
+	$error = dvb_record_demux($self->{dvb}, \@multiplex_info, $options_href) ;
 	return $self->handle_error(dvb_error_str()) if $error ;
 
 Linux::DVB::DVBT::prt_data(" + returned info=", \@multiplex_info) if $DEBUG ;
@@ -3839,23 +4143,14 @@ Linux::DVB::DVBT::prt_data(" + + href=", $href) if $DEBUG ;
 		{
 			my $pid = $pid_href->{'pid'} ;
 #print STDERR " - PID $pid (file=$file)\n" ;
-			$pid_href->{'pkts'} = 0 ;
-			$pid_href->{'errors'} = 0 ;
-			$pid_href->{'overflows'} = 0 ;
-			if (exists($href->{'errors'}{$pid}))
+
+			foreach my $field (@stats_fields)
 			{
-				$pid_href->{'errors'} = $href->{'errors'}{$pid} ;
-#print STDERR " - - errors = $href->{'errors'}{$pid}\n" ;
-			}
-			if (exists($href->{'overflows'}{$pid}))
-			{
-				$pid_href->{'overflows'} = $href->{'overflows'}{$pid} ;
-#print STDERR " - - errors = $href->{'overflows'}{$pid}\n" ;
-			}
-			if (exists($href->{'pkts'}{$pid}))
-			{
-				$pid_href->{'pkts'} = $href->{'pkts'}{$pid} ;
-#print STDERR " - - pkts = $href->{'pkts'}{$pid}\n" ;
+				$pid_href->{$field} = 0 ;
+				if (exists($href->{$field}{$pid}))
+				{
+					$pid_href->{$field} = $href->{$field}{$pid} ;
+				}
 			}
 		}
 	}
@@ -3869,6 +4164,9 @@ Linux::DVB::DVBT::prt_data(" + + href=", $href) if $DEBUG ;
 =item B<multiplex_transcode(%multiplex_info)>
 
 Transcodes the recorded files into the requested formats (uses ffmpeg helper module).
+
+If the destination file format is the same as the recorded format (i.e. transport file)
+then no transcoding is performed, but a check is made to ensure the file duration is correct. 
 
 Sets the following fields in the %multiplex_info HASH:
 
@@ -4436,6 +4734,10 @@ None that I know of!
 The current release supports:
 
 =over 4
+
+=item *
+
+Timeslip recording so that the end of the recording is extended if the program broadcast is delayed.
 
 =item *
 

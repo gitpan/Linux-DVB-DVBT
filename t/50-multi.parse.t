@@ -266,39 +266,39 @@ my @tests = (
 			},
 		],
 	},
-	{
-		'args'	=> [ 'f=nmnmnm', 'ch=bbc1', 'len=1:30', 'off=0:10', 'output=avs', 'file=yyyyyy', 'pid=6273', 'pid=6274', 'ch=itv1', 'len=0:30', 'off=0:30', ],
-		'error' => "has both channels and pids specified at the same time",
-		'chan_spec'	=> [
-			{
-				'chans' => [
-			        { # HASH(0x84be384)
-			          chan => 'bbc1',
-			          out => 'avs',
-			        },
-				],
-				'file' => 'nmnmnm',
-				'duration' => '1:30',
-				'pids' => [
-				],
-				'offset' => '0:10',
-			},
-			{
-				'chans' => [
-			        { # HASH(0x84be784)
-			          chan => 'itv1',
-			        },
-				],
-				'file' => 'yyyyyy',
-				'duration' => '0:30',
-				'pids' => [
-					'6273',
-					'6274',
-				],
-				'offset' => '0:30',
-			},
-		],
-	},
+#	{
+#		'args'	=> [ 'f=nmnmnm', 'ch=bbc1', 'len=1:30', 'off=0:10', 'output=avs', 'file=yyyyyy', 'pid=6273', 'pid=6274', 'ch=itv1', 'len=0:30', 'off=0:30', ],
+#		'error' => "has both channels and pids specified at the same time",
+#		'chan_spec'	=> [
+#			{
+#				'chans' => [
+#			        { # HASH(0x84be384)
+#			          chan => 'bbc1',
+#			          out => 'avs',
+#			        },
+#				],
+#				'file' => 'nmnmnm',
+#				'duration' => '1:30',
+#				'pids' => [
+#				],
+#				'offset' => '0:10',
+#			},
+#			{
+#				'chans' => [
+#			        { # HASH(0x84be784)
+#			          chan => 'itv1',
+#			        },
+#				],
+#				'file' => 'yyyyyy',
+#				'duration' => '0:30',
+#				'pids' => [
+#					'6273',
+#					'6274',
+#				],
+#				'offset' => '0:30',
+#			},
+#		],
+#	},
 	
 );
 
@@ -306,6 +306,15 @@ plan tests => scalar(@tests) * 2 ;
 
 	foreach my $test_href (@tests)
 	{
+		## add beta params
+		foreach my $href (@{$test_href->{'chan_spec'}})
+		{
+			$href->{'event_id'} = -1 ;
+			$href->{'timeslip'} = 'off' ;
+			$href->{'max_timeslip'} = 0 ;
+		}
+		
+		
 		test_parse($dvb, $test_href->{'args'}, $test_href->{'chan_spec'}, $test_href->{'error'},) ;
 	}
 

@@ -2,9 +2,8 @@
 #include <linux/dvb/frontend.h>
 #include <linux/dvb/dmx.h>
 
-#include "dvb_struct.h"
 #include "dvb_lib.h"
-#include "ts.h"
+#include "ts_structs.h"
 
 #define DEFAULT_TIMEOUT		900
 

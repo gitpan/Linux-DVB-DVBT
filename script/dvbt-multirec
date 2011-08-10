@@ -10,10 +10,11 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 use Linux::DVB::DVBT ;
 use Linux::DVB::DVBT::Ffmpeg ;
 
-our $VERSION = "1.003" ;
+our $VERSION = "2.00" ;
 
 	my ($help, $man, $DEBUG, $DEBUG_FFMPEG, $VERBOSE, $config, $adap, $anypid, $info) ;
 	my ($tsid, $lang, $keep) ;
+	
 	my $out = 'av' ;
 
 	GetOptions('v|verbose=s' => \$VERBOSE,
@@ -73,6 +74,7 @@ our $VERSION = "1.003" ;
 	
 	## Get multiplex info
 	my %multiplex_info = $dvb->multiplex_info() ;
+	Linux::DVB::DVBT::prt_data("multiplex_info=", \%multiplex_info) if $DEBUG ;
 
 	#display summary of recording settings
 	print<<"HEAD";
@@ -268,6 +270,64 @@ Results in an error. The english tracks have already been skipped to match the f
 Note that the output spec overrides the language spec. If the output does not include audio, then the language spec is ignored.
 
 
+=head3 Timeslip Specification
+ 
+Timeslip recording uses the now/next live EPG information to track the start and end of the program being recorded. This information
+is transmit by the broadcaster and (hopefully) is a correct reflection of the broadcast of the program. Using this feature should then
+allow recordings to be adjusted to account for late start of a program (for example, due to extended news or sports events).
+
+To use the feature you MUST specify the event id of the program to be recorded. This information is the same event id that is gathered
+by the L</epg()> function. By default, the timeslip will automatically extend the end of the recording by up to 1 hour (recording stops
+automatically when the now/next information indicates the real end of the program).
+
+=over 4
+
+=item event=41140
+
+Sets the event id to be 41140
+
+=back
+
+Optionally you can specify a different maximum timeslip time using the 'max_timeslip' argument. Specify the time in minutes (or HH:MM or HH:MM:SS).
+Note that this has a different effect depending on the B<timeslip> setting (which specifies the program 'edge'):
+
+=over 4
+
+=item max_timeslip=2:00
+
+Sets the maximum timslip time to be 2 hours (i.e. by default, the recording end can be extended by up to 2 hours)
+
+=back
+
+
+Also, you can set the 'edge' of the program that is to be timeslipped using the B<timeslip> parameter:
+
+=over 4
+
+=item timeslip=end
+
+Timeslips only the end of the recording. This means that the recording will record for the normal duration, and then check to see if
+the specified event (B<event_id>) has finished broadcasting. If not, the recording continues until the program finishes OR the maximum timeslip
+duration has expired.
+
+This is the default.
+
+=item timeslip=start
+
+Timeslips only the start of the recording. This means that the recording will not start until the event begins broadcasting. Once started, the 
+specified duration will be recorded.
+
+Note that this can mean that you miss a few seconds at the start of the program (which is why the default is to just extend the end of the recording).
+
+=item timeslip=both
+
+Performs both start and end recording timeslipping.
+
+=back
+
+
+=head3 Examples
+
 Example valid sets of arguments are:
 
 =over 4
@@ -286,6 +346,8 @@ Record pids 600 & 601 into file f3.ts, record for 30 minutes
 
 =back
 
+
+=head3 TSID
 
 The TSID definition defines the transponder (multiplex) to use. Use this when pids define the streams rather than 
 channel names and the pid value(s) may occur in multiple TSIDs.
@@ -329,9 +391,9 @@ For example, you want to record some programs starting at 13:00. The list of pro
 
 =over 4
 
-=item * ITV2 start 13:00, duration 0:30
+=item * ITV2 start 13:00, duration 0:30, event 41140
 
-=item * FIVE start 13:15, duration 0:30
+=item * FIVE start 13:15, duration 0:30, event 11134
 
 =item * ITV1 start 13:30, duration 0:30
 
@@ -345,14 +407,15 @@ For example, you want to record some programs starting at 13:00. The list of pro
 
 To record these (running the script at 13:00) use:
 
-   $ dvbt-multirec file=itv2.mpeg ch=itv2 len=0:30  \
-   	               file=five.mpeg ch=five len=0:30 off=0:15 \
+   $ dvbt-multirec file=itv2.mpeg ch=itv2 len=0:30 event=41140 \
+   	               file=five.mpeg ch=five len=0:30 off=0:15 event=11134 max_timeslip=2:00 \
    	               file=itv1.mpeg ch=itv1 len=0:30 off=0:30 \
    	               file=more4.mpeg ch=more4 len=0:05 off=0:15 \
    	               file=e4.mpeg ch=e4 len=0:30 off=0:05 \
    	               file=ch4+1.mpeg ch='channel4+1' len=1:30 off=0:05 
    
-
+Note that the ITV2 program and the FIVE program will both have their end extended if the program is broadcast late. The ITV2 program
+will extend by up to 1 hour (the default), whereas the FIVE program will extend by up to 2 hours (as specified).
 
 =head2 Further Details
 

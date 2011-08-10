@@ -8,6 +8,7 @@ use Test::More tests => 4;
 ## Check module loads ok
 BEGIN { use_ok('Linux::DVB::DVBT') };
 
+#$Linux::DVB::DVBT::Config::DEBUG = 10 ;
 
 ##### Object methods
 
@@ -25,8 +26,11 @@ my $dvb = Linux::DVB::DVBT->new(
 ) ;
 isa_ok($dvb, 'Linux::DVB::DVBT') ;
 
+#$dvb->debug(20) ;
+
 ## Check config read
 my $expected_config_href = {
+          'aliases' => {},
           'ts' => {
                     '8199' => {
                                 'transmission' => '2',
@@ -139,7 +143,7 @@ my $expected_config_href = {
 
 $dvb->config_path('./t/config') ;
 my $tuning_href = $dvb->get_tuning_info() ;
-#print Dumper($tuning_href) ;
+print Dumper($tuning_href) ;
 is_deeply($tuning_href, $expected_config_href) ;
 
 ## Check config write
@@ -149,7 +153,7 @@ if ( -d './t/config-out' )
 }
 $dvb->config_path('./t/config-out') ;
 $dvb->tuning(0) ;
-#print Dumper($expected_config_href) ;
+print Dumper($expected_config_href) ;
 Linux::DVB::DVBT::Config::write($dvb->config_path, $expected_config_href) ;
 $tuning_href = $dvb->get_tuning_info() ;
 is_deeply($tuning_href, $expected_config_href) ;

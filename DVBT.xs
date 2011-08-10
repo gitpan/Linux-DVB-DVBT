@@ -5,10 +5,10 @@
 #include "ppport.h"
 
 /*---------------------------------------------------------------------------------------------------*/
-#include "xs/DVBT-common.h"
+#include "xs/shared/DVBT-common.h"
 #include "xs/DVBT-specific.h"
 
-#define DVBT_VERSION		"2.01"
+#define DVBT_VERSION		"2.02"
 
 MODULE = Linux::DVB::DVBT		PACKAGE = Linux::DVB::DVBT
 

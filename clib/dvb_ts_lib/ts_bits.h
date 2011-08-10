@@ -11,6 +11,7 @@
 /*=============================================================================================*/
 // USES
 /*=============================================================================================*/
+#include <time.h>
 
 /*=============================================================================================*/
 // CONSTANTS
@@ -38,7 +39,12 @@ void bits_free(struct TS_bits **bits);
 struct TS_bits *bits_new(uint8_t *src, unsigned src_len);
 unsigned bits_get(struct TS_bits *bits, unsigned len);
 void bits_skip(struct TS_bits *bits, unsigned len);
+int bits_len_calc(struct TS_bits *bits, int offset);
+struct tm bits_get_mjd_time(struct TS_bits *bits) ;
 
+// Utility print functions
+void bits_dump_indent(unsigned level) ;
+void bits_dump(char *name, unsigned *buff, unsigned length, unsigned level) ;
 
 
 #endif /* TS_BITS_H_ */

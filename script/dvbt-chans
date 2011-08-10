@@ -241,6 +241,12 @@ sub print_chan
 	my $chan = $ch_href->{'channel'} ;
 	my $check_flag = 1 ;
 	my $checkstr = "" ;
+
+	if ($DEBUG_SCRIPT)
+	{
+		print "Testing $chan...\n" ;
+	}
+
 	if ($check)
 	{
 		$checkstr .= " Config " ;

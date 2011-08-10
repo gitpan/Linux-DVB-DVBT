@@ -21,7 +21,7 @@ use strict ;
 
 use Data::Dumper ;
 
-our $VERSION = '2.07' ;
+our $VERSION = '2.08' ;
 our $DEBUG = 0 ;
 
 our $DEFAULT_CONFIG_PATH = '/etc/dvb:~/.tv' ;
@@ -30,8 +30,9 @@ use File::Path ;
 use File::Spec ;
 
 my %FILES = (
-	'ts'	=> "dvb-ts",
-	'pr'	=> "dvb-pr",
+	'ts'		=> { 'file' => "dvb-ts", 		'required' => 1 },
+	'pr'		=> { 'file' => "dvb-pr",		'required' => 1 },
+	'aliases'	=> { 'file' => "dvb-aliases",	'required' => 0 },
 ) ;
 
 my %NUMERALS = (
@@ -313,6 +314,7 @@ sub find_channel
 	## Look for channel info
 	print STDERR "find $channel_name ...\n" if $DEBUG ;
 	
+	$channel_name = _channel_alias($channel_name, $tuning_href->{'aliases'}) ;
 	my $found_channel_name = _channel_search($channel_name, $tuning_href->{'pr'}) ;
 	if ($found_channel_name)
 	{
@@ -334,7 +336,8 @@ sub find_channel
 
 
 #----------------------------------------------------------------------
-# 
+# Do "fuzzy" search for channel name
+#
 sub _channel_search
 {
 	my ($channel_name, $search_href) = @_ ;
@@ -404,7 +407,27 @@ print STDERR " -- -- $srch\n" if $DEBUG>3 ;
 }
 
 
+#----------------------------------------------------------------------
+# Lookup channel name alias (if it exists)
+#
+sub _channel_alias
+{
+	my ($channel_name, $alias_href) = @_ ;
 
+	if ($alias_href && scalar(keys %$alias_href))
+	{
+print STDERR "Searching channel aliases for \"$channel_name\" ... \n" if $DEBUG>3 ;
+		my $alias_key = _channel_search($channel_name, $alias_href) ;
+		if ($alias_key)
+		{
+			my $alias = $alias_href->{$alias_key} ;
+print STDERR "... using alias \"$alias\" for \"$channel_name\"\n" if $DEBUG>3 ;
+			$channel_name = $alias ;
+		}
+	}	
+	
+	return $channel_name ;
+}
 
 #----------------------------------------------------------------------
 
@@ -691,7 +714,10 @@ sub read
 		{
 		no strict "refs" ;
 			my $fn = "read_dvb_$region" ;
-			$href->{$region} = &$fn("$dir/$FILES{$region}") ;
+
+			print STDERR " + Running $fn() for $region ...\n" if $DEBUG ;
+
+			$href->{$region} = &$fn("$dir/$FILES{$region}{'file'}") ;
 		}
 		
 		print STDERR "Read config from $dir\n" if $DEBUG ;
@@ -720,7 +746,7 @@ sub write
 		{
 		no strict "refs" ;
 			my $fn = "write_dvb_$region" ;
-			&$fn("$dir/$FILES{$region}", $href->{$region}) ;
+			&$fn("$dir/$FILES{$region}{'file'}", $href->{$region}) ;
 		}
 
 		print STDERR "Written config to $dir\n" if $DEBUG ;
@@ -752,7 +778,7 @@ sub read_filename
 
 	if ($dir)
 	{
-		$filename = "$dir/$FILES{$filetype}" ;
+		$filename = "$dir/$FILES{$filetype}{'file'}" ;
 	}
 	return $filename ;
 }
@@ -781,7 +807,7 @@ sub write_filename
 
 	if ($dir)
 	{
-		$filename = "$dir/$FILES{$filetype}" ;
+		$filename = "$dir/$FILES{$filetype}{'file'}" ;
 	}
 	return $filename ;
 }
@@ -894,11 +920,15 @@ sub merge
 	{
 		foreach my $region (keys %FILES)
 		{
-			foreach my $section (keys %{$new_href->{$region}})
+			$old_href->{$region} ||= {} ;
+			if (exists($new_href->{$region}))
 			{
-				foreach my $field (keys %{$new_href->{$region}{$section}})
+				foreach my $section (keys %{$new_href->{$region}})
 				{
-					$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
+					foreach my $field (keys %{$new_href->{$region}{$section}})
+					{
+						$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
+					}
 				}
 			}
 		}
@@ -1359,308 +1389,6 @@ sub _scan_info
 }
 
 
-#sub merge_scan_freqs
-#{
-#	my ($new_href, $old_href, $verbose, $scan_info_href) = @_ ;
-#
-#	$scan_info_href ||= {} ;
-#	$scan_info_href->{'chans'} ||= {} ;
-#	$scan_info_href->{'tsids'} ||= {} ;
-#	
-#print STDERR "merge_scan_freqs()\n" if $DEBUG ;
-#
-#	if ($old_href && $new_href)
-#	{
-#print STDERR Data::Dumper->Dump(["New:", $new_href, "Old:", $old_href]) ;
-#		
-#		## Get info on existing
-#		my %tsid_map ;
-#print STDERR "TSID MAP:\n" if $DEBUG ;
-#		foreach my $chan (keys %{$old_href->{'pr'}})
-#		{
-#			my $tsid = $old_href->{'pr'}{$chan}{'tsid'} ;
-#			my $pnr = $old_href->{'pr'}{$chan}{'pnr'} ;
-#			$tsid_map{"$tsid-$pnr"} = $chan ;
-#print STDERR "  {$tsid-$pnr}  $chan\n" if $DEBUG ;
-#		}
-#		
-### Various ways of looking at tsid info
-#my %old_ts_info ;
-#foreach my $tsid (keys %{$old_href->{'ts'}})
-#{
-#	my $freq = $old_href->{'ts'}{$tsid}{'frequency'} ;
-#	$old_ts_info{$tsid} = {
-#		'pr'		=> {},
-#		'freq'		=> $old_href->{'ts'}{$tsid}{'frequency'},
-#		'strength'	=> $old_href->{'ts'}{$tsid}{'strength'}
-#	} ;
-#}
-#foreach my $chan (keys %{$old_href->{'pr'}})
-#{
-#	my $tsid = $old_href->{'pr'}{$chan}{'tsid'} ;
-#	my $pnr = $old_href->{'pr'}{$chan}{'pnr'} ;
-#	$old_ts_info{$tsid}{'pr'}{$pnr} = $chan ;
-#}
-#		
-#my %new_ts_info ;
-#foreach my $tsid (keys %{$new_href->{'ts'}})
-#{
-#	my $freq = $new_href->{'ts'}{$tsid}{'frequency'} ;
-#	$new_ts_info{$tsid} = {
-#		'pr'		=> {},
-#		'freq'		=> $new_href->{'ts'}{$tsid}{'frequency'},
-#		'strength'	=> $new_href->{'ts'}{$tsid}{'strength'}
-#	} ;
-#}
-#foreach my $chan (keys %{$new_href->{'pr'}})
-#{
-#	my $tsid = $new_href->{'pr'}{$chan}{'tsid'} ;
-#	my $pnr = $new_href->{'pr'}{$chan}{'pnr'} ;
-#	$new_ts_info{$tsid}{'pr'}{$pnr} = $chan ;
-#}
-#
-### Various ways of looking at channel info
-#my %old_chan_info ;
-#foreach my $chan (keys %{$old_href->{'pr'}})
-#{
-#	my $tsid = $old_href->{'pr'}{$chan}{'tsid'} ;
-#	$old_chan_info{$chan} = $tsid ;
-#}
-#my %new_chan_info ;
-#foreach my $chan (keys %{$new_href->{'pr'}})
-#{
-#	my $tsid = $new_href->{'pr'}{$chan}{'tsid'} ;
-#	$new_chan_info{$chan} = $tsid ;
-#}
-#		
-#		
-### Compare new with old
-#foreach my $tsid (keys %new_ts_info)
-#{
-#	my $new_chans = scalar(keys %{$new_ts_info{$tsid}{'pr'}}) ;
-#	my $old_chans = 0 ;
-#	
-#	my $new_strength = $new_ts_info{$tsid}{'strength'} ;
-#	my $old_strength = 0 ;
-#	
-#	my $new_freq = $new_ts_info{$tsid}{'freq'} ;
-#	my $old_freq ;
-#
-##	next unless exists($old_ts_info{$tsid}) ;
-#	if ( exists($old_ts_info{$tsid}) )
-#	{
-#		$old_chans = scalar(keys %{$old_ts_info{$tsid}{'pr'}}) ;
-#		$old_strength = $old_ts_info{$tsid}{'strength'} ;
-#		$old_freq = $old_ts_info{$tsid}{'freq'} ;
-#	}
-#	
-#	$scan_info_href->{'tsids'}{$tsid} ||= {
-#		'comments'	=> [],
-#	} ;
-#
-#	my $delete = 0 ;
-#	my $reason = "" ;
-#	if ($new_chans < $old_chans)
-#	{
-#		$delete = 1 ;
-#		
-#		$reason = "[overlap] TSID $tsid : new freq $new_freq has only $new_chans chans (existing freq $old_freq has $old_chans chans) - new freq ignored" ;
-##		push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, "[merge] TSID $tsid : new freq $new_freq has only $new_chans chans (existing freq $old_freq has $old_chans chans)" ;
-#	}
-#	elsif ($new_chans == $old_chans)
-#	{
-#		if ($new_strength < $old_strength)
-#		{
-#			$delete = 1 ;
-#			
-#			$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength < existing freq $old_freq strength $old_strength - new freq ignored" ;
-##			push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, "[merge] TSID $tsid : new freq $new_freq strength $new_strength < existing freq $old_freq strength $old_strength" ;
-#		}
-#		else
-#		{
-#			$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength >= existing freq $old_freq strength $old_strength - using new freq" ;
-#		}
-#	}
-#	elsif (!defined($old_freq) )
-#	{
-#		$reason = "[overlap] TSID $tsid : creating new freq $new_freq (contains $new_chans chans)" ;
-#	}
-#	else
-#	{
-#		$reason = "[overlap] TSID $tsid : new freq $new_freq has $new_chans chans (existing freq $old_freq has $old_chans chans) - using new freq" ;
-#	}
-#
-#	push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, $reason ;
-#
-#	## delete if required
-#	if ($delete)
-#	{
-##		push @{$scan_info_href->{'tsids'}{$tsid}{'comments'}}, $reason ;
-#		delete $new_href->{'ts'}{$tsid} ;
-#			
-#		foreach my $pnr (keys %{$new_ts_info{$tsid}{'pr'}} )
-#		{
-#			my $chan = $new_ts_info{$tsid}{'pr'}{$pnr} ;
-#			$scan_info_href->{'chans'}{$chan} ||= {
-#				'comments'	=> [],
-#			} ;
-#			push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
-#			
-#			delete $new_href->{'pr'}{$chan} ;
-#		}
-#	}
-#	else
-#	{
-#		foreach my $pnr (keys %{$new_ts_info{$tsid}{'pr'}} )
-#		{
-#			my $chan = $new_ts_info{$tsid}{'pr'}{$pnr} ;
-#			$scan_info_href->{'chans'}{$chan} ||= {
-#				'comments'	=> [],
-#			} ;
-#			push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, $reason ;
-#		}
-#	}
-#
-#}
-#		
-#		## Do merge
-#		foreach my $region (keys %$new_href)
-#		{
-#			foreach my $section (keys %{$new_href->{$region}})
-#			{
-#				## Check for channel rename
-#				if ($region eq 'pr')
-#				{
-#					my $chan = $section ;
-#					my $tsid = $new_href->{'pr'}{$chan}{'tsid'} ;
-#					my $pnr = $new_href->{'pr'}{$chan}{'pnr'} ;
-#
-#print STDERR " + check {$tsid-$pnr} = $chan \n" if $DEBUG ;
-#					
-#					if (exists($tsid_map{"$tsid-$pnr"}) && ($tsid_map{"$tsid-$pnr"} ne $chan))
-#					{
-#						# Rename
-#						my $old_chan = $tsid_map{"$tsid-$pnr"} ;
-#						push @{$scan_info_href->{'chans'}{$chan}{'comments'}}, "[merge] channel renamed from \"$old_chan\" to \"$chan\" " ;
-#						delete $old_href->{'pr'}{$old_chan} ;											
-#print STDERR " + + delete $old_chan \n" if $DEBUG ;
-#					}
-#				}
-#
-###??????????????##
-## Handle case where new TSID number (on new freq) has same chan - default just overwrites because it's a later find (doesn't match because TSID number is different)		
-###??????????????##
-#		
-#				## Check for channel TSID change
-#				
-#				#???????????
-#				
-#				## merge programs/streams differently if they already exist
-#				my $overwrite = 1 ;
-#				if ( (($region eq 'pr')||($region eq 'ts')) && exists($old_href->{$region}{$section}) )
-#				{
-#print STDERR " + found 2 instances of {$region}{$section}\n" if $DEBUG ;
-#					# check for signal quality to compare
-#					my ($new_freq, $old_freq) ;
-#					foreach (qw/frequency tuned_freq/)
-#					{
-#						$new_freq = $new_href->{$region}{$section}{$_} if exists($new_href->{$region}{$section}{$_}) ;	
-#						$old_freq = $old_href->{$region}{$section}{$_} if exists($old_href->{$region}{$section}{$_}) ;	
-#					}
-#					if ($new_freq && $old_freq)
-#					{
-#						# just compare signal strength (for now!)
-#						my ($new_strength, $old_strength) ;
-#						foreach my $href ($new_href, $old_href)
-#						{
-#							$new_strength = $href->{'freqs'}{$new_freq}{'strength'} if exists($href->{'freqs'}{$new_freq}{'strength'} ) ;	
-#							$old_strength = $href->{'freqs'}{$old_freq}{'strength'} if exists($href->{'freqs'}{$old_freq}{'strength'} ) ;	
-#						}
-#						if ($new_strength && $old_strength)
-#						{
-#print STDERR " + checking $region $section  : Strength NEW=$new_strength  OLD=$old_strength\n" if $DEBUG ;
-#							if ($old_strength >= $new_strength)
-#							{
-#print STDERR " + + keep stronger signal (OLD)\n" if $DEBUG ;
-#
-#								$new_strength = $new_strength * 100 / 65535 ;
-#								$old_strength = $old_strength * 100 / 65535 ;
-#								
-#								print STDERR "  Found 2 \"$section\" : keeping old signal $old_freq Hz $old_strength % (new $new_freq Hz $new_strength %)\n" if $verbose ;
-#
-#								$overwrite = 0 ;
-#
-#								if ($region eq 'pr')
-#								{
-#									$scan_info_href->{'chans'}{$section} ||= [] ;
-#									push @{$scan_info_href->{'chans'}{$section}{'comments'}}, "[merge] keeping old signal $old_freq Hz $old_strength % (new $new_freq Hz $new_strength %)" ;
-#								}
-#							}
-#						}
-#					}
-#				}
-#				
-#				if ($overwrite)
-#				{
-#print STDERR " + Overwrite existing {$region}{$section} with new ....\n" if $DEBUG ;
-#
-#					if ($region eq 'pr')
-#					{
-#						$scan_info_href->{'chans'}{$section} ||= [] ;
-#						
-#						if (exists($old_href->{$region}{$section}))
-#						{
-#							push @{$scan_info_href->{'chans'}{$section}{'comments'}}, "[merge] overwriting existing channel info with new (old: TSID $old_href->{$region}{$section}{tsid})" ;
-#
-#if ($DEBUG)
-#{
-#	print STDERR " + OLD= \n" ;
-#	foreach (keys %{$old_href->{$region}{$section}})
-#	{
-#		print STDERR " + + $_ = $old_href->{$region}{$section}{$_}\n" ;
-#	}
-#	
-#}
-#						}
-#						else
-#						{
-#							push @{$scan_info_href->{'chans'}{$section}{'comments'}}, "[merge] creating new channel info with new" ;
-#						}
-#					}
-#
-#					## Just overwrite
-#					foreach my $field (keys %{$new_href->{$region}{$section}})
-#					{
-#						$old_href->{$region}{$section}{$field} = $new_href->{$region}{$section}{$field} ; 
-#					}
-#
-#				}
-#			}
-#		}
-#	}
-#
-#	$old_href = $new_href if (!$old_href) ;
-#	
-#print STDERR "merge_scan_freqs() - DONE\n" if $DEBUG ;
-#	
-#	return $old_href ;
-#}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 #----------------------------------------------------------------------
@@ -1706,7 +1434,10 @@ sub read_dir
 		my $found=1 ;
 		foreach my $region (keys %FILES)
 		{
-			$found=0 if (! -f  "$d/$FILES{$region}") ;
+			if ($FILES{$region}{'required'})
+			{
+				$found=0 if (! -f  "$d/$FILES{$region}{'file'}") ;
+			}
 		}
 		
 		if ($found)
@@ -1763,15 +1494,15 @@ sub write_dir
 			# See if this user can write to the dir
 			foreach my $region (keys %FILES)
 			{
-				if (open my $fh, ">>$d/$FILES{$region}")
+				if (open my $fh, ">>$d/$FILES{$region}{'file'}")
 				{
 					close $fh ;
 
-					print STDERR " + + Write to $d/$FILES{$region} succeded\n" if $DEBUG ;
+					print STDERR " + + Write to $d/$FILES{$region}{'file'} succeded\n" if $DEBUG ;
 				}
 				else
 				{
-					print STDERR " + + Unable to write to $d/$FILES{$region} - aborting this dir\n" if $DEBUG ;
+					print STDERR " + + Unable to write to $d/$FILES{$region}{'file'} - aborting this dir\n" if $DEBUG ;
 
 					$found = 0;
 					last ;
@@ -1791,6 +1522,16 @@ sub write_dir
 	return $dir ;
 }
 
+
+#============================================================================================
+
+=back
+
+=head3 TSID config file (dvb-ts) read/write
+
+=over 4
+
+=cut
 
 
 #----------------------------------------------------------------------
@@ -1850,6 +1591,79 @@ sub read_dvb_ts
 	
 	return \%dvb_ts ;
 }
+
+
+#----------------------------------------------------------------------
+
+=item B<write_dvb_ts($fname, $href)>
+
+Write transponder config information
+
+=cut
+
+sub write_dvb_ts
+{
+	my ($fname, $href) = @_ ;
+
+	open my $fh, ">$fname" or die "Error: Unable to write $fname : $!" ;
+	
+	# Write config information
+	#
+	#	'ts' => 
+	#	      4107 =>
+	#	        { # HASH(0x83241b8)
+	#	          bandwidth => 8,
+	#	          code_rate_hp => 34,         code_rate_high
+	#	          code_rate_lp => 34,         code_rate_low
+	#	          constellation => 16,        modulation
+	#	          frequency => 578000000,
+	#	          guard => 32,                guard_interval
+	#	          hierarchy => 0,
+	#	          net => Oxford/Bexley,
+	#	          transmission => 2,
+	#	          tsid => 4107,               
+	#	        },
+	#	
+	#[4107]
+	#name = Oxford/Bexley
+	#frequency = 578000000
+	#bandwidth = 8
+	#modulation = 16
+	#hierarchy = 0
+	#code_rate_high = 34
+	#code_rate_low = 34
+	#guard_interval = 32
+	#transmission = 2
+	#
+	#
+	foreach my $section (sort {$a <=> $b} keys %$href)
+	{
+		print $fh "[$section]\n" ;
+		foreach my $field (sort keys %{$href->{$section}})
+		{
+			my $val = $href->{$section}{$field} ;
+			if ($val =~ /\S+/)
+			{
+				print $fh "$field = $val\n" ;
+			} 
+		}
+		print $fh "\n" ;
+	}
+	
+	close $fh ;
+}
+
+
+#============================================================================================
+
+=back
+
+=head3 Channels config file (dvb-pr) read/write
+
+=over 4
+
+=cut
+
 
 #----------------------------------------------------------------------
 
@@ -1921,67 +1735,6 @@ sub read_dvb_pr
 	return \%chans ;
 }
 
-
-#----------------------------------------------------------------------
-
-=item B<write_dvb_ts($fname, $href)>
-
-Write transponder config information
-
-=cut
-
-sub write_dvb_ts
-{
-	my ($fname, $href) = @_ ;
-
-	open my $fh, ">$fname" or die "Error: Unable to write $fname : $!" ;
-	
-	# Write config information
-	#
-	#	'ts' => 
-	#	      4107 =>
-	#	        { # HASH(0x83241b8)
-	#	          bandwidth => 8,
-	#	          code_rate_hp => 34,         code_rate_high
-	#	          code_rate_lp => 34,         code_rate_low
-	#	          constellation => 16,        modulation
-	#	          frequency => 578000000,
-	#	          guard => 32,                guard_interval
-	#	          hierarchy => 0,
-	#	          net => Oxford/Bexley,
-	#	          transmission => 2,
-	#	          tsid => 4107,               
-	#	        },
-	#	
-	#[4107]
-	#name = Oxford/Bexley
-	#frequency = 578000000
-	#bandwidth = 8
-	#modulation = 16
-	#hierarchy = 0
-	#code_rate_high = 34
-	#code_rate_low = 34
-	#guard_interval = 32
-	#transmission = 2
-	#
-	#
-	foreach my $section (sort {$a <=> $b} keys %$href)
-	{
-		print $fh "[$section]\n" ;
-		foreach my $field (sort keys %{$href->{$section}})
-		{
-			my $val = $href->{$section}{$field} ;
-			if ($val =~ /\S+/)
-			{
-				print $fh "$field = $val\n" ;
-			} 
-		}
-		print $fh "\n" ;
-	}
-	
-	close $fh ;
-}
-
 #----------------------------------------------------------------------
 
 =item B<write_dvb_pr($fname, $href)>
@@ -2040,6 +1793,100 @@ sub write_dvb_pr
 			} 
 		}
 		print $fh "\n" ;
+	}
+	
+	close $fh ;
+}
+
+
+#============================================================================================
+
+=back
+
+=head3 Channel names aliases config file (dvb-aliases) read/write
+
+=over 4
+
+=cut
+
+#----------------------------------------------------------------------
+
+=item B<read_dvb_aliases($fname)>
+
+Read dvb-aliases - channel names aliases - of the form:
+	
+	FIVE = Channel 5
+
+=cut
+
+sub read_dvb_aliases
+{
+	my ($fname) = @_ ;
+
+	my %dvb_aliases ;
+
+#print STDERR "read_dvb_aliases($fname)\n" ;
+
+	if (-f $fname)
+	{
+		open my $fh, "<$fname" or die "Error: Unable to read $fname : $!"  ;
+		
+		my $line ;
+		while(defined($line=<$fh>))
+		{
+			chomp $line ;
+			next if $line =~ /^\s*#/ ; # skip comments
+			$line =~ s/\s+$// ;
+			$line =~ s/^\s+// ;
+#	print STDERR "!! $line !!\n" ;
+
+			if ($line =~ /(\S+[^=]+)\s*=\s*(\S+[^=]+)\s*/)
+			{
+				my ($from, $to) = ($1, $2) ;
+				
+				$from =~ s/\s+$// ;
+				
+				$dvb_aliases{$from} = $to ;
+#	print STDERR " + <$from> = <$to>\n" ;
+			}
+		}	
+		close $fh ;
+	
+	}
+#print STDERR "read_dvb_aliases - done\n" ;
+	
+	return \%dvb_aliases ;
+}
+
+
+#----------------------------------------------------------------------
+
+=item B<write_dvb_aliases($fname, $href)>
+
+Write channel names aliases config file.
+
+=cut
+
+sub write_dvb_aliases
+{
+	my ($fname, $href) = @_ ;
+
+	open my $fh, ">$fname" or die "Error: Unable to write $fname : $!" ;
+	
+	# Write config information
+	#
+	#	'aliases' =>
+	#	      "FIVE" => "Channel 5"
+	#
+	#   FIVE = Channel 5
+	#
+	foreach my $from (sort keys %$href)
+	{
+		my $val = $href->{$from} ;
+		if ($val =~ /\S+/)
+		{
+			print $fh "$from = $val\n" ;
+		} 
 	}
 	
 	close $fh ;

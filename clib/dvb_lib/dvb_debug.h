@@ -5,6 +5,7 @@
 #ifndef DVB_DEBUG
 #define DVB_DEBUG
 
+#include <stdio.h>
 #include <stdarg.h>
 
 #ifndef WIN32

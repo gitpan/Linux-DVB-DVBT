@@ -50,6 +50,10 @@ use Makeutils ;
 		},
 	}) ;
 
+	## Do any cleanup
+	process_makeopts() ;
+
+
 	## Write Makefile
 	
 	# See lib/ExtUtils/MakeMaker.pm for details of how to influence
@@ -102,6 +106,17 @@ doxygen: FORCE
 cpandoc: FORCE
 	perl -MPod::Simple::HTMLBatch -e Pod::Simple::HTMLBatch::go . pod/batch
 	cp pod/html_files/style.css pod/batch/_black_with_blue_on_white.css
+
+';
+}
+
+#-----------------------------------------------------------------------------------------------------------------------
+sub MY::clean_subdirs {
+'
+
+## Clean out objects
+clean_subdirs: 
+	$(RM_F) clib/*/*.o
 
 ';
 }

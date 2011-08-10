@@ -19,7 +19,7 @@ if you wish to (I mainly use the time coversion functions in my scripts).
 
 use strict ;
 
-our $VERSION = '2.01' ;
+our $VERSION = '2.03' ;
 our $DEBUG = 0 ;
 
 our %CONTENT_DESC = (
@@ -166,6 +166,30 @@ sub mins2time
 	my $time = sprintf "%02d:%02d", $hours, $mins ;
 	return $time ;
 }
+
+#-----------------------------------------------------------------------------
+
+=item B<secs2time($secs)>
+
+Convert seconds into time (in HH:MM:SS format)
+
+=cut
+
+sub secs2time
+{
+	my ($secs) = @_ ;
+	
+	my $mins = int($secs/60) ;
+	$secs = $secs % 60 ;
+	
+	my $hours = int($mins/60) ;
+	$mins = $mins % 60 ;
+	
+	my $time = sprintf "%02d:%02d:%02d", $hours, $mins, $secs ;
+	return $time ;
+}
+
+
 
 #-----------------------------------------------------------------------------
 
@@ -435,9 +459,44 @@ sub fix_audio
 
 #-----------------------------------------------------------------------------
 
+=item B<fix_synopsis($title_ref, $synopsis_ref, $new_prog_ref)>
+
+(Used by EPG function)
+
+Checks the synopsis for any indication that this is a new program/series.
+
+Examples of supported new program indication are:
+
+	New.
+	Brand new ****.
+	All new ****.
+
+=cut
+
+sub fix_synopsis
+{
+	my ($title_ref, $synopsis_ref, $new_prog_ref) = @_ ;
+
+	$$synopsis_ref ||= "" ;
+	$$new_prog_ref ||= 0 ;
+
+	# Examples:
+	# All New!
+	# Brand new series.
+	# New.
+	# New:
+	if ($$synopsis_ref =~ s%^\s*(all\s+|brand\s+){0,1}new(\s+\S+){0,1}\s*([\.\!\:]+\s*)%%i) 
+	{
+		$$new_prog_ref = 1 ;
+	}
+}
+
+
+#-----------------------------------------------------------------------------
+
 =item B<subtitle($synopsis)>
 
-Extracts a subtitle from the synopsis. Looks for text of the format:
+Extracts a sub-title from the synopsis. Looks for text of the format:
 
 	Some sort of subtitle: the rest of the synopsis....
 	
@@ -446,6 +505,8 @@ And returns the sentence before the ':' i.e.
 	Some sort of subtitle
 
 Returns empty string if not found.
+
+NOTE: Not to be confused with subtitling for the hard of hearing!
 
 =cut
 
@@ -460,6 +521,23 @@ sub subtitle
 	{
 		$subtitle = $1;
 	}
+	
+	# If none found then see if we can use a sort sentence from the start of the synopsis
+	if (!$subtitle)
+	{
+		if ($synopsis =~ /^\s*([^\.]+)\./) 
+		{
+			$subtitle = $1;
+		}
+		else
+		{
+			# get a limited subset
+			$subtitle = $synopsis ;
+			$subtitle =~ s/^\s+// ;
+			$subtitle = substr $subtitle, 0, 32 ;
+		}
+	}
+	
 	return $subtitle ;					
 }
 

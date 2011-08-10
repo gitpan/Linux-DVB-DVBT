@@ -7,8 +7,7 @@ OBJS-libdvb_lib := \
 	$(libdvb_lib)/dvb_tune.o \
 	$(libdvb_lib)/dvb_stream.o \
 	$(libdvb_lib)/dvb_epg.o \
-	$(libdvb_lib)/dvb_debug.o  \
 	$(libdvb_lib)/dvb_scan.o \
-	$(libdvb_lib)/dvb_lib.o \
-	$(libdvb_lib)/dvb_error.o 
-	
+	$(libdvb_lib)/dvb_debug.o \
+	$(libdvb_lib)/dvb_lib.o 
+

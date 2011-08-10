@@ -65,7 +65,7 @@ use Data::Dumper ;
 # GLOBALS
 #============================================================================================
 
-our $VERSION = '2.08' ;
+our $VERSION = '2.10' ;
 our $DEBUG = 0 ;
 our $DEBUG_FFMPEG = 0 ;
 
@@ -366,27 +366,28 @@ print STDERR "ts_transcode($src, $destfile)\n" if $DEBUG ;
 		my $dest = "$path$name" ;
 	
 		# check to see if we've already written this filename
-		if (exists($written_files_href->{"$dest$ext"}))
+		if (exists($written_files_href->{"$dest.$ext"}))
 		{
 			# have to amend the filename so we don't overwrite
 			my $num=1 ;
-			while (exists($written_files_href->{"$dest$num$ext"}))
+			while (exists($written_files_href->{"$dest$num.$ext"}))
 			{
 				++$num ;
 			}
 			
 			# report the change
-			push @$warnings_aref, "Filename \"$dest$ext\" was modified to \"$dest$num$ext\" because a previously written file has the same name" ;
+			push @$warnings_aref, "Filename \"$dest.$ext\" was modified to \"$dest$num.$ext\" because a previously written file has the same name" ;
 	
 			# change
 			$dest .= $num ;
 		}
 		
 		# track filenames
-		$written_files_href->{"$dest$ext"} = 1 ;
+		$written_files_href->{"$dest.$ext"} = 1 ;
 		
-		# return written filename
-		$multiplex_info_href->{'destfile'} = "$dest$ext" ;
+		# return written filename & extension
+		$multiplex_info_href->{'destfile'} = "$dest.$ext" ;
+		$multiplex_info_href->{'destext'} = ".$ext" ;
 		
 	
 		# make sure the extension is in a form we understand

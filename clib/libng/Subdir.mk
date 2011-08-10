@@ -1,7 +1,6 @@
 libng ?= .
 
-CFLAGCFLAGS += -I$(libng)
-
+CFLAGS += -I$(libng)
 
 OBJS-libng := \
  $(libng)/parse-mpeg.o \

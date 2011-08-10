@@ -79,7 +79,7 @@ dvb_record (DVB *dvb, char *filename, int sec)
  #
 
 int
-dvb_record_demux (DVB *dvb, SV *multiplex_aref)
+dvb_record_demux (DVB *dvb, AV *multiplex_aref, HV *options_href=NULL)
 
   INIT:
 	unsigned 		num_entries ;
@@ -90,6 +90,7 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 	HV				*errors_href ;
 	HV				*overflows_href ;
 	HV				*pkts_href ;
+	HV				*timeslip_href ;
 	char			*str ;
     char 			key[256] ;
     char 			string[256] ;
@@ -108,16 +109,24 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 	int			file ;
 	int rc ;
 
+	unsigned 	use_demux2 = 0 ;
+	unsigned	pnr = 0 ;
+	int			event_id = -1 ;
+ 	unsigned	timeslip_start = 0 ;
+ 	unsigned	timeslip_end = 0 ;
+ 	unsigned	max_timeslip = 0 ;
+
   CODE:
 
-	if ((!SvROK(multiplex_aref))
-	|| (SvTYPE(SvRV(multiplex_aref)) != SVt_PVAV))
+	if (options_href)
 	{
-	 	croak("Linux::DVB::DVBT::dvb_record_demux requires a valid array ref") ;
+		HVF_IV(options_href, use_demux2, use_demux2) ;
 	}
 
+
     // av_len returns -1 for empty. Returns maximum index number otherwise
-	num_entries = av_len( (AV *)SvRV(multiplex_aref) ) + 1 ;
+	//num_entries = av_len( (AV *)SvRV(multiplex_aref) ) + 1 ;
+	num_entries = av_len( multiplex_aref ) + 1 ;
 	if (num_entries <= 0)
 	{
 	 	croak("Linux::DVB::DVBT::dvb_record_demux requires a list of multiplex hashes") ;
@@ -128,7 +137,7 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 
 	for (i=0; i <= num_entries ; i++)
 	{
-		if ((item = av_fetch((AV *)SvRV(multiplex_aref), i, 0)) && SvOK (*item))
+		if ((item = av_fetch(multiplex_aref, i, 0)) && SvOK (*item))
 		{
   			if ( SvTYPE(SvRV(*item)) != SVt_PVHV )
   			{
@@ -152,7 +161,7 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 
 	for (i=0, pid_index=0; i <= num_entries ; i++)
 	{
-		if ((item = av_fetch((AV *)SvRV(multiplex_aref), i, 0)) && SvOK (*item))
+		if ((item = av_fetch(multiplex_aref, i, 0)) && SvOK (*item))
 		{
  			href = (HV *)SvRV(*item) ;
 
@@ -172,8 +181,21 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 		 	file_info[i].start = now + SvIV (*val) ;
 
  			val = HVF(href, duration) ;
+		 	file_info[i].duration = SvIV (*val) ;
 		 	file_info[i].end = file_info[i].start + SvIV (*val) ;
 
+
+		 	pnr = 0 ;
+		 	event_id = -1 ;
+		 	timeslip_start = 0 ;
+		 	timeslip_end = 0 ;
+		 	max_timeslip = 0 ;
+
+		 	HVF_IV(href, pnr, pnr) ;
+		 	HVF_IV(href, event_id, event_id) ;
+		 	HVF_IV(href, timeslip_start, timeslip_start) ;
+		 	HVF_IV(href, timeslip_end, timeslip_end) ;
+		 	HVF_IV(href, max_timeslip, max_timeslip) ;
 
  			// get pids
  			val = HVF(href, pids) ;
@@ -186,12 +208,31 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
  				{
  					pid_list[pid_index].file_info = &file_info[i] ;
  					pid_list[pid_index].pid  = SvIV (*piditem) ;
+ 					pid_list[pid_index].started = 0 ;
  					pid_list[pid_index].done = 0 ;
+
+ 					// Statistics
  					pid_list[pid_index].errors = 0 ;
  					pid_list[pid_index].overflows = 0 ;
  					pid_list[pid_index].pkts = 0 ;
+ 					pid_list[pid_index].timeslip_start_secs = 0 ;
+ 					pid_list[pid_index].timeslip_end_secs = 0 ;
+
+ 					// Timeslipping
+ 					pid_list[pid_index].pnr = pnr ;
+ 					pid_list[pid_index].event_id = event_id ;
+ 					pid_list[pid_index].running_status = RUNNING_STATUS_UNDEF ;
+ 					pid_list[pid_index].max_timeslip = max_timeslip ;
+
+ 					// Flags - set to timeslip start and/or end of prog
+ 					pid_list[pid_index].timeslip_start = timeslip_start ;
+ 					pid_list[pid_index].timeslip_end = timeslip_end ;
+
 
  					// internal
+ 					pid_list[pid_index].running_event_id = EVENT_ID_UNDEF ;
+ 					pid_list[pid_index].pending_event_id = EVENT_ID_UNDEF ;
+ 					pid_list[pid_index].got_eit = 0 ;
  					pid_list[pid_index].ref = (void *)item ;
  				}
  			}
@@ -205,7 +246,7 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
      // save stream
  	if (RETVAL == 0)
  	{
- 		RETVAL = write_stream_demux(dvb, pid_list, pid_index) ;
+		RETVAL = write_stream_demux(dvb, pid_list, pid_index) ;
 
  		// close dvr
  		dvb_dvr_release(dvb) ;
@@ -236,6 +277,18 @@ dvb_record_demux (DVB *dvb, SV *multiplex_aref)
 		pkts_href = (HV *) SvRV (*val);
 		sprintf(string, "%"PRIu64, pid_list[i].pkts) ;
 		hv_store(pkts_href, key, strlen(key), newSVpv(string, 0), 0);
+
+		// set timeslip statistics
+		val = HVF(href, timeslip_start_secs) ;
+		timeslip_href = (HV *) SvRV (*val);
+		sprintf(string, "%u", pid_list[i].timeslip_start_secs) ;
+		hv_store(timeslip_href, key, strlen(key), newSVpv(string, 0), 0);
+		val = HVF(href, timeslip_end_secs) ;
+		timeslip_href = (HV *) SvRV (*val);
+		sprintf(string, "%u", pid_list[i].timeslip_end_secs) ;
+		hv_store(timeslip_href, key, strlen(key), newSVpv(string, 0), 0);
+
+
 	}
 
  	// free up

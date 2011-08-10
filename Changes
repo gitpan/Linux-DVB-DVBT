@@ -1,5 +1,12 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.10 Wed Aug 10 16:26:00 2011
+	- Added timeslip recording (track start/end/both of program when recording)
+	- Improved handling for multiple recordings from the same multiplex
+	- Added more information into multiplex info HASH
+	- Added better parsing of program EPG text
+	- Now uses underlying transport stream parsing provided by Linux::DVB::DVBT::TS
+
 2.09 Wed Apr 13 11:26:00 2011
 	- Bug fix of dvbt-tsid-qual
 	- Now using new Makeutils.pm helper package to create Makefile

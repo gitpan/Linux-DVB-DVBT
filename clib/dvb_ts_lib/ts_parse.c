@@ -18,15 +18,8 @@
 
 #include "ts_parse.h"
 #include "ts_bits.h"
-#include "tables/parse_si_eit.h"
-#include "tables/parse_si_sdt.h"
+#include "tables/parse_si.h"
 #include "dvbsnoop/crc32.h"
-
-// print debug if debug setting is high enough
-#define tsparse_dbg_prt(LVL, ARGS)	\
-		if (tsreader->debug >= LVL)	{ printf ARGS ; fflush(stdout) ; }
-
-
 
 /*=============================================================================================*/
 // libmpeg2
@@ -57,6 +50,7 @@ static char *STATE_STRINGS[16] = {
 } ;
 
 
+
 // mpeg2audio settings
 #define AUDIOBUFFER		80000
 #define STORAGE_SIZE 	100000
@@ -65,41 +59,53 @@ static char *STATE_STRINGS[16] = {
 
 //define DEBUG_PTS
 
+#define CHECK_MAGIC
+#ifndef CHECK_MAGIC
+#undef CHECK_TS_READER
+#define CHECK_TS_READER(b)
+#undef CHECK_TS_BUFF
+#define CHECK_TS_BUFF(b)
+#endif
+
+
 /*=============================================================================================*/
 #define FRAMEINFO_BLOCKSIZE		1024
 
 //---------------------------------------------------------------------------------------------------------------------------
 // Return the frame info array entry for this index. Allocates more memory as appropriate
-struct TS_frame_info *frame_info_entry(struct TS_reader *ts_reader, unsigned index)
+struct TS_frame_info *frame_info_entry(struct TS_reader *tsreader, unsigned index)
 {
+	CHECK_TS_READER(tsreader) ;
+
 	// Allocate if not already allocated
-	if (!ts_reader->mpeg2.frame_info_list)
+	if (!tsreader->mpeg2.frame_info_list)
 	{
-		ts_reader->mpeg2.frame_info_list_size = FRAMEINFO_BLOCKSIZE ;
-		ts_reader->mpeg2.frame_info_list = (struct TS_frame_info *)malloc(ts_reader->mpeg2.frame_info_list_size * sizeof(struct TS_frame_info)) ;
-		memset(ts_reader->mpeg2.frame_info_list, 0, ts_reader->mpeg2.frame_info_list_size * sizeof(struct TS_frame_info)) ;
+		tsreader->mpeg2.frame_info_list_size = FRAMEINFO_BLOCKSIZE ;
+		tsreader->mpeg2.frame_info_list = (struct TS_frame_info *)malloc(tsreader->mpeg2.frame_info_list_size * sizeof(struct TS_frame_info)) ;
+		memset(tsreader->mpeg2.frame_info_list, 0, tsreader->mpeg2.frame_info_list_size * sizeof(struct TS_frame_info)) ;
 	}
 
 	// If index > array size, expand
-	if (index >= ts_reader->mpeg2.frame_info_list_size)
+	if (index >= tsreader->mpeg2.frame_info_list_size)
 	{
-		ts_reader->mpeg2.frame_info_list_size += FRAMEINFO_BLOCKSIZE ;
-		ts_reader->mpeg2.frame_info_list = (struct TS_frame_info *)realloc(ts_reader->mpeg2.frame_info_list, ts_reader->mpeg2.frame_info_list_size * sizeof(struct TS_frame_info)) ;
-		memset(&ts_reader->mpeg2.frame_info_list[ts_reader->mpeg2.frame_info_list_size - FRAMEINFO_BLOCKSIZE], 0, FRAMEINFO_BLOCKSIZE * sizeof(struct TS_frame_info)) ;
+		tsreader->mpeg2.frame_info_list_size += FRAMEINFO_BLOCKSIZE ;
+		tsreader->mpeg2.frame_info_list = (struct TS_frame_info *)realloc(tsreader->mpeg2.frame_info_list, tsreader->mpeg2.frame_info_list_size * sizeof(struct TS_frame_info)) ;
+		memset(&tsreader->mpeg2.frame_info_list[tsreader->mpeg2.frame_info_list_size - FRAMEINFO_BLOCKSIZE], 0, FRAMEINFO_BLOCKSIZE * sizeof(struct TS_frame_info)) ;
 	}
 
-	return &ts_reader->mpeg2.frame_info_list[index] ;
+	return &tsreader->mpeg2.frame_info_list[index] ;
 }
 
 //---------------------------------------------------------------------------------------------------------------------------
 // Free the frame info array
-void free_frame_info_list(struct TS_reader *ts_reader)
+void free_frame_info_list(struct TS_reader *tsreader)
 {
-	if (ts_reader->mpeg2.frame_info_list_size)
+	CHECK_TS_READER(tsreader) ;
+	if (tsreader->mpeg2.frame_info_list_size)
 	{
-		ts_reader->mpeg2.frame_info_list_size = 0 ;
-		free(ts_reader->mpeg2.frame_info_list) ;
-		ts_reader->mpeg2.frame_info_list = NULL ;
+		tsreader->mpeg2.frame_info_list_size = 0 ;
+		free(tsreader->mpeg2.frame_info_list) ;
+		tsreader->mpeg2.frame_info_list = NULL ;
 	}
 }
 
@@ -117,7 +123,15 @@ unsigned byte ;
 	printf("---[ Len: %d  Displaying: %d ]------------------------------------------\n", payload_len, display_len) ;
 	for (byte=0; byte < display_len; ++byte)
 	{
+		if (byte % 32 == 0)
+		{
+			printf("%04x: ", byte) ;
+		}
 		printf("%02x ", payload[byte]) ;
+		if (byte % 8 == 7)
+		{
+			printf(" - ") ;
+		}
 		if (byte % 32 == 31)
 		{
 			printf("\n") ;
@@ -140,39 +154,6 @@ unsigned byte ;
 }
 
 
-///* ----------------------------------------------------------------------- */
-//void dump_psi(const uint8_t *packet, unsigned packet_len, unsigned display_len)
-//{
-////	pointer_field 8 uimsbf
-//
-////	table_id 8 uimsbf
-////	section_syntax_indicator 1 bslbf
-////	indicator 1 bslbf
-////	reserved 2 bslbf
-////	section_length 12 uimsbf
-//
-//unsigned byte ;
-//
-//	if ((display_len == 0) || (display_len > payload_len))
-//		display_len = payload_len ;
-//
-//	printf("---[ Len: %d  Displaying: %d ]------------------------------------------\n", payload_len, display_len) ;
-//	for (byte=0; byte < display_len; ++byte)
-//	{
-//		printf("%02x ", payload[byte]) ;
-//		if (byte % 32 == 31)
-//		{
-//			printf("\n") ;
-//		}
-//	}
-//	if (display_len < payload_len)
-//	{
-//		printf("...") ;
-//	}
-//	printf("\n------------------------------------------------------------\n") ;
-//
-//}
-
 /*=============================================================================================*/
 // TS_buff
 
@@ -181,8 +162,12 @@ void buffer_free(struct TS_buffer **buff)
 {
 struct TS_buffer *bp = *buff ;
 
+//fprintf(stderr, "buffer_free(**TS_buffer=%p)\n", buff) ;
+
 	if (bp)
 	{
+//		fprintf(stderr, " + **TS_buffer=%p [=> %p]\n", buff, *buff) ;
+//		fprintf(stderr, " + buff_size=%d buff= %p\n", bp->buff_size, bp->buff) ;
 		if (bp->buff_size)
 		{
 			free(bp->buff) ;
@@ -209,6 +194,8 @@ struct TS_buffer *bp ;
 	bp->buff = (uint8_t *)malloc(TS_BUFFSIZE*sizeof(uint8_t)) ;
 	bp->buff_size = TS_BUFFSIZE ;
 
+//fprintf(stderr, "buffer_new() TS_buffer=%p [buff = %p])\n", bp, bp->buff) ;
+
 	return bp ;
 }
 
@@ -223,8 +210,10 @@ void buffer_clear(struct TS_buffer *bp)
 /* ----------------------------------------------------------------------- */
 uint8_t *buffer_data(struct TS_buffer **buff, const uint8_t *data, unsigned data_len)
 {
-struct TS_buffer *bp = *buff ;
-unsigned new_len = data_len + bp->data_len ;
+struct TS_buffer *bp ;
+unsigned new_len ;
+
+//fprintf(stderr, "buffer_data(**TS_buffer=%p, data_len=%d)\n", buff, data_len) ;
 
 	// check for first time
 	if (!*buff)
@@ -232,22 +221,33 @@ unsigned new_len = data_len + bp->data_len ;
 		// create struct
 		*buff = buffer_new() ;
 	}
+	bp = *buff ;
+	new_len = bp->data_len + data_len ;
+
+//	fprintf(stderr, " + **TS_buffer=%p [=> %p] : buff=%p\n", buff, *buff, bp->buff) ;
 
 	// able to add data?
 	if (new_len >= bp->buff_size)
 	{
+//		fprintf(stderr, " + + realloc()\n") ;
 		bp->buff_size += TS_BUFFSIZE ;
 		bp->buff = realloc(bp->buff, bp->buff_size) ;
+//		fprintf(stderr, " + + buff=%p\n", bp->buff) ;
 	}
 	else if (bp->buff_size - new_len > 2*TS_BUFFSIZE )
 	{
+//		fprintf(stderr, " + + downsize() data_len=%d, new_len=%d : curr size=%d\n", bp->data_len, new_len, bp->buff_size) ;
 		// scale down if required
 		bp->buff_size = ( ( (new_len + TS_BUFFSIZE-1) / TS_BUFFSIZE) + 1) * TS_BUFFSIZE ;
+//		fprintf(stderr, " + + new size=%d\n", bp->buff_size) ;
 		bp->buff = realloc(bp->buff, bp->buff_size) ;
+//		fprintf(stderr, " + + buff=%p\n", bp->buff) ;
 	}
 
+//	fprintf(stderr, " + buff=%p .. %p : copying into %p .. %p\n", bp->buff, &bp->buff[bp->buff_size-1], &bp->buff[bp->data_len], &bp->buff[bp->data_len+data_len-1]) ;
+
 	// copy data
-	memcpy(bp->buff+bp->data_len, data, data_len) ;
+	memcpy(&bp->buff[bp->data_len], data, data_len) ;
 	bp->data_len += data_len ;
 
 	return bp->buff ;
@@ -335,6 +335,31 @@ static void pes_start(struct TS_pid * pid_item)
 /*=============================================================================================*/
 // TS_state
 
+//struct TS_state {
+//	unsigned MAGIC ;
+//	struct TS_pidinfo 	pidinfo ;
+//	struct TS_pid		*pid_item ;
+//
+//	// list of TS_pid
+//    struct list_head    pid_list;
+//
+//    // Set to total number of packets
+//    unsigned			total_pkts ;
+//
+//    // set to min/max pts/dts times
+//	int64_t 			start_ts ;
+//	int64_t 			end_ts ;
+//
+//	// Stop flag - set by callbacks to exit the loop
+//	unsigned			stop_flag ;
+//
+////    // list of TS packets
+////	unsigned			start_pktnum ;
+////
+////	// list of TS_pkt
+////	struct list_head	pkt_list ;
+//};
+
 /* ----------------------------------------------------------------------- */
 static void tsstate_free(struct TS_state *tsstate)
 {
@@ -375,6 +400,10 @@ struct TS_state *tsstate ;
 
 	tsstate->start_ts = UNSET_TS ;
 	tsstate->end_ts = UNSET_TS ;
+
+	tsstate->pid_item = (struct TS_pid *)0 ;
+	tsstate->total_pkts = 0 ;
+	tsstate->stop_flag = 0 ;
 
 //    // list of TS packets
 //	INIT_LIST_HEAD(&tsstate->pkt_list);
@@ -420,6 +449,7 @@ unsigned mpeg2_frame_flags(struct TS_reader *tsreader, struct TS_state *tsstate,
 uint8_t *p = pesdata ;
 unsigned flags = 0 ;
 
+	CHECK_TS_READER(tsreader) ;
 	while (p && ((int)pesdata_len-(int)(p-pesdata) >= 4) && (p = memchr(p, 0, (int)pesdata_len-(int)(p-pesdata))) )
 	{
 		if ((int)pesdata_len-(int)(p-pesdata) >= 4)
@@ -549,6 +579,7 @@ unsigned frame_flags ;
 static int total_offset = 0;
 const mpeg2_info_t * info;
 
+	CHECK_TS_READER(tsreader) ;
 
 
 	tsparse_dbg_prt(202, ("\n\n--[ video ]----------\n%d bytes\n", pesdata_len)) ;
@@ -691,6 +722,7 @@ unsigned frame_flags ;
 static int total_offset = 0;
 const mpeg2_info_t * info;
 
+	CHECK_TS_READER(tsreader) ;
 
 	tsparse_dbg_prt(202, ("\n\n--[ rgb video ]----------\n%d bytes\n", pesdata_len)) ;
 	if (tsreader->debug >= 202)
@@ -815,6 +847,8 @@ int done_bytes, avail_bytes, bytes;
 int samples, audio_bytes;
 mpeg2_audio_t audio_info ;
 
+	CHECK_TS_READER(tsreader) ;
+
 	// check this is an audio stream
 	if ( (tsstate->pid_item->pesinfo.code & audio_stream_mask) != audio_stream)
 	{
@@ -844,13 +878,6 @@ mpeg2_audio_t audio_info ;
 
 		// convert the audio buffer size in bytes, into the total number of samples (shorts). Samples per chan = samples / num_chans
 		samples = audio_bytes / sizeof(short) ;
-
-//		printf(" + done=%d samples=%d\n", done_bytes, samples) ;
-//
-//		if (samples == 0)
-//		{
-//			printf("*** 0 samples *** \n") ;
-//		}
 
 		tsreader->mpeg2audio.read_ptr = &tsreader->mpeg2audio.read_ptr[done_bytes];
 		avail_bytes -= done_bytes;
@@ -903,164 +930,18 @@ mpeg2_audio_t audio_info ;
 
 }
 
-#define SI_CRC_LEN			4
-#define SI_HEADER_LEN			4
-#define SECTION_HEADER_LEN		3
 
-/* ----------------------------------------------------------------------- */
-static int process_psi(struct TS_reader *tsreader, struct TS_state *tsstate,
-			uint8_t *payload, unsigned payload_len)
-{
-unsigned table_id ;
-unsigned section_len ;
-unsigned section_syntax ;
-unsigned ptr ;
-int payload_left = payload_len ;
-
-//TODO: Handle any data left at the end of the buffer (after handling this section)
-
-	tsparse_dbg_prt(102, ("process_psi(pid %d) payload len %d\n",
-			tsstate->pidinfo.pid, payload_len)) ;
-
-	// keep processing while we've got some buffer left AND we're not at the stuffing bytes
-	while ( (payload_left > (SI_HEADER_LEN+SI_CRC_LEN)) && (payload[0] != 0xff) )
-	{
-//	if (payload_len <= (SI_HEADER_LEN+SI_CRC_LEN))
-//		return 0 ;
-
-	//	pointer_field 8 uimsbf
-	ptr = payload[0] ;
-
-	//	table_id 8 uimsbf
-	//	section_syntax_indicator 1 bslbf
-	//	indicator 1 bslbf
-	//	reserved 2 bslbf
-	//	section_length 12 uimsbf
-	table_id = payload[ptr+1] ;
-	section_syntax = payload[ptr+2] & 0x80 ;
-
-	// number of bytes AFTER this field INCLUDING 4 byte CRC
-	section_len = ((payload[ptr+2] & 0x0f)<<8) | payload[ptr+3] ;
-
-	tsparse_dbg_prt(102, ("PSI pid %d Table %d Len %d : 0x%02x 0x%02x 0x%02x 0x%02x \n",
-		tsstate->pidinfo.pid, table_id, section_len, payload[ptr+0], payload[ptr+1], payload[ptr+2], payload[ptr+3])) ;
-
-printf("PSI pid 0x%x Table 0x%x [ptr 0x%02x] Sect Len %d : Payload left %d\n",
-		tsstate->pidinfo.pid, table_id,
-		ptr,
-		section_len, payload_left) ;
-
-
-	// error check
-	if (section_len > MAX_SECTION_LEN)
-	{
-		tsparse_dbg_prt(100, ("PSI section length error\n")) ;
-
-		tsstate->pid_item->pesinfo.psi_error++ ;
-		tsstate->pidinfo.pid_error++ ;
-		if (tsreader->error_hook)
-		{
-			SET_DVB_ERROR(ERR_SECTIONLEN) ;
-			tsreader->error_hook(dvb_error_code, &tsstate->pidinfo, tsreader->user_data) ;
-		}
-	}
-	else
-	{
-		// skip PTR & header
-		payload_left -= SI_HEADER_LEN ;
-
-		// check section fits into remaining buffer
-		if (section_len <= payload_left)
-		{
-//		printf("Data following section:\n") ;
-
-			// check syntax
-			if (section_syntax != 0x80)
-			{
-				printf("Invalid section syntax\n") ;
-				return 0 ;
-//				SET_DVB_ERROR(ERR_SECTIONLEN) ;
-//				tsreader->error_hook(dvb_error_code, &tsstate->pidinfo, tsreader->user_data) ;
-			}
-
-			// CRC covers whole packet from table_id to crc, need to extend length by section head
-		    uint32_t crc = crc32 (&payload[ptr+1], section_len+SECTION_HEADER_LEN);
-		    if (!crc)
-		    {
-		    	printf("**SI CRC PASS**\n") ;
-		    }
-		    else
-		    {
-		    	printf("!!SI CRC FAIL!! - SI skipped\n") ;
-		    	return 0 ;
-		    }
-
-			// ignore CRC
-			struct TS_bits *bits = bits_new(&payload[ptr+1], section_len+SECTION_HEADER_LEN-SI_CRC_LEN) ;
-
-			switch(table_id)
-			{
-				// PAT
-				case 0x00:
-					break ;
-
-				// PMT
-				case 0x02:
-					break;
-
-				// NIT this
-				case 0x40:
-				// NIT other
-				case 0x41:
-					break;
-
-				// SDT this
-				case 0x42:
-				// SDT other
-				case 0x46:
-					if (tsreader->debug >= 103)
-						dump_buff(&payload[ptr+1], payload_left, section_len) ;
-					parse_sdt(bits) ;
-					break;
-
-				// Now/Next this
-				case 0x4E:
-				// Now/Next other
-				case 0x4F:
-				// EIT this
-				case 0x50 ... 0x5F:
-				// EIT other
-				case 0x60 ... 0x6F:
-					if (tsreader->debug >= 103)
-						dump_buff(&payload[ptr+1], payload_left, section_len) ;
-					parse_eit(bits) ;
-					break;
-
-				// RST
-				case 0x71:
-					break ;
-
-				// SIT
-				case 0x7F:
-					break ;
-
-				default:
-//					if (dm->verbose) fprintf(stderr,"dvbmon: oops: sec=0x%02x\n",tab->sec);
-					break;
-			}
-
-			bits_free(&bits) ;
-		}
-	}
-
-		// skip to end of this section (ready for any subsequent section
-		payload_left -= section_len ;
-		payload += section_len ;
-		//printf("- end of loop: bytes left %d\n", payload_left) ;
-	} // while
-
-	return 0 ;
-}
+///* ----------------------------------------------------------------------- */
+//static int process_psi(struct TS_reader *tsreader, struct TS_state *tsstate,
+//			uint8_t *payload, unsigned payload_len)
+//{
+//	tsparse_dbg_prt(102, ("process_psi(pid %d) payload len %d\n",
+//			tsstate->pidinfo.pid, payload_len)) ;
+//
+//	// Call table processor
+//
+//	return 0 ;
+//}
 
 /* ----------------------------------------------------------------------- */
 static int process_pes(struct TS_reader *tsreader, struct TS_state *tsstate,
@@ -1078,6 +959,8 @@ unsigned pts_dts ;
 unsigned dbg_bytes[32] ;
 unsigned dbg_num ;
 #endif
+
+	CHECK_TS_READER(tsreader) ;
 
 	tsparse_dbg_prt(102, ("process_pes(pid %d) payload len %d\n",
 		tsstate->pidinfo.pid, payload_len)) ;
@@ -1415,10 +1298,10 @@ dbg_num=10 ;
 		}
 		tsstate->pid_item->pesinfo.dts = dts ;
 
-printf("TIMESTAMP: pid %d [0x%03x] rel ts=%d\n",
-		tsstate->pidinfo.pid, code,
-		(int)(dts - tsstate->pid_item->pesinfo.start_dts)
-		);
+		tsparse_dbg_prt(102, ("TIMESTAMP: pid %d [0x%03x] rel ts=%d\n",
+			tsstate->pidinfo.pid, code,
+			(int)(dts - tsstate->pid_item->pesinfo.start_dts)
+			));
 
 #ifdef DEBUG_PTS
 printf("DTS: pid %d [0x%03x] pts=%"PRId64" 0x%0"PRIx64"  (dts=%"PRId64") : pts_dts=%d [",
@@ -1441,6 +1324,7 @@ printf("]\n") ;
 static int handle_payload(struct TS_reader *tsreader, struct TS_state *tsstate,
 			uint8_t *payload, unsigned payload_len)
 {
+	CHECK_TS_READER(tsreader) ;
 	if (tsstate->pidinfo.pid == NULL_PID)
 		return 0 ;
 
@@ -1474,7 +1358,7 @@ static int handle_payload(struct TS_reader *tsreader, struct TS_state *tsstate,
 
 				// do something with the PSI data
 				tsstate->pid_item->pesinfo.pes_psi = T_PSI ;
-				process_psi(tsreader, tsstate, buff, buff_len) ;
+				parse_si(tsreader, tsstate, buff, buff_len) ;
 			}
 
 			// send to hook
@@ -1573,6 +1457,7 @@ uint8_t *payload ;
 unsigned start ;
 int payload_len ;
 
+	CHECK_TS_READER(tsreader) ;
 	tsstate->pid_item = NULL ;
 
 	/*
@@ -1602,8 +1487,6 @@ int payload_len ;
 	tsstate->pidinfo.err_flag = packet[1] & 0x80;
 	tsstate->pidinfo.pes_start = packet[1] & 0x40;
 
-//printf ("PID %d (0x%03x)\n", tsstate->pidinfo.pid, tsstate->pidinfo.pid) ;
-
     /* skip adaptation field */
 	tsstate->pidinfo.afc = (packet[3] >> 4) & 3;
 	start=4 ;
@@ -1625,7 +1508,7 @@ int payload_len ;
 	payload = &packet[start] ;
 	payload_len = packet_len - start ;
 
-if (tsreader->debug >= 1)
+if (tsreader->debug >= 100)
 {
 	printf ("PID %d (0x%03x) - start=%d, payload len=%d\n", tsstate->pidinfo.pid, tsstate->pidinfo.pid, start, payload_len) ;
 	dump_buff(packet, packet_len, 31) ;
@@ -1757,6 +1640,35 @@ void ts_null_packet(uint8_t *packet, unsigned packet_len)
 
 
 /*=============================================================================================*/
+// SI table decoding
+
+/* ----------------------------------------------------------------------- */
+int tsreader_register_section(struct TS_reader *tsreader,
+		unsigned table_id, unsigned mask,
+		Section_handler	handler, struct Section_decode_flags flags)
+{
+int updated = 0 ;
+enum TS_section_ids masked_val ;
+enum TS_section_ids id ;
+
+	CHECK_TS_READER(tsreader) ;
+
+	// add/remove handler entries from the table
+	id = table_id & SECTION_MAX ;
+
+	id &= mask ;
+	masked_val = id ;
+	for ( ; (id <= SECTION_MAX) && ( (id & mask) == masked_val); ++id )
+	{
+		tsreader->section_decode_table[id].flags = flags ;
+		tsreader->section_decode_table[id].handler = handler ;
+		++updated ;
+	}
+	return (updated) ;
+}
+
+
+/*=============================================================================================*/
 // TS_reader
 
 /* ----------------------------------------------------------------------- */
@@ -1766,6 +1678,7 @@ void tsreader_set_timing(struct TS_reader *tsreader)
 struct list_head  *item;
 struct TS_pid    *piditem;
 
+	CHECK_TS_READER(tsreader) ;
 	tsparse_dbg_prt(102, ("tsreader_set_timing()\n")) ;
 
 	list_for_each(item,&tsreader->tsstate->pid_list)
@@ -1827,16 +1740,39 @@ int tsreader_setpos(struct TS_reader *tsreader, int skip_pkts, int origin, unsig
 {
 off64_t rc = 0 ;
 off64_t pos ;
+int abs_skip ;
+int skip_sign ;
+
+	CHECK_TS_READER(tsreader) ;
+
+	abs_skip = skip_pkts ;
+	skip_sign = 1 ;
+	if (skip_pkts < 0)
+	{
+		abs_skip = -skip_pkts ;
+		skip_sign = -1 ;
+	}
+
+	// check for over-run
+	if (abs_skip > tsreader->tsstate->total_pkts)
+	{
+		abs_skip = tsreader->tsstate->total_pkts ;
+	}
+	skip_pkts = skip_sign * abs_skip ;
 
 	// set position
 	tsreader->num_pkts = num_pkts ;
-	tsreader->skip = skip_pkts ;
+	tsreader->skip = abs_skip ;
 	tsreader->origin = origin ;
 	tsreader->tsstate->pidinfo.pktnum = 0 ;
 
 	// skip if no file open
 	if (!tsreader->file)
 		return 0 ;
+
+//TODO: check skip_pkts < num_pkts
+//TODO: check against total pkts (tsreader->tsstate->total_pkts)
+
 
 	// calc pos
 	pos = (off64_t)(skip_pkts) * (off64_t)(TS_PACKET_LEN) ;
@@ -1852,6 +1788,11 @@ off64_t pos ;
 		SET_DVB_ERROR(ERR_FILE_SEEK) ;
 		if (tsreader->debug >= 100)
 			perror("File seek error: ") ;
+
+		// On error - reset to start of file
+		lseek64(tsreader->file, (off64_t)0, SEEK_SET) ;
+
+//TODO: on error seek to 0?
 	}
 	else
 	{
@@ -1865,6 +1806,7 @@ off64_t pos ;
 /* ----------------------------------------------------------------------- */
 void tsreader_start_framenum(struct TS_reader *tsreader, unsigned framenum)
 {
+	CHECK_TS_READER(tsreader) ;
 	tsreader->mpeg2.start_framenum = framenum ;
 	tsreader->mpeg2.framenum = framenum ;
 }
@@ -1900,6 +1842,20 @@ off64_t size ;
 	if (tsreader->file)
 	{
 		size = lseek64(tsreader->file, -1, SEEK_END) ;
+
+		// size = -1 :
+		// errorno=EINVAL for zero length file
+		if (size < 0)
+		{
+			size = 0 ;
+			SET_DVB_ERROR(ERR_FILE) ;
+			if (errno == EINVAL)
+			{
+				SET_DVB_ERROR(ERR_FILE_ZERO) ;
+			}
+			tsreader_free(tsreader) ;
+			return(NULL) ;
+		}
 		tsreader->tsstate->total_pkts = (unsigned)(size / (off64_t)TS_PACKET_LEN) ;
 	}
 
@@ -1922,6 +1878,7 @@ struct TS_reader *tsreader_new_nofile()
 // abort loop
 void tsreader_stop(struct TS_reader *tsreader)
 {
+	CHECK_TS_READER(tsreader) ;
 	tsreader->tsstate->stop_flag = 1 ;
 }
 
@@ -1930,6 +1887,7 @@ void tsreader_free(struct TS_reader *tsreader)
 {
 	if (tsreader)
 	{
+		CHECK_TS_READER(tsreader) ;
 		if (tsreader->file)
 			close(tsreader->file) ;
 
@@ -1956,6 +1914,8 @@ void tsreader_free(struct TS_reader *tsreader)
 /* ----------------------------------------------------------------------- */
 static void tsreader_set_mpeg2(struct TS_reader *tsreader)
 {
+	CHECK_TS_READER(tsreader) ;
+
 	// optionally set up libmpeg2 settings
 	if (tsreader->mpeg2_hook || tsreader->mpeg2_rgb_hook)
 	{
@@ -1989,6 +1949,8 @@ static void tsreader_set_mpeg2(struct TS_reader *tsreader)
 /* ----------------------------------------------------------------------- */
 static void tsreader_set_audio(struct TS_reader *tsreader)
 {
+	CHECK_TS_READER(tsreader) ;
+
 	// optionally set up mpeg2audio settings
 	if (tsreader->audio_hook)
 	{
@@ -2015,12 +1977,11 @@ static void tsreader_set_audio(struct TS_reader *tsreader)
 // Only called when a file is specified
 int ts_parse(struct TS_reader *tsreader)
 {
-//int rc;
-//unsigned byte_num ;
-
 uint8_t buffer[TS_BUFFSIZE];
 int bytes_read ;
 int status;
+
+	CHECK_TS_READER(tsreader) ;
 
 	status = 0 ;
 
@@ -2030,209 +1991,21 @@ int status;
 		RETURN_DVB_ERROR(ERR_FILE) ;
 	}
 
-//uint8_t *bptr ;
-//
-//unsigned get_sync ;
-//int running ;
-//int buffer_len ;
-//unsigned pktnum = 0 ;
-
-
-
-//	tsparse_dbg_prt(100, ("ts_parse()\n")) ;
-//	tsparse_dbg_prt(100, ("# Total packets = %d\n", tsreader->tsstate->total_pkts)) ;
-//
-//	// Ensure libmpeg2 info is correct
-//	tsreader_set_mpeg2(tsreader) ;
-//
-//	// Ensure audio info is set up
-//	tsreader_set_audio(tsreader) ;
-//
-//	// Progress required?
-//	if (tsreader->progress_hook)
-//	{
-//		tsreader->progress_info.scale = 1 ;
-//		if (tsreader->tsstate->total_pkts*100 > 0xffffffff)
-//		{
-//			tsreader->progress_info.scale = ( (tsreader->tsstate->total_pkts*100) / 0xffffffff) + 1 ;
-//		}
-//		tsreader->progress_info.step = tsreader->tsstate->total_pkts / (tsreader->progress_info.scale * 100) ;
-//		tsreader->progress_info.total = tsreader->tsstate->total_pkts / tsreader->progress_info.scale ;
-//		tsreader->progress_info.next_progress = tsreader->progress_info.step ;
-//
-//		tsreader->progress_hook(PROGRESS_START, 0, tsreader->progress_info.total, tsreader->user_data) ;
-//	}
-
 	// initialise
 	status = tsreader_data_start(tsreader) ;
 	if (status) return (status) ;
 
     // main loop
-//	tsreader->buff_state.running = 1 ;
-//	tsreader->buff_state.get_sync = 1 ;
     while (tsreader->buff_state.running > 0)
     {
-		bytes_read = TS_BUFFSIZE ;
+		bytes_read = TS_BUFFSIZE_READ ;
     	status = getbuff(tsreader->file, buffer, &bytes_read) ;
 
     	// add packet and process
     	status = tsreader_data_add(tsreader, buffer, bytes_read) ;
     	if (status) return (status) ;
 
-
-//		tsparse_dbg_prt(100, ("waiting for sync...\n")) ;
-//
-//    	// wait for sync byte
-//		tsreader->buff_state.bptr = tsreader->buff_state.buffer ;
-//		tsreader->buff_state.bytes_read = 1 ;
-//		tsreader->buff_state.status = getbuff(tsreader->file, tsreader->buff_state.buffer, &tsreader->buff_state.bytes_read) ;
-//    	if (status) return (tsreader->buff_state.status) ;
-//    	if (tsreader->buff_state.bytes_read <= 0)
-//    	{
-//    		RETURN_DVB_ERROR(ERR_BUFFER_ZERO) ;
-//    	}
-//
-//    	// wait for sync byte, but abort if we've waited for at least 4 packets and not found it
-//    	byte_num=0;
-//    	while ( (buffer[0] != SYNC_BYTE) && (byte_num < (4*TS_PACKET_LEN)) )
-//    	{
-//    		bytes_read = 1 ;
-//	    	status = getbuff(tsreader->file, buffer, &bytes_read) ;
-//	    	if (status) return (status) ;
-//	    	if (bytes_read <= 0)
-//	    	{
-//	    		RETURN_DVB_ERROR(ERR_BUFFER_ZERO) ;
-//	    	}
-//	    	++byte_num ;
-//
-//	    	tsparse_dbg_prt(110, (" + byte[0]=0x%02x num=%d\n", buffer[0], byte_num)) ;
-//
-//    	}
-//    	tsreader->buff_state.get_sync = 0 ;
-//
-//    	// did we find it?
-//    	if (buffer[0] != SYNC_BYTE)
-//    	{
-//    		RETURN_DVB_ERROR(ERR_NOSYNC) ;
-//    	}
-//
-//    	tsparse_dbg_prt(100, ("handling TS packets...(buffer @ %p)\n", buffer)) ;
-//
-//		// get rest of TS packet
-//		buffer_len = bytes_read ;
-//		bytes_read = (TS_BUFFSIZE-1) ;
-//    	status = getbuff(tsreader->file, &buffer[1], &bytes_read) ;
-//    	buffer_len += bytes_read ;
-//    	bptr = buffer ;
-//    	while ( running && !get_sync)
-//    	{
-//	    	if (status) return (status) ;
-//	    	if (buffer_len <= 0)
-//	    	{
-//				RETURN_DVB_ERROR(ERR_BUFFER_ZERO) ;
-//	    	}
-//
-//	    	tsparse_dbg_prt(110, ("Start of loop : 0x%02x (bptr @ %p) %d bytes left : local pkt count = %u\n", bptr[0], bptr, buffer_len, pktnum)) ;
-//	    	tsparse_dbg_prt(100, ("# pkt count = %u\n", pktnum)) ;
-//
-//			// check sync byte
-//			if (bptr[0] != SYNC_BYTE)
-//			{
-//				// re-sync
-//				++get_sync ;
-//
-//				tsparse_dbg_prt(110, ("! Resync required : 0x%02x (bptr @ %p)\n", bptr[0], bptr)) ;
-//			}
-//			else
-//			{
-//				// Do something with the packet
-//				parse_ts_packet(tsreader, tsreader->tsstate, bptr, TS_PACKET_LEN) ;
-//
-//				// Progress required?
-//				if (tsreader->progress_hook)
-//				{
-//					if (pktnum == tsreader->progress_info.next_progress)
-//					{
-//						tsreader->progress_hook(PROGRESS_RUNNING,
-//								(unsigned)(pktnum / tsreader->progress_info.scale),
-//								tsreader->progress_info.total,
-//								tsreader->user_data) ;
-//
-//						tsreader->progress_info.next_progress += tsreader->progress_info.step ;
-//					}
-//				}
-//
-//				// check for end
-//				++pktnum ;
-//				++tsreader->tsstate->pidinfo.pktnum ;
-//				if (pktnum >= tsreader->tsstate->total_pkts)
-//				{
-//					// reached end of file
-//					running = 0 ;
-//				}
-//				if (tsreader->num_pkts && (pktnum >= tsreader->num_pkts) )
-//				{
-//					// reached requested number of packets
-//					running = 0 ;
-//				}
-//				if (tsreader->tsstate->stop_flag)
-//				{
-//					// stop request
-//					running = 0 ;
-//				}
-//
-//				// update buffer
-//				buffer_len -= TS_PACKET_LEN ;
-//				bptr += TS_PACKET_LEN ;
-//
-//
-//
-//				if ( running && (buffer_len < TS_PACKET_LEN) )
-//				{
-//					// next packets
-//					bytes_read = TS_BUFFSIZE ;
-//			    	status = getbuff(tsreader->file, buffer, &bytes_read) ;
-//			    	buffer_len = bytes_read ;
-//			    	bptr = buffer ;
-//
-//			    	tsparse_dbg_prt(110, ("Reload buffer : 0x%02x (bptr @ %p) %d bytes left\n", bptr[0], bptr, buffer_len)) ;
-//
-//				}
-//
-//			} // if get_sync
-//
-//			tsparse_dbg_prt(110, ("End of loop : 0x%02x (bptr @ %p) %d bytes left\n", bptr[0], bptr, buffer_len)) ;
-//
-//
-//    	} // while in sync
-
     } // while running
-
-//	// Progress required?
-//	if (tsreader->progress_hook)
-//	{
-//		unsigned scaled_pktnum = (unsigned)(pktnum / tsreader->progress_info.scale) ;
-//		if (scaled_pktnum > tsreader->progress_info.total) scaled_pktnum = tsreader->progress_info.total ;
-//
-//		if (tsreader->tsstate->stop_flag)
-//		{
-//			// premature stop
-//			tsreader->progress_hook(PROGRESS_STOPPED,
-//					scaled_pktnum,
-//					tsreader->progress_info.total,
-//					tsreader->user_data) ;
-//		}
-//		else
-//		{
-//			// run to end
-//			tsreader->progress_hook(PROGRESS_END,
-//					tsreader->progress_info.total,
-//					tsreader->progress_info.total,
-//					tsreader->user_data) ;
-//		}
-//	}
-//
-//	tsparse_dbg_prt(100, ("ts_parse() - END\n")) ;
 
     // finish off
 	status = tsreader_data_end(tsreader) ;
@@ -2244,8 +2017,9 @@ int status;
 /* ----------------------------------------------------------------------- */
 int tsreader_data_start(struct TS_reader *tsreader)
 {
-	tsparse_dbg_prt(100, ("ts_parse()\n")) ;
-	tsparse_dbg_prt(100, ("# Total packets = %d\n", tsreader->tsstate->total_pkts)) ;
+	CHECK_TS_READER(tsreader) ;
+	tsparse_dbg_prt(10, ("TS: tsreader_data_start()\n")) ;
+	tsparse_dbg_prt(100, ("TS: # Total packets = %d\n", tsreader->tsstate->total_pkts)) ;
 
 	tsreader->buff_state.bptr = tsreader->buff_state.buffer ;
 	tsreader->buff_state.buffer_len = 0 ;
@@ -2286,8 +2060,16 @@ int tsreader_data_add(struct TS_reader *tsreader, uint8_t *data, unsigned data_l
 {
 unsigned byte_num ;
 
+tsparse_dbg_prt(10, ("TS: tsreader_data_add() running=%d data_len=%d : Current size = %d\n", tsreader->buff_state.running, data_len, tsreader->buff_state.buffer_len)) ;
+
+	CHECK_TS_READER(tsreader) ;
+
 	// skip if stopped
 	if (!tsreader->buff_state.running)
+		return 0 ;
+
+	// skip if no data
+	if (data_len == 0)
 		return 0 ;
 
 	// add new data
@@ -2299,109 +2081,169 @@ unsigned byte_num ;
 
     	tsreader->buff_state.get_sync = 1 ;
 
-    	tsparse_dbg_prt(110, ("Reload buffer : 0x%02x (bptr @ %p) %d bytes left\n",
+//fprintf(stderr, "bptr[0]=0x%02x\n", tsreader->buff_state.bptr[0]) ;
+//fprintf(stderr, "bptr=%p\n", tsreader->buff_state.bptr) ;
+//fprintf(stderr, "buffer_len=%d\n", tsreader->buff_state.buffer_len) ;
+
+    	tsparse_dbg_prt(10, ("TS: Reload buffer : 0x%02x (bptr @ %p) %d bytes left\n",
     			tsreader->buff_state.bptr[0], tsreader->buff_state.bptr, tsreader->buff_state.buffer_len)) ;
 	}
+	// check overflow (should never happen!)
+	else if (tsreader->buff_state.buffer_len + data_len >= TS_BUFFSIZE)
+	{
+		// restart
+		data_len %= TS_BUFFSIZE ;
+    	tsreader->buff_state.bptr = tsreader->buff_state.buffer ;
+    	tsreader->buff_state.buffer_len = data_len ;
+    	memcpy(tsreader->buff_state.buffer, data, data_len*sizeof(uint8_t)) ;
+
+    	tsreader->buff_state.get_sync = 1 ;
+
+fprintf(stderr, "\n**OVERFLOW**\n") ;
+
+    	tsparse_dbg_prt(10, ("TS: *OVERFLOW* Reload buffer : 0x%02x (bptr @ %p) %d bytes left\n",
+    			tsreader->buff_state.bptr[0], tsreader->buff_state.bptr, tsreader->buff_state.buffer_len)) ;
+	}
+	// append data
 	else
 	{
-		unsigned data_used = (tsreader->buff_state.bptr - tsreader->buff_state.buffer) ;
-		if (data_len + tsreader->buff_state.buffer_len + data_used >= TS_BUFFSIZE )
-		{
-			data_len = TS_BUFFSIZE - 1 - (tsreader->buff_state.buffer_len + data_used) ;
-		}
+//		unsigned data_used = (tsreader->buff_state.bptr - tsreader->buff_state.buffer) ;
+//		if (data_len + tsreader->buff_state.buffer_len + data_used >= TS_BUFFSIZE )
+//		{
+//			data_len = TS_BUFFSIZE - 1 - (tsreader->buff_state.buffer_len + data_used) ;
+//		}
 
 		// append data
     	memcpy(&tsreader->buff_state.bptr[tsreader->buff_state.buffer_len], data, data_len*sizeof(uint8_t)) ;
     	tsreader->buff_state.buffer_len += data_len ;
+
+    	tsparse_dbg_prt(10, ("TS: Append buffer : 0x%02x (bptr @ %p) %d bytes left\n",
+    			tsreader->buff_state.bptr[0], tsreader->buff_state.bptr, tsreader->buff_state.buffer_len)) ;
 	}
 
-
-	// check for sync if required
-	if (tsreader->buff_state.get_sync)
+	while (tsreader->buff_state.running && (tsreader->buff_state.buffer_len > 0) )
 	{
-		tsparse_dbg_prt(100, ("waiting for sync...\n")) ;
+		tsparse_dbg_prt(100, ("TS: Loop start...(len=%d) running=%d, get sync=%d\n",
+				tsreader->buff_state.buffer_len,
+				tsreader->buff_state.running,
+				tsreader->buff_state.get_sync)) ;
 
-		// wait for sync byte, but abort if we've waited for at least 4 packets and not found it
-		byte_num=0;
-		while ( (tsreader->buff_state.bptr[0] != SYNC_BYTE) && (byte_num < (4*TS_PACKET_LEN)) && tsreader->buff_state.buffer_len )
+		// check for sync if required
+		if (tsreader->buff_state.get_sync)
 		{
-			--tsreader->buff_state.buffer_len ;
-			++byte_num ;
+			tsparse_dbg_prt(10, ("TS: waiting for sync...\n")) ;
 
-			tsparse_dbg_prt(110, (" + byte[0]=0x%02x num=%d\n", tsreader->buff_state.bptr[0], byte_num)) ;
-		}
-		tsreader->buff_state.get_sync = 0 ;
-
-		// did we find it?
-		if (tsreader->buff_state.bptr[0] != SYNC_BYTE)
-		{
-			RETURN_DVB_ERROR(ERR_NOSYNC) ;
-		}
-	}
-	tsparse_dbg_prt(100, ("handling TS packets...(buffer @ %p)\n", tsreader->buff_state.buffer)) ;
-
-	// handle rest of TS packet(s)
-	while ( tsreader->buff_state.running && !tsreader->buff_state.get_sync && (tsreader->buff_state.buffer_len >= TS_PACKET_LEN) )
-	{
-    	tsparse_dbg_prt(110, ("Start of loop : 0x%02x (bptr @ %p) %d bytes left : local pkt count = %u\n",
-    			tsreader->buff_state.bptr[0], tsreader->buff_state.bptr, tsreader->buff_state.buffer_len, tsreader->buff_state.pktnum)) ;
-    	tsparse_dbg_prt(100, ("# pkt count = %u\n", tsreader->buff_state.pktnum)) ;
-
-		// check sync byte
-		if (tsreader->buff_state.bptr[0] != SYNC_BYTE)
-		{
-			// re-sync
-			++tsreader->buff_state.get_sync ;
-
-			tsparse_dbg_prt(110, ("! Resync required : 0x%02x (bptr @ %p)\n", tsreader->buff_state.bptr[0], tsreader->buff_state.bptr)) ;
-		}
-		else
-		{
-			// Do something with the packet
-			parse_ts_packet(tsreader, tsreader->tsstate, tsreader->buff_state.bptr, TS_PACKET_LEN) ;
-
-			// Progress required?
-			if (tsreader->progress_hook)
+			// wait for sync byte, but abort if we've waited for at least 4 packets and not found it
+			byte_num=0;
+			while ( (tsreader->buff_state.buffer_len > 0) && (tsreader->buff_state.bptr[0] != SYNC_BYTE) && (byte_num < (4*TS_PACKET_LEN)) )
 			{
-				if (tsreader->buff_state.pktnum == tsreader->progress_info.next_progress)
+				tsreader->buff_state.buffer_len-- ;
+				tsreader->buff_state.bptr++ ;
+				byte_num++ ;
+
+				tsparse_dbg_prt(10, ("TS:  + byte[0]=0x%02x num=%d\n", tsreader->buff_state.bptr[0], byte_num)) ;
+			}
+			tsreader->buff_state.get_sync = 0 ;
+
+			// did we find it?
+			if  ((tsreader->buff_state.buffer_len == 0) || (tsreader->buff_state.bptr[0] != SYNC_BYTE))
+			{
+				// clear buffer
+				tsreader->buff_state.get_sync = 1 ;
+				tsreader->buff_state.buffer_len = 0 ;
+
+				// return error
+				RETURN_DVB_ERROR(ERR_NOSYNC) ;
+			}
+		}
+		tsparse_dbg_prt(10, ("TS: handling TS packets...(buffer @ %p => 0x%02x)\n", tsreader->buff_state.buffer, tsreader->buff_state.bptr[0])) ;
+
+		// handle rest of TS packet(s)
+		while ( tsreader->buff_state.running && !tsreader->buff_state.get_sync && (tsreader->buff_state.buffer_len >= TS_PACKET_LEN) )
+		{
+			tsparse_dbg_prt(10, ("TS: Start data of loop : 0x%02x (bptr @ %p) %d bytes left : local pkt count = %u\n",
+					tsreader->buff_state.bptr[0], tsreader->buff_state.bptr, tsreader->buff_state.buffer_len, tsreader->buff_state.pktnum)) ;
+			tsparse_dbg_prt(10, ("TS: # pkt count = %u\n", tsreader->buff_state.pktnum)) ;
+
+			// check sync byte
+			if (tsreader->buff_state.bptr[0] != SYNC_BYTE)
+			{
+				// re-sync
+				++tsreader->buff_state.get_sync ;
+
+				tsparse_dbg_prt(10, ("TS: ! Resync required : 0x%02x (bptr @ %p)\n", tsreader->buff_state.bptr[0], tsreader->buff_state.bptr)) ;
+			}
+			else
+			{
+				// Do something with the packet
+				parse_ts_packet(tsreader, tsreader->tsstate, tsreader->buff_state.bptr, TS_PACKET_LEN) ;
+
+				// Progress required?
+				if (tsreader->progress_hook)
 				{
-					tsreader->progress_hook(PROGRESS_RUNNING,
-							(unsigned)(tsreader->buff_state.pktnum / tsreader->progress_info.scale),
-							tsreader->progress_info.total,
-							tsreader->user_data) ;
+					if (tsreader->buff_state.pktnum == tsreader->progress_info.next_progress)
+					{
+						tsreader->progress_hook(PROGRESS_RUNNING,
+								(unsigned)(tsreader->buff_state.pktnum / tsreader->progress_info.scale),
+								tsreader->progress_info.total,
+								tsreader->user_data) ;
 
-					tsreader->progress_info.next_progress += tsreader->progress_info.step ;
+						tsreader->progress_info.next_progress += tsreader->progress_info.step ;
+					}
 				}
-			}
 
-			// check for end
-			++tsreader->buff_state.pktnum ;
-			++tsreader->tsstate->pidinfo.pktnum ;
-			if (tsreader->buff_state.pktnum >= tsreader->tsstate->total_pkts)
-			{
-				// reached end of file
-				tsreader->buff_state.running = 0 ;
-			}
-			if (tsreader->num_pkts && (tsreader->buff_state.pktnum >= tsreader->num_pkts) )
-			{
-				// reached requested number of packets
-				tsreader->buff_state.running = 0 ;
-			}
-			if (tsreader->tsstate->stop_flag)
-			{
-				// stop request
-				tsreader->buff_state.running = 0 ;
-			}
+				//== check for end ==
+				++tsreader->buff_state.pktnum ;
+				++tsreader->tsstate->pidinfo.pktnum ;
 
-			// update buffer
-			tsreader->buff_state.buffer_len -= TS_PACKET_LEN ;
-			tsreader->buff_state.bptr += TS_PACKET_LEN ;
+				// only compare with total packets if it's been set!
+				if (tsreader->tsstate->total_pkts && (tsreader->buff_state.pktnum >= tsreader->tsstate->total_pkts) )
+				{
+					// reached end of file
+					tsreader->buff_state.running = 0 ;
+					tsparse_dbg_prt(100, ("TS: stop running total pkts (len=%d)\n", tsreader->buff_state.buffer_len)) ;
+				}
 
-		} // if get_sync
+				// check if max packets has been set
+				if (tsreader->num_pkts && (tsreader->buff_state.pktnum >= tsreader->num_pkts) )
+				{
+					// reached requested number of packets
+					tsreader->buff_state.running = 0 ;
+					tsparse_dbg_prt(100, ("TS: stop running num pkts> (len=%d)\n", tsreader->buff_state.buffer_len)) ;
+				}
 
-		tsparse_dbg_prt(110, ("End of loop : 0x%02x (bptr @ %p) %d bytes left\n", tsreader->buff_state.bptr[0], tsreader->buff_state.bptr, tsreader->buff_state.buffer_len)) ;
+				// check special STOP flag
+				if (tsreader->tsstate->stop_flag)
+				{
+					// stop request
+					tsreader->buff_state.running = 0 ;
+					tsparse_dbg_prt(100, ("TS: stop running flag (len=%d)\n", tsreader->buff_state.buffer_len)) ;
+				}
 
-	} // while in sync
+				// update buffer
+				tsreader->buff_state.buffer_len -= TS_PACKET_LEN ;
+				tsreader->buff_state.bptr += TS_PACKET_LEN ;
+
+			} // if get_sync
+
+			tsparse_dbg_prt(10, ("TS: End of data loop : 0x%02x (bptr @ %p) %d bytes left\n",
+					tsreader->buff_state.bptr[0], tsreader->buff_state.bptr, tsreader->buff_state.buffer_len)) ;
+
+			tsparse_dbg_prt(10, ("TS: running=%d, get sync=%d, buff len=%d\n",
+					tsreader->buff_state.running, tsreader->buff_state.get_sync, tsreader->buff_state.buffer_len)) ;
+
+		} // while in sync
+
+
+		// process other bytes if still got data
+		if ((tsreader->buff_state.buffer_len > 0) && (tsreader->buff_state.bptr[0] != SYNC_BYTE))
+		{
+			tsreader->buff_state.get_sync = 1 ;
+		}
+
+		tsparse_dbg_prt(100, ("TS: Loop end...(len=%d)\n", tsreader->buff_state.buffer_len)) ;
+
+	} // while got data
 
 	return 0 ;
 }
@@ -2410,6 +2252,8 @@ unsigned byte_num ;
 /* ----------------------------------------------------------------------- */
 int tsreader_data_end(struct TS_reader *tsreader)
 {
+	CHECK_TS_READER(tsreader) ;
+
 	// Progress required?
 	if (tsreader->progress_hook)
 	{
@@ -2434,7 +2278,7 @@ int tsreader_data_end(struct TS_reader *tsreader)
 		}
 	}
 
-	tsparse_dbg_prt(100, ("ts_parse() - END\n")) ;
+	tsparse_dbg_prt(10, ("TS: tsreader_data_end() - END\n")) ;
 
     return 0;
 }
