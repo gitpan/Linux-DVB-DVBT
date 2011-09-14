@@ -6,126 +6,150 @@ use Test::More ;
 
 use Linux::DVB::DVBT::Utils ;
 
+
 my @tests = (
 	{
-		'raw-title'	=> 'Numb3rs',
+		'raw-title'	=> 'Wilfred',
+		'raw-text'	=> 'New series. 1/13. Happiness: At the end of his tether, Ryan encounters his attractive neighbour\'s dog, Wilfred. Contains adult humour.  Also in HD. [AD,S]',
+
+		'text'	=> 'Happiness: At the end of his tether, Ryan encounters his attractive neighbour\'s dog, Wilfred. Contains adult humour.',
+		'title'	=> 'Wilfred',
+		'subtitle'	=> 'Happiness',
+		'episode'	=> 1,
+		'episodes'	=> 13,
+		'new_program' => 1,
+	},
+	{
+		'raw-title'	=> 'Wilfred',
+		'raw-text'	=> '2/13. Trust: Sitcom about a man who sees his neighbour\'s dog as a man in a canine costume. Ryan is torn between loyalty to Wilfred and Jenna. Contains adult humour.  Also in HD. [AD,S]',
+
+		'text'	=> 'Trust: Sitcom about a man who sees his neighbour\'s dog as a man in a canine costume. Ryan is torn between loyalty to Wilfred and Jenna. Contains adult humour.',
+		'title'	=> 'Wilfred',
+		'subtitle'	=> 'Trust',
+		'episode'	=> 2,
+		'episodes'	=> 13,
+		'new_program' => 0,
+	},
+	
+	{
+		'raw-title'	=> 'Numb3rs1',
 		'raw-text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head. (1/18)',
 		'text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head.',
-		'title'	=> 'Numb3rs',
+		'title'	=> 'Numb3rs1',
 		'subtitle'	=> 'Trust Metric',
 		'episode'	=> 1,
 		'episodes'	=> 18,
 		'new_program' => 0,
 	},
 	{
-		'raw-title'	=> 'Numb3rs',
+		'raw-title'	=> 'Numb3rs2',
 		'raw-text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head. 1 / 18',
-		'text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its',
-		'title'	=> 'Numb3rs',
+		'text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head.',
+		'title'	=> 'Numb3rs2',
 		'subtitle'	=> 'Trust Metric',
 		'episode'	=> 1,
 		'episodes'	=> 18,
 		'new_program' => 0,
 	},
 	{
-		'raw-title'	=> 'Numb3rs',
+		'raw-title'	=> 'Numb3rs3',
 		'raw-text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head. Epi 1 of 18',
 		'text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head.',
-		'title'	=> 'Numb3rs',
+		'title'	=> 'Numb3rs3',
 		'subtitle'	=> 'Trust Metric',
 		'episode'	=> 1,
 		'episodes'	=> 18,
 		'new_program' => 0,
 	},
 	{
-		'raw-title'	=> 'Vets',
+		'raw-title'	=> 'Numb3rs4',
+		'raw-text'	=> '1/18. Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head',
+		'text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head',
+		'title'	=> 'Numb3rs4',
+		'subtitle'	=> 'Trust Metric',
+		'episode'	=> 1,
+		'episodes'	=> 18,
+		'new_program' => 0,
+	},
+	{
+		'raw-title'	=> 'Vets1',
 		'raw-text'	=> 'An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging. (Part 16 of 26)',
 		'text'	=> 'An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging.',
-		'title'	=> 'Vets',
+		'title'	=> 'Vets1',
 		'subtitle'	=> 'An obese parrot causes complications for vet Matt Brash',
 		'episode'	=> 16,
 		'episodes'	=> 26,
 		'new_program' => 0,
 	},
 	{
-		'raw-title'	=> 'Vets',
+		'raw-title'	=> 'Vets2',
 		'raw-text'	=> 'An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging. Part 16 of 26',
 		'text'	=> 'An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging.',
-		'title'	=> 'Vets',
+		'title'	=> 'Vets2',
 		'subtitle'	=> 'An obese parrot causes complications for vet Matt Brash',
 		'episode'	=> 16,
 		'episodes'	=> 26,
 		'new_program' => 0,
 	},
 	{
-		'raw-title'	=> 'Vets',
+		'raw-title'	=> 'Vets3',
 		'raw-text'	=> 'New  . An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging. Part 16 of 26',
 		'text'	=> 'An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging.',
-		'title'	=> 'Vets',
+		'title'	=> 'Vets3',
 		'subtitle'	=> 'An obese parrot causes complications for vet Matt Brash',
 		'episode'	=> 16,
 		'episodes'	=> 26,
 		'new_program' => 1,
 	},
 	{
-		'raw-title'	=> 'Vets',
+		'raw-title'	=> 'Vets4',
 		'raw-text'	=> 'ALL      neW episodes  !! An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging. Part 16 of 26',
 		'text'	=> 'An obese parrot causes complications for vet Matt Brash. He must also help a cat deliver kittens by emergency caesarean and a swan recovers from a brutal mugging.',
-		'title'	=> 'Vets',
+		'title'	=> 'Vets4',
 		'subtitle'	=> 'An obese parrot causes complications for vet Matt Brash',
 		'episode'	=> 16,
 		'episodes'	=> 26,
 		'new_program' => 1,
 	},
 	{
-		'raw-title'	=> 'Vets',
+		'raw-title'	=> 'Vets5',
 		'raw-text'	=> 'The Gorilla Experiment: Penny feels left out when Bernadette shows an interest in science and asks Sheldon to educate her.',
 		'text'	=> 'The Gorilla Experiment: Penny feels left out when Bernadette shows an interest in science and asks Sheldon to educate her.',
-		'title'	=> 'Vets',
+		'title'	=> 'Vets5',
 		'subtitle'	=> 'The Gorilla Experiment',
 		'episode'	=> 0,
 		'episodes'	=> 0,
 		'new_program' => 0,
 	},
 	{
-		'raw-title'	=> 'Midsomer',
+		'raw-title'	=> 'Midsomer1',
 		'raw-text'	=> 'Blood Wedding (Part 1): Two weddings are due to take place - Cully\'s to Simon, and that of local baronet Ned Fitzroy. Then the maid of honour at Fitzroy\'s nuptials is found dead.',
 		'text'	=> 'Blood Wedding (Part 1): Two weddings are due to take place - Cully\'s to Simon, and that of local baronet Ned Fitzroy. Then the maid of honour at Fitzroy\'s nuptials is found dead.',
-		'title'	=> 'Midsomer',
+		'title'	=> 'Midsomer1',
 		'subtitle'	=> 'Blood Wedding (Part 1)',
 		'episode'	=> 0,
 		'episodes'	=> 0,
 		'new_program' => 0,
 	},
 	{
-		'raw-title'	=> 'Midsomer',
+		'raw-title'	=> 'Midsomer2',
 		'raw-text'	=> 'New. Blood Wedding (Part 1): Two weddings are due to take place - Cully\'s to Simon, and that of local baronet Ned Fitzroy. Then the maid of honour at Fitzroy\'s nuptials is found dead.',
 		'text'	=> 'Blood Wedding (Part 1): Two weddings are due to take place - Cully\'s to Simon, and that of local baronet Ned Fitzroy. Then the maid of honour at Fitzroy\'s nuptials is found dead.',
-		'title'	=> 'Midsomer',
+		'title'	=> 'Midsomer2',
 		'subtitle'	=> 'Blood Wedding (Part 1)',
 		'episode'	=> 0,
 		'episodes'	=> 0,
 		'new_program' => 1,
 	},
 	{
-		'raw-title'	=> 'Midsomer',
+		'raw-title'	=> 'Midsomer3',
 		'raw-text'	=> 'Brand new series! Blood Wedding (Part 1): Two weddings are due to take place - Cully\'s to Simon, and that of local baronet Ned Fitzroy. Then the maid of honour at Fitzroy\'s nuptials is found dead.',
 		'text'	=> 'Blood Wedding (Part 1): Two weddings are due to take place - Cully\'s to Simon, and that of local baronet Ned Fitzroy. Then the maid of honour at Fitzroy\'s nuptials is found dead.',
-		'title'	=> 'Midsomer',
+		'title'	=> 'Midsomer3',
 		'subtitle'	=> 'Blood Wedding (Part 1)',
 		'episode'	=> 0,
 		'episodes'	=> 0,
 		'new_program' => 1,
-	},
-	{
-		'raw-title'	=> 'Numb3rs',
-		'raw-text'	=> '1/18. Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head',
-		'text'	=> 'Trust Metric: Colby escapes while being interrogated and Don and the team must find him. They receive fresh information about Colby that turns the investigation on its head',
-		'title'	=> 'Numb3rs',
-		'subtitle'	=> 'Trust Metric',
-		'episode'	=> 1,
-		'episodes'	=> 18,
-		'new_program' => 0,
 	},
 	{
 		'raw-title'	=> 'Julian Fellowes Investigates...',
@@ -135,6 +159,37 @@ my @tests = (
 		'subtitle'	=> 'The Case of xxxx',
 		'episode'	=> 10,
 		'episodes'	=> 22,
+		'new_program' => 0,
+	},
+
+	{
+		'raw-title'	=> 'Agatha Christies Marple',
+		'raw-text'	=> '4:50 from Paddington: when Elizabeth McGillicuddy sees a woman on a train being strangled,',
+		'text'	=> '4:50 from Paddington: when Elizabeth McGillicuddy sees a woman on a train being strangled,',
+		'title'	=> 'Agatha Christies Marple',
+		'subtitle'	=> '4:50 from Paddington',
+		'episode'	=> 0,
+		'episodes'	=> 0,
+		'new_program' => 0,
+	},
+	{
+		'raw-title'	=> 'The Big Bang Theory',
+		'raw-text'	=> 'Brand new series - The Herb Garden Germination: Sheldon and Amy experiment on their friends. ',
+		'text'	=> 'The Herb Garden Germination: Sheldon and Amy experiment on their friends.',
+		'title'	=> 'The Big Bang Theory',
+		'subtitle'	=> 'The Herb Garden Germination',
+		'episode'	=> 0,
+		'episodes'	=> 0,
+		'new_program' => 1,
+	},
+	{
+		'raw-title'	=> 'New Tricks',
+		'raw-text'	=> 'Only the Brave: Drama series. The team reinvestigates the murder of Eddie Chapman.',
+		'text'	=> 'Only the Brave: The team reinvestigates the murder of Eddie Chapman.',
+		'title'	=> 'New Tricks',
+		'subtitle'	=> 'Only the Brave',
+		'episode'	=> 0,
+		'episodes'	=> 0,
 		'new_program' => 0,
 	},
 );
@@ -149,8 +204,10 @@ my @checks = (
 ) ;
 
 
-plan tests => scalar(@tests) * scalar(@checks) ;
+plan tests => scalar(@tests) * (scalar(@checks) + 1) ;
 
+	$Linux::DVB::DVBT::Utils::DEBUG = 0 ;
+	
 	foreach my $test_href (@tests)
 	{
 		my %results = (
@@ -160,18 +217,27 @@ plan tests => scalar(@tests) * scalar(@checks) ;
 			'episode'	=> 0,
 			'episodes'	=> 0,
 			'new_program' => 0,
+			'genre'		=> '',
 		) ;
 		
 		my %flags ;
 		Linux::DVB::DVBT::Utils::fix_title(\$results{title}, \$results{text}) ;
-		Linux::DVB::DVBT::Utils::fix_episodes(\$results{title}, \$results{text}, \$results{episode}, \$results{episodes}) ;
-		Linux::DVB::DVBT::Utils::fix_audio(\$results{title}, \$results{text}, \%flags) ;
-		
 		Linux::DVB::DVBT::Utils::fix_synopsis(\$results{title}, \$results{text}, \$results{new_program}) ;
 
-		$results{subtitle} = Linux::DVB::DVBT::Utils::subtitle($results{text}) ;
+		Linux::DVB::DVBT::Utils::fix_episodes(\$results{title}, \$results{text}, \$results{episode}, \$results{episodes}) ;
+		Linux::DVB::DVBT::Utils::fix_audio(\$results{title}, \$results{text}, \%flags) ;
+		Linux::DVB::DVBT::Utils::subtitle(\$results{text}, \$results{subtitle}) ;
 		
 		foreach my $aref (@checks)
+		{
+			my ($key, $msg) = @$aref ;
+			$msg .= " - $test_href->{'raw-title'}" ;
+			is($results{$key}, $test_href->{$key}, $msg) ;
+		}
+		
+		## special test for subtitle
+		$results{subtitle} = Linux::DVB::DVBT::Utils::subtitle($results{text}) ;
+		foreach my $aref (['subtitle',	'Subtitle (old-api) check'])
 		{
 			my ($key, $msg) = @$aref ;
 			$msg .= " - $test_href->{'raw-title'}" ;

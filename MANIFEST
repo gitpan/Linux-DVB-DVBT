@@ -12,12 +12,14 @@ lib/Linux/DVB/DVBT/Config.pm
 lib/Linux/DVB/DVBT/Constants.pm
 lib/Linux/DVB/DVBT/Utils.pm
 lib/Linux/DVB/DVBT/Ffmpeg.pm
+lib/Linux/DVB/DVBT/Freq.pm
 
 DVBT.xs
 xs/shared/DVBT-common.h
 xs/DVBT-const.c
 xs/DVBT-epg.c
 xs/DVBT-init.c
+xs/DVBT-init-c.c
 xs/DVBT-record.c
 xs/DVBT-scan.c
 xs/DVBT-specific.h
@@ -112,6 +114,7 @@ t/40-config.outpid.t
 t/40-config.pidinfo.t
 t/50-multi.parse.t
 t/60-ffmpeg.utils.t
+t/70-freq.t
 t/config/dvb-pr
 t/config/dvb-ts
 t/config-ox/dvb-pr

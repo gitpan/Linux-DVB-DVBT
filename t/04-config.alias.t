@@ -35,6 +35,7 @@ my $expected_config_href = {
 			'Beeb duo' => 'BBC TWO',
 			'Beeb two' => 'BBC TWO',
           },
+          'freqfile' => {},
           'ts' => {
                     '8199' => {
                                 'transmission' => '2',

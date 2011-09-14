@@ -62,6 +62,15 @@ struct devinfo {
     char  name[32];
     char  bus[32];
     int   flags;
+
+	fe_type_t  type;
+	__u32      frequency_min;
+	__u32      frequency_max;
+	__u32      frequency_stepsize;
+	__u32      frequency_tolerance;
+	__u32      symbol_rate_min;
+	__u32      symbol_rate_max;
+	__u32      symbol_rate_tolerance;	/* ppm */
 };
 
 #endif /* DVB_STRUCT_H_ */

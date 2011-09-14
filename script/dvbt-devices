@@ -36,11 +36,12 @@ my %CAPABILITIES = (
 		FE_CAN_16VSB				=> '16VSB',
 ) ;
 
-	my ($help, $man, $DEBUG, $VERBOSE) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $showall) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
+			   'all' => \$showall,
 			   ) or pod2usage(2) ;
 
 
@@ -57,15 +58,72 @@ my %CAPABILITIES = (
 	my $dvb = Linux::DVB::DVBT->new() ;
 	
 	## Show any fitted devices
-  	my @devices = Linux::DVB::DVBT->device_list() ;
+	my %args ;
+	if ($showall)
+	{
+		$args{'show'} = 'all' ;
+	}
+  	my @devices = Linux::DVB::DVBT->device_list(%args) ;
+ 
+Linux::DVB::DVBT::prt_data("Devices:", \@devices) if $DEBUG ;
+  	
+  	my $namelen = 0 ;
   	foreach (@devices)
   	{
-  		printf "%s : adapter number: %d, frontend number: %d\n", 
-  			$_->{name}, $_->{adapter_num}, $_->{frontend_num} ;
-  			
-  		if ($VERBOSE)
+  		my $len = length $_->{name} ;
+  		$namelen = $len if $namelen < $len;
+	}
+	
+	
+	my $bar = "" ;
+	my $type_sep = "------+-" ;
+	my $sep = "--------+-" . ($showall ? $type_sep : "") . ("-"x$namelen) . "-+-------------" ;
+	
+	#unless ($VERBOSE)
+	{
+		my $type_str = "" ;
+		if ($showall)
+		{
+			$type_str = "Type  | " ;
+		}
+		print  "$sep\n" ;
+		printf "adap:fe | $type_str%-${namelen}s | (symlink)\n", "name" ;
+		print  "$sep\n" ;
+		
+		$bar = "|" ;
+	}
+	
+  	foreach my $device (@devices)
+  	{
+ Linux::DVB::DVBT::prt_data("Device:", $device) if $DEBUG ;
+
+		print  "$sep\n" if $VERBOSE ;
+		my $type_str = "" ;
+		if ($showall)
+		{
+			$type_str = sprintf " %-5s $bar", $device->{'type'} ;
+		}
+  		printf " %3d:%-2d $bar$type_str %-${namelen}s ", $device->{'adapter_num'}, $device->{'frontend_num'}, $device->{'name'}  ;
+  		if (exists($device->{'symlink'}))
   		{
-  			my $caps_href = $_->{capabilities} ;
+	  		printf "-> %3d:%-2d", $device->{'symlink'}{'adapter_num'}, $device->{'symlink'}{'frontend_num'} ;
+  		}
+  		else
+  		{
+  			print "$bar" ;
+  		}
+  		print "\n" ;
+		print  "$sep\n" if $VERBOSE ;
+
+  		if ($VERBOSE && !exists($device->{'symlink'}))
+  		{
+  			print "Frequencies:\n" ;
+  			print "   Min : $device->{'frequency_min'} Hz\n" ;
+  			print "   Max : $device->{'frequency_max'} Hz\n" ;
+  			print "   Step: $device->{'frequency_stepsize'} Hz\n" ;
+  			print "\n" ;
+
+  			my $caps_href = $device->{capabilities} ;
   			print "Capabilities:\n" ;
   			foreach my $cap (sort keys %CAPABILITIES)
   			{
@@ -74,7 +132,11 @@ my %CAPABILITIES = (
   			print "\n" ;
   		}
   	}
-
+  	
+  	unless ($VERBOSE)
+  	{
+		print  "$sep\n" ;
+	}
 	
 #=================================================================================
 # END

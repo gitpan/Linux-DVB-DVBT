@@ -31,6 +31,19 @@ isa_ok($dvb, 'Linux::DVB::DVBT') ;
 ## Check config read
 my $expected_config_href = {
           'aliases' => {},
+          'freqfile' => {
+          	'578000000' => {
+				frequency		=> 578000000,
+				bandwidth		=> 8,
+				code_rate_high	=> 23,
+				code_rate_low	=> 0,
+				modulation		=> 64,
+				transmission	=> 2,
+				guard_interval	=> 32,
+				hierarchy		=> 0,
+				inversion		=> 0,
+          	},
+          },
           'ts' => {
                     '8199' => {
                                 'transmission' => '2',
@@ -140,6 +153,7 @@ my $expected_config_href = {
         };
 
 
+#$Linux::DVB::DVBT::Config::DEBUG = 20 ;
 
 $dvb->config_path('./t/config') ;
 my $tuning_href = $dvb->get_tuning_info() ;

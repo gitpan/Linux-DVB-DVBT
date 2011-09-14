@@ -26,8 +26,14 @@ Linux::DVB::DVBT - Perl extension for DVB terrestrial recording, epg, and scanni
 	) ;
 
 
-	# Scan for channels
+	# Scan for channels - using frequency file
 	$dvb->scan_from_file('/usr/share/dvb/dvb-t/uk-Oxford') ;
+	
+	# Scan for channels - using country code
+	$dvb->scan_from_file('GB') ;
+	
+	# Scan for channels - if scanned before, use previous frequencies
+	$dvb->scan_from_previous() ;
 	
 	# Set channel
 	$dvb->select_channel("BBC ONE") ;
@@ -37,6 +43,29 @@ Linux::DVB::DVBT - Perl extension for DVB terrestrial recording, epg, and scanni
 
 	# Record 30 minute program (after setting channel using select_channel method)
 	$dvb->record('test.ts', 30*60) ;
+
+	## Record multiple programs in parallel (in the same multiplex)
+	
+		# parse arguments
+		my @args = qw/file=itv2.mpeg ch=itv2 len=0:30 event=41140
+	   	               file=five.mpeg ch=five len=0:30 off=0:15 event=11134 max_timeslip=2:00
+	   	               file=itv1.mpeg ch=itv1 len=0:30 off=0:30
+	   	               file=more4.mpeg ch=more4 len=0:05 off=0:15
+	   	               file=e4.mpeg ch=e4 len=0:30 off=0:05
+	   	               file=ch4+1.mpeg ch='channel4+1' len=1:30 off=0:05/ ;
+	   	
+		my @chan_spec ;
+		$dvb->multiplex_parse(\@chan_spec, @ARGV);
+	
+		# Select the channel(s)
+		$dvb->multiplex_select(\@chan_spec) ;
+   	
+		# Get multiplex info
+		my %multiplex_info = $dvb->multiplex_info() ;
+
+		# Record
+		$dvb->multiplex_record(%multiplex_info) ;
+
 
 	## Release the hardware (to allow a new recording to start)
 	$dvb->dvb_close() ;
@@ -187,6 +216,53 @@ you wish to use the original recording method, then you need to change your scri
 having problems, and I will do my best to fix them. Future releases will eventually drop the old recording method.
 
 
+=head2 Using UDEV
+
+If, like me, you have more than one adapter fitted and find the order in which the adapters are numbered changes with reboots,
+then you may like to use udev to define rules to fix your adapters to known numbers (see L<http://www.mythtv.org/wiki/Device_Filenames_and_udev>
+for further details).
+
+To create rules you make a file in /etc/udev/rules.d and call it something like 100-dvb.rules. The rules file then needs to
+create a rule for each adapter that creates a link for all of the low-level devices (i.e. the frontend0, dvr0 etc). Each line
+matches information about the device (using rules with "=="), then applies some setting rules (signified by using "=") to create
+the symlink.
+
+For example, the following:
+
+	 SUBSYSTEM=="dvb", ATTRS{manufacturer}=="Hauppauge", ATTRS{product}=="Nova-T Stick", ATTRS{serial}=="4030521975"
+
+matches a Hauppage Nova-T adapter with serial number "4030521975". Note that this will match B<all> of the devices (dvr0, frontend0 
+etc) for this adapter. The "set" rule needs to use some variables to create a link for each device.
+
+The set rule we use actually calls a "program" to edit some variables and output the final string followed by a rule that creates the
+symlink:
+
+	PROGRAM="/bin/sh -c 'K=%k; K=$${K#dvb}; printf dvb/adapter101/%%s $${K#*.}'", SYMLINK+="%c"
+	
+The PROGRAM rule runs the sh shell and manipulates the kernel name string (which will be something like dvb/adapter0/dvr0) and creates
+a string with a new adapter number (101 in this case). The SYMLINK rule uses this output (via the %c variable).
+
+Putting this together in a file:
+
+	# /etc/udev/rules.d/100-dvb.rules
+	# 
+	# To Ientify serial nos etc for a Device call
+	# udevadm info -a -p $(udevadm info -q path -n /dev/dvb/adapter0/frontend0)
+	#
+	
+	# Locate 290e at 100
+	SUBSYSTEM=="dvb", ATTRS{manufacturer}=="PCTV Systems", ATTRS{product}=="PCTV 290e", PROGRAM="/bin/sh -c 'K=%k; K=$${K#dvb}; printf dvb/adapter100/%%s $${K#*.}'", SYMLINK+="%c"
+	
+	# Locate Nova-T at 101
+	SUBSYSTEM=="dvb", ATTRS{manufacturer}=="Hauppauge", ATTRS{product}=="Nova-T Stick", PROGRAM="/bin/sh -c 'K=%k; K=$${K#dvb}; printf dvb/adapter101/%%s $${K#*.}'", SYMLINK+="%c"
+
+On my system this locates my PCTV DVB-T2 stick at /dev/dvb/adapter100 and my Nova-T stick at /dev/dvb/adapter101.
+
+You can then refer to these devices using the 'adapter_num' field as 100 and 101 (or via the 'adapter' field as '100:0' and '101:0').
+
+
+
+
 =head2 Example Scripts
 
 Example scripts have been provided in the package which illustrate the expected use of the package (and
@@ -306,13 +382,16 @@ use strict;
 use warnings;
 use Carp ;
 
+use Cwd qw/realpath/ ;
 use File::Basename ;
 use File::Path ;
+use File::Spec ;
 use POSIX qw(strftime);
 
 use Linux::DVB::DVBT::Config ;
 use Linux::DVB::DVBT::Utils ;
 use Linux::DVB::DVBT::Ffmpeg ;
+use Linux::DVB::DVBT::Freq ;
 use Linux::DVB::DVBT::Constants ;
 
 #============================================================================================
@@ -324,7 +403,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.10';
+our $VERSION = '2.11';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -340,6 +419,9 @@ XSLoader::load('Linux::DVB::DVBT', $VERSION);
 my $DEBUG=0;
 my $VERBOSE=0;
 my $devices_aref ;
+
+## New device "list"
+my $devices_href ;
 
 #============================================================================================
 
@@ -358,6 +440,15 @@ Number of the DVBT adapter. When multiple DVBT adapters are fitted to a machine,
 =item B<frontend_num> - DVB frontend number
 
 A single adapter may have multiple frontends. If so then use this field to select the frontend within the selected adapter.
+
+=item B<adapter> - DVB adapter 
+
+Instead of supplying an individual adapter number and frontend number, you can use this field to supply both using the syntax:
+
+	<adapter number>:<frontend number>
+
+If no frontend number is specified then the firast valid frontend number for that adapter is used.
+
 
 =item B<frontend_name> - Device path for frontend (set multiplex)
 
@@ -442,6 +533,7 @@ This is an ARRAY ref containing a list of any errors that have occurred. Each er
 
 # List of valid fields
 my @FIELD_LIST = qw/dvb 
+					adapter
 					adapter_num frontend_num
 					frontend_name demux_name dvr_name
 					debug 
@@ -459,6 +551,11 @@ my @FIELD_LIST = qw/dvb
 					scan_allow_duplicates
 					scan_prefer_more_chans
 					
+					scan_cb_start
+					scan_cb_end
+					scan_cb_loop_start
+					scan_cb_loop_end
+					
 					_scan_freqs
 					_device_index
 					_device_info
@@ -470,6 +567,7 @@ my %FIELDS = map {$_=>1} @FIELD_LIST ;
 
 # Default settings
 my %DEFAULTS = (
+	'adapter'		=> undef,
 	'adapter_num'	=> undef,
 	'frontend_num'	=> 0,
 	
@@ -492,7 +590,7 @@ my %DEFAULTS = (
 	'tuning'		=> undef,
 	
 	# Information
-	'devices'		=> [],
+##	'devices'		=> [],
 	
 	# Error log
 	'errors'		=> [],
@@ -500,6 +598,12 @@ my %DEFAULTS = (
 	
 	# merge scan results with existing
 	'merge'			=> 1,
+	
+	# scan callback
+	'scan_cb_start'			=> undef,
+	'scan_cb_end'			=> undef,
+	'scan_cb_loop_start'	=> undef,
+	'scan_cb_loop_end'		=> undef,
 	
 	# timeout period ms
 	'timeout'		=> 900,
@@ -797,7 +901,7 @@ sub new
 
 	# Set devices list
 	$self->device_list() ; # ensure list has been created
-	$self->devices($devices_aref) ; # point to class ARRAY ref
+##	$self->devices($devices_aref) ; # point to class ARRAY ref
 
 	# Initialise hardware
 	# Special case - allow for dvb being preset (for testing)
@@ -954,7 +1058,68 @@ Return list of available hardware as an array of hashes. Each hash entry is of t
         'adpater_num'   => Adapter number
         'frontend_num'  => Frontend number
         'flags'         => Adapter capability flags
+
+        'capabilities'  => HASH (see below)
+        'fe_type' 		=> Frontend type (e.g. 'FE_OFDM')
+        'type' 			=> adapter type (e.g. 'DVB-T')
+
+        'frequency_max' => Maximum supported frequency
+        'frequency_min' => Minimum supported frequency
+        'frequency_stepsize' => Frequency stepping
     }
+
+          
+  The 'flags' field is split into a HASH under the 'capabilities' field, each capability a flag that is set or cleared:
+          
+        'capabilities' => {
+                              'FE_CAN_QAM_16' => 1,
+                              'FE_CAN_TRANSMISSION_MODE_AUTO' => 1,
+                              'FE_IS_STUPID' => 0,
+                              'FE_CAN_QAM_AUTO' => 1,
+                              'FE_CAN_FEC_1_2' => 1,
+                              'FE_CAN_QAM_32' => 0,
+                              'FE_CAN_FEC_5_6' => 1,
+                              'FE_CAN_FEC_6_7' => 0,
+                              'FE_CAN_HIERARCHY_AUTO' => 1,
+                              'FE_CAN_RECOVER' => 1,
+                              'FE_CAN_FEC_3_4' => 1,
+                              'FE_CAN_FEC_7_8' => 1,
+                              'FE_CAN_FEC_2_3' => 1,
+                              'FE_CAN_QAM_128' => 0,
+                              'FE_CAN_FEC_4_5' => 0,
+                              'FE_CAN_FEC_AUTO' => 1,
+                              'FE_CAN_QPSK' => 1,
+                              'FE_CAN_QAM_64' => 1,
+                              'FE_CAN_QAM_256' => 0,
+                              'FE_CAN_8VSB' => 0,
+                              'FE_CAN_GUARD_INTERVAL_AUTO' => 1,
+                              'FE_CAN_BANDWIDTH_AUTO' => 0,
+                              'FE_CAN_INVERSION_AUTO' => 1,
+                              'FE_CAN_MUTE_TS' => 0,
+                              'FE_CAN_16VSB' => 0
+                            }
+                            
+
+Where a device is actually a link to a real device, there is the additonal field:
+
+	'symlink'	=> {
+		
+        'adpater_num'   => Adapter number
+        'frontend_num'  => Frontend number
+		
+	}
+
+which details the real device the link points to.
+
+By default, this routine will only return details of DVB-T/T2 adapters. To return the list of all adapters
+discovered (including DVB-C etc) add the optional arguments:
+
+	'show' => 'all'
+
+for example:
+
+	my @devices = $dvb->device_list('show' => 'all') ;
+
 
 Note that this information is also available via the object instance using the 'devices' method, but this
 returns an ARRAY REF (rather than an ARRAY)
@@ -963,16 +1128,73 @@ returns an ARRAY REF (rather than an ARRAY)
 
 sub device_list
 {
-	my ($class) = @_ ;
+	my ($class, %args) = @_ ;
 
-	unless ($devices_aref)
+	if ( !$devices_href || (keys %args) )
 	{
+		my $showall = 0 ;
+		if (exists($args{'show'}))
+		{
+			++$showall ;
+		}
+		
 		# Get list of available devices & information for those devices
-		$devices_aref = dvb_device() ;
+		foreach my $adap_d (glob("/dev/dvb/adapter*"))
+		{
+			if ( (-d $adap_d) && ($adap_d =~ /adapter(\d+)/) )
+			{
+				my $adap = $1 ;
+				foreach my $fe_f (glob("$adap_d/frontend*"))
+				{
+					if ( $fe_f =~ /frontend(\d+)/ )
+					{
+						my $fe = $1 ;
+						
+						# get info
+						my $info_href = dvb_device_probe($adap, $fe, $DEBUG) ;
+	
+						# skip non DVB-T adapters unless we're displaying all adapters
+						my $type = $info_href->{'type'} ;
+						next if ($type ne 'DVB-T') && !$showall ;
+						
+						# check for this being a link (i.e. using udev to fix the adapaters to known identifiers)
+						if ( -l $fe_f )
+						{
+							my $target = readlink $fe_f ;
+							$target = realpath( File::Spec->rel2abs($target, $adap_d) ) ;
+							if ($target =~ m%/dev/dvb/adapter(\d+)/frontend(\d+)%)
+							{
+								$info_href->{'symlink'} = {
+							        'adapter_num'   => int($1),
+							        'frontend_num'  => int($2),
+								} ;
+							}
+							else
+							{
+								$fe_f = "" ;
+							}
+						}
+						
+						$devices_href->{$fe_f} = $info_href if $fe_f ;
+					}
+				}				
+			}
+		}		
 	}
 	
+	# sort by adapter/frontend
+	my $devices_aref = [] ;
+	foreach my $key (sort { 
+		$devices_href->{$a}{'adapter_num'} <=> $devices_href->{$b}{'adapter_num'}
+		||
+		$devices_href->{$a}{'frontend_num'} <=> $devices_href->{$b}{'frontend_num'}
+	} keys %$devices_href)
+	{
+		push @$devices_aref, $devices_href->{$key} ;
+	}
+
 	prt_data("DEVICE LIST=", $devices_aref) if $DEBUG >= 10 ;
-	
+
 	return @$devices_aref ;
 }
 
@@ -1039,6 +1261,19 @@ sub set
 	}
 
 }
+
+#-----------------------------------------------------------------------------
+# Return the list of devices (kept for backward compatibility)
+sub devices
+{
+	my $self = shift ;
+	
+	my @devices = $self->device_list() ;
+	
+	return \@devices ;
+}
+
+
 
 #----------------------------------------------------------------------------
 
@@ -1146,6 +1381,7 @@ sub scan
 	my $self = shift ;
 
 	my $scan_info_href = $self->_scan_info() ;
+prt_data("scan() : Scan info [$scan_info_href]=", $scan_info_href) if $DEBUG>=5 ;
 	$scan_info_href->{'chans'} ||= {} ;
 	$scan_info_href->{'tsids'} ||= {} ;
 	$scan_info_href->{'tsid_order'} ||= [] ;
@@ -1323,6 +1559,8 @@ print STDERR "process raw...\n" if $DEBUG>=5 ;
 		'lcn' 	=> {},
 	} ;
 
+prt_data("initial scan results=", $scan_href) if $DEBUG>=5 ;
+
 	## Collect together LCN info and map TSIDs to transponder settings
 	my %tsids ;
 	foreach my $ts_href (@{$raw_scan_href->{'ts'}})
@@ -1388,11 +1626,14 @@ print STDERR "\n========================================================\n" ;
 		$scan_info_href->{'tsids'}{$tsid} ||= {
 			'comments'	=> [],
 		} ;
+
+print STDERR "scan info:: CHAN $name\n" if $DEBUG >= 10 ;
 		
 		my $freqs_aref = delete $prog_href->{'freqs'} ;
 		unless (@$freqs_aref)
 		{
 			push @{$scan_info_href->{'chans'}{$name}{'comments'}}, "no freqs : TSID $tsid" ;
+print STDERR "scan info::  + add comment 'no freqs : TSID $tsid' - CHAN $name\n" if $DEBUG >= 10 ;
 		}
 		next unless @$freqs_aref ;
 		my $freq = @{$freqs_aref}[0] ;
@@ -1436,9 +1677,12 @@ print STDERR "\n========================================================\n" ;
 		$scan_href->{'ts'}{$tsid} = $tsids{$tsid} ;
 
 		push @{$scan_info_href->{'chans'}{$name}{'comments'}}, "set freq $freq : TSID $tsid" ;
+
+print STDERR "scan info::  + add comment 'set freq $freq : TSID $tsid' - CHAN $name\n" if $DEBUG >= 10 ;
 	}
 	
 
+prt_data("Scan info=", $scan_info_href) if $DEBUG>=5 ;
 prt_data("Scan results=", $scan_href) if $DEBUG>=5 ;
 print STDERR "process rest...\n" if $DEBUG>=5 ;
 	
@@ -1655,6 +1899,7 @@ prt_data("Scan before tsid fix=", $scan_href) if $DEBUG>=5 ;
 		
 printf STDERR "Merge flag=%d\n", $self->merge  if $DEBUG>=5 ;
 prt_data("FE params=", $frontend_params_href, "Scan before merge=", $scan_href) if $DEBUG>=5 ;
+prt_data("before merge - Scan info [$scan_info_href]=", $scan_info_href) if $DEBUG>=5 ;
 
 
 	## Merge results
@@ -1673,10 +1918,27 @@ prt_data("FE params=", $frontend_params_href, "Scan before merge=", $scan_href) 
 prt_data("Merged=", $scan_href) if $DEBUG>=5 ;
 	}
 	
+	## Keep track of frequencies tuned to
+#	$scan_href->{'freqfile'} = { map { $_->{'frequency'} => $_ } @{$scan_info_href->{'freqs'}}  } ;
+	$scan_href->{'freqfile'} = {} ;
+	foreach my $freq (keys %{$scan_href->{'freqs'}})
+	{
+		# only keep frequencies we could tune to
+		next unless $scan_href->{'freqs'}{$freq}{'tuned'} ;
+		$scan_href->{'freqfile'}{$freq} = { 
+			%{$scan_href->{'freqs'}{$freq}},
+			'frequency'	=> $freq,
+		} ;
+	}
+
+
+prt_data("Scan with freqfile=", $scan_href) if $DEBUG>=5 ;
+	
 	# Save results
 	$self->tuning($scan_href) ;
 	Linux::DVB::DVBT::Config::write($self->config_path, $scan_href) ;
 
+prt_data("scan() end - Scan info [$scan_info_href]=", $scan_info_href) if $DEBUG>=5 ;
 print STDERR "DONE\n" if $DEBUG>=5 ;
 
 	return $self->tuning() ;
@@ -1799,32 +2061,295 @@ prt_data("Tuning params=", \%tuning_params) if $DEBUG>=2 ;
 	# exit on failure
 	return $self->handle_error( "Error: No tuning parameters found") unless @tuning_list ;
 
+	## do scan
+	$self->_scan_frequency_list($freqs_href, @tuning_list) ;
+
+	## return tuning settings	
+	return $self->tuning() ;
+}
+
+
+#----------------------------------------------------------------------------
+
+=item B<scan_from_country($iso3166)>
+
+Given a 2 letter country code (as defined by ISO 3166-1) attempts to scan those
+frequencies to produce a scan list.
+
+Note that this routine relies on the adapter supporting auto settings for most of the parameters. Older
+adapters may not work properly.
+
+Returns the discovered channel information as a HASH (see L</scan()>)
+
+=cut
+
+sub scan_from_country
+{
+	my $self = shift ;
+	my ($iso3166) = @_ ;
+
+	## Need a country name
+	return $self->handle_error( "Error: No valid country code specified") unless Linux::DVB::DVBT::Freq::country_supported($iso3166) ;
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	print STDERR "scan_from_country($iso3166) : Linux::DVB::DVBT version $VERSION\n\n" if $DEBUG ;
+
+	my @tuning_list ;
+
+	# device info
+	my $dev_info_href = $self->_device_info ;
+	my $capabilities_href = $dev_info_href->{'capabilities'} ;
+
+prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBUG>=2 ;
+
+
+	#    $freqs_href = 
+	#    { # HASH(0x844d76c)
+	#      482000000 => 
+	#        { # HASH(0x8448da4)
+	#          'seen' => 1,
+	#          'strength' => 0,
+	#          'tuned' => 0,
+	#        },
+	#
+	my $freqs_href = {} ;
+	
+	
+	## Get frequencies
+	my @frequencies = Linux::DVB::DVBT::Freq::freq_list($iso3166) ;
+
+	## process list
+	foreach my $frequency (@frequencies)
+	{
+		my $freq = dvb_round_freq($frequency) ;
+			
+		if (exists($freqs_href->{$freq}))
+		{
+			print STDERR "Note: frequency $freq Hz already seen, skipping\n" ;
+			next ;
+		}
+		$freqs_href->{$freq} = {
+          'seen' => 0,
+          'strength' => 0,
+          'tuned' => 0,
+		} ;
+			
+
+		my %tuning_params = (
+			frequency => $freq,
+			bandwidth => $AUTO,
+			code_rate_high => $AUTO,
+			code_rate_low => $AUTO,
+			modulation => $AUTO,
+			transmission => $AUTO,
+			guard_interval => $AUTO,
+			hierarchy => $AUTO,
+			inversion => $AUTO,
+		) ;
+			
+prt_data("Tuning params=", \%tuning_params) if $DEBUG>=2 ;
+
+		## add to tuning list
+		push @tuning_list, \%tuning_params ;
+
+	}
+	
+	# exit on failure
+	return $self->handle_error( "Error: No tuning parameters found") unless @tuning_list ;
+
+	## do scan
+	$self->_scan_frequency_list($freqs_href, @tuning_list) ;
+	
+
+	## return tuning settings	
+	return $self->tuning() ;
+}
+
+#----------------------------------------------------------------------------
+
+=item B<scan_from_previous()>
+
+Uses the last scan frequencies to re-scan. This assumes that a scan was completed 
+and saved to the configuration file (see L<Linux::DVB::DVBT::Config::read_dvb_ts_freqs($fname)>).
+
+Note: this will only work for scans completed with version 2.11 (and later) of this module.
+
+Returns the discovered channel information as a HASH (see L</scan()>)
+
+=cut
+
+sub scan_from_previous
+{
+	my $self = shift ;
+
+	## Check to ensure we really have a list
+	my $tuning_href = $self->get_tuning_info() ;
+	if (!exists($tuning_href->{'freqfile'}) && keys %{$tuning_href->{'freqfile'}})
+	{
+		return $self->handle_error( "Error: No saved frequency list is found in configuration") ;
+	}
+
+prt_data("Tuning freqfile=", $tuning_href->{'freqfile'}) if $DEBUG>=2 ;
+
+
+	# hardware closed?
+	if ($self->dvb_closed())
+	{
+		# Raise an error
+		return $self->handle_error("DVB tuner has been closed") ;
+	}
+
+	print STDERR "scan_from_previous() : Linux::DVB::DVBT version $VERSION\n\n" if $DEBUG ;
+
+	my @tuning_list ;
+
+	# device info
+	my $dev_info_href = $self->_device_info ;
+	my $capabilities_href = $dev_info_href->{'capabilities'} ;
+
+prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBUG>=2 ;
+
+
+	#    $freqs_href = 
+	#    { # HASH(0x844d76c)
+	#      482000000 => 
+	#        { # HASH(0x8448da4)
+	#          'seen' => 1,
+	#          'strength' => 0,
+	#          'tuned' => 0,
+	#        },
+	#
+	my $freqs_href = {} ;
+	
+	## Get frequencies
+	foreach my $frequency (keys %{$tuning_href->{'freqfile'}} )
+	{
+		my $freq = dvb_round_freq($frequency) ;
+			
+		if (exists($freqs_href->{$freq}))
+		{
+			print STDERR "Note: frequency $freq Hz already seen, skipping\n" ;
+			next ;
+		}
+		$freqs_href->{$freq} = {
+          'seen' => 0,
+          'strength' => 0,
+          'tuned' => 0,
+		} ;
+			
+		my %tuning_params = (
+			%{$tuning_href->{'freqfile'}{$frequency}},
+			'frequency' => $freq,
+		) ;
+			
+prt_data("Tuning params=", \%tuning_params) if $DEBUG>=2 ;
+
+		## add to tuning list
+		push @tuning_list, \%tuning_params ;
+
+	}
+	
+	# exit on failure
+	return $self->handle_error( "Error: No tuning parameters found") unless @tuning_list ;
+
+	## do scan
+	$self->_scan_frequency_list($freqs_href, @tuning_list) ;
+	
+
+	## return tuning settings	
+	return $self->tuning() ;
+}
+
+
+
+#----------------------------------------------------------------------------
+sub _scan_frequency_list
+{
+	my $self = shift ;
+	my ($freqs_href, @tuning_list) = @_ ;
+
+	# device info
+	my $dev_info_href = $self->_device_info ;
+	my $capabilities_href = $dev_info_href->{'capabilities'} ;
+
+	# callback
+	my %callback_info = (
+		'tuning_list'			=> \@tuning_list,
+		'estimated_percent'		=> 0,
+		'total_freqs'			=> scalar(@tuning_list),
+		'done_freqs'			=> 0,
+		'scan_info'				=> {},
+	) ;
+	if ($self->scan_cb_start)
+	{
+		my $cb = $self->scan_cb_start() ;
+		&$cb(\%callback_info) ;
+	}
+
 	## prep for scan
 	dvb_scan_new($self->{dvb}, $VERBOSE) ;
 	
 	## Info
 	my $scan_info_href = $self->_scan_info() ;
-	$scan_info_href->{'file_freqs'} = [ @tuning_list ] ;
-	$scan_info_href->{'freqs'} = [ ] ;
-	$scan_info_href->{'chans'} = { } ;
-	$scan_info_href->{'tsid_order'} ||= [] ;
+	$scan_info_href->{'file_freqs'} = [ @tuning_list ] ;	# save original tuning list 
+	$scan_info_href->{'freqs'} = [ ] ;						# list of frequencies seen
+	$scan_info_href->{'chans'} = { } ;						# channel info
+	$scan_info_href->{'tsid_order'} ||= [] ;				# tsid info
 
 	## tune into each frequency & perform the scan
+	my %freq_list ;
 	my $saved_merge = $self->merge ;
 	while (@tuning_list)
 	{
 		my $tuned = 0 ;
 
 print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
-		
-		while (!$tuned)
+
+		# update frequencies
+		foreach my $href (@tuning_list)
+		{
+			my $freq_round = dvb_round_freq($href->{'frequency'}) ;
+			$freq_list{$freq_round} = 0 if !exists($freq_list{$freq_round}) ;
+		}
+prt_data("Loop start freq list=", \%freq_list) if $DEBUG>=3 ;
+
+		# callback
+		if ($self->scan_cb_loop_start)
+		{
+			my $total_freqs = scalar(keys %freq_list) ;
+			my $done_freqs = 0 ;
+			foreach my $f (keys  %freq_list)
+			{
+				++$done_freqs if $freq_list{$f} ;
+			}
+			$callback_info{'estimated_percent'} = int( $done_freqs * 100.0 / $total_freqs + 0.5) ;
+			$callback_info{'total_freqs'} = $total_freqs ;
+			$callback_info{'done_freqs'} = $done_freqs ;
+			$callback_info{'scan_info'} = $self->tuning() ;
+	
+			my $cb = $self->scan_cb_loop_start() ;
+			&$cb(\%callback_info) ;
+		}
+
+
+
+		## keep trying to tune while we've got something to try	
+		while (!$tuned && @tuning_list)
 		{
 			my $rc = -1 ;
 			my %tuning_params ;
 			my $tuning_params_href = shift @tuning_list ;
+			my $frequency = dvb_round_freq($tuning_params_href->{'frequency'}) ;
+			$freq_list{$frequency} = 1 ;
 			
 			# make sure frequency is valid
-			if ($tuning_params_href->{'frequency'} >= $MIN_FREQ)
+			if ($frequency >= $MIN_FREQ)
 			{
 				# convert file entry into a frontend param
 				foreach my $param (keys %$tuning_params_href)
@@ -1839,10 +2364,10 @@ print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 						$tuning_params{$param} = $tuning_params_href->{$param} ;
 					}
 				}
-				$tuning_params{'frequency'} = dvb_round_freq($tuning_params_href->{'frequency'}) ;
+				$tuning_params{'frequency'} = $frequency ;
 				
 				# set tuning
-				print STDERR "Setting frequency: $tuning_params{frequency} Hz\n" if $self->verbose ;
+				print STDERR "Setting frequency: $frequency Hz\n" if $self->verbose ;
 				$rc = dvb_scan_tune($self->{dvb}, {%tuning_params}) ;
 			}
 			
@@ -1851,13 +2376,14 @@ print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 			{
 				$self->frontend_params( {%tuning_params} ) ;
 				$tuned = 1 ;
+				$freq_list{$frequency} = 2 ;
 
 				push @{$scan_info_href->{'freqs'}}, $tuning_params_href ;
-				push @{$scan_info_href->{'tsid_order'}}, "Set freq to $tuning_params{'frequency'} Hz" ;
+				push @{$scan_info_href->{'tsid_order'}}, "Set freq to $frequency Hz" ;
 			}
 			else
 			{
-				my $freq = $tuning_params{'frequency'} || "0" ;
+				my $freq = $frequency || "0" ;
 				print STDERR "    Failed to set the DVB-T tuner to $freq Hz ... skipping\n" ;
 
 				# try next frequency
@@ -1866,7 +2392,7 @@ print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 
 print STDERR "Attempt tune: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 
-		}
+		} # while !$tuned
 		
 		last if !$tuned ;
 
@@ -1884,14 +2410,10 @@ print STDERR "Scan merge : ", $self->merge(),"\n" if $DEBUG>=2 ;
 		# update frequency list
 		my $tuning_href = $self->tuning ;
 		$freqs_href = $tuning_href->{'freqs'} if exists($tuning_href->{'freqs'}) ;
+
+prt_data("Loop end freqs=", $freqs_href) if $DEBUG>=3 ;
 		
 		# update frequencies
-		my %freq_list ;
-		foreach my $href (@tuning_list)
-		{
-			my $freq_round = dvb_round_freq($href->{'frequency'}) ;
-			$freq_list{$freq_round} = 1 ;
-		}
 		foreach my $freq (sort {$a <=> $b} keys %$freqs_href)
 		{
 			next if $freqs_href->{$freq}{'seen'} ;
@@ -1909,9 +2431,28 @@ print STDERR " + adding freq $freq_round\n" if $DEBUG>=2 ;
 
 prt_data("Loop end Tuning list=", \@tuning_list) if $DEBUG>=2 ;
 
+		# callback
+		if ($self->scan_cb_loop_end)
+		{
+			my $total_freqs = scalar(keys %freq_list) ;
+			my $done_freqs = 0 ;
+			foreach my $f (keys  %freq_list)
+			{
+				++$done_freqs if $freq_list{$f} ;
+			}
+			$callback_info{'estimated_percent'} = int( $done_freqs * 100.0 / $total_freqs + 0.5) ;
+			$callback_info{'total_freqs'} = $total_freqs ;
+			$callback_info{'done_freqs'} = $done_freqs ;
+			$callback_info{'scan_info'} = $self->tuning() ;
+	
+			my $cb = $self->scan_cb_loop_end() ;
+			&$cb(\%callback_info) ;
+		}
+
+
 print STDERR "Loop end: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 
-	}
+	} # while @tuning_list
 
 	## restore flag
 	$self->merge($saved_merge) ;
@@ -1972,9 +2513,23 @@ prt_data("## Scan Info ##", $scan_info_href) if $DEBUG>=2 ;
 		print "\n";
 	}
 
+	# callback
+	if ($self->scan_cb_end)
+	{
+		$callback_info{'estimated_percent'} = 100 ;
+		$callback_info{'total_freqs'} = scalar(keys %freq_list) ;
+		$callback_info{'done_freqs'} = scalar(keys %freq_list) ;
+		$callback_info{'scan_info'} = $self->tuning() ;
+
+		my $cb = $self->scan_cb_end() ;
+		&$cb(\%callback_info) ;
+	}
+
 	## return tuning settings	
 	return $self->tuning() ;
 }
+
+
 
 
 
@@ -2725,13 +3280,14 @@ prt_data("Lookup=", $channel_lookup_href) if $DEBUG >= 2 ;
 				print STDERR "FREQ LIST:\n" ;
 				foreach (@next_freq)
 				{
-					print STDERR "  $_ Hz\n" ;
+					print STDERR "  $_->{frequency} Hz\n" ;
 				}
 			}
 			
 			my $params_href = shift @next_freq ;
 prt_data("Set frontend : params=", $params_href) if $DEBUG >= 2 ;
-			$self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
+			my $rc = $self->set_frontend(%$params_href, 'timeout' => $self->timeout) ;
+			return $self->handle_error("Unable to tune frontend. Is aerial connected?)") if ($rc != 0) ;
 		}
 	}
 
@@ -2850,6 +3406,7 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 		my $title = Linux::DVB::DVBT::Utils::text($epg_entry->{'name'}) ;
 		my $synopsis = Linux::DVB::DVBT::Utils::text($epg_entry->{'stext'}) ;
 		my $etext = Linux::DVB::DVBT::Utils::text($epg_entry->{'etext'}) ;
+		my $subtitle = "" ;
 		
 		my $episode ;
 		my $num_episodes ;
@@ -2857,9 +3414,10 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 		my %flags ;
 		
 		Linux::DVB::DVBT::Utils::fix_title(\$title, \$synopsis) ;
+		Linux::DVB::DVBT::Utils::fix_synopsis(\$title, \$synopsis, \$new_program) ;	# need to call this before fix_episodes to remove "New series"
 		Linux::DVB::DVBT::Utils::fix_episodes(\$title, \$synopsis, \$episode, \$num_episodes) ;
 		Linux::DVB::DVBT::Utils::fix_audio(\$title, \$synopsis, \%flags) ;
-		Linux::DVB::DVBT::Utils::fix_synopsis(\$title, \$synopsis, \$new_program) ;
+		Linux::DVB::DVBT::Utils::subtitle(\$synopsis, \$subtitle) ;
 			
 		my $epg_flags = $epg_entry->{'flags'} ;
 		
@@ -2873,7 +3431,7 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 			'duration'	=> $duration,
 			
 			'title'		=> $title,
-			'subtitle'	=> Linux::DVB::DVBT::Utils::subtitle($synopsis),
+			'subtitle'	=> $subtitle,
 			'text'		=> $synopsis,
 			'etext'		=> $etext,
 			'genre'		=> $epg_entry->{'genre'},
@@ -4350,6 +4908,15 @@ sub hwinit
 
 	my $info_aref = $self->devices() ;
 
+	## Check for special adapter:frontend specification
+	if (defined($self->adapter))
+	{
+		my ($adap, $fe) = split(/:/, $self->adapter) ;
+		$self->adapter_num($adap) if defined($adap) ;
+		$self->frontend_num($fe) if defined($fe) ;
+	}
+
+
 	# If no adapter set, use first in list
 	if (!defined($self->adapter_num))
 	{
@@ -4719,6 +5286,13 @@ are entirely written by me, or drastically modified from Gerd's original to (a) 
 more 'Perl friendly', (b) to reduce the amount of code compiled into the library to just those
 functions required by this module.  
 
+=head3 w_scan (see L<http://wirbel.htpc-forum.de/w_scan/index_en.html>)
+
+The country codes and frequency information used by L</scan_from_country($iso3166)> are based on the information
+found in the w_scan program. I've used some of this information (only the DVB-T info) but I haven't copied (or used) 
+any of the C code itself.
+
+
 =head1 AUTHOR
 
 Steve Price
@@ -4737,7 +5311,16 @@ The current release supports:
 
 =item *
 
-Timeslip recording so that the end of the recording is extended if the program broadcast is delayed.
+Scan using country code (i.e. scanning through supported frequencies) as well as using a frequency file.
+
+=item *
+
+The module now stores the previous scan setting in the configuration files so that subsequent scans can be performed
+without needing to refer to a frequency file.
+
+=item *
+
+Timeslip recording so that the end (and/or start) of the recording is extended if the program broadcast is delayed.
 
 =item *
 

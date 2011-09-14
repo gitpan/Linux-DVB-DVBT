@@ -720,7 +720,11 @@ sub read
 			$href->{$region} = &$fn("$dir/$FILES{$region}{'file'}") ;
 		}
 		
+		## Special case - get tuning info if present
+		$href->{'freqfile'} = read_dvb_ts_freqs("$dir/$FILES{ts}{'file'}") ;
+		
 		print STDERR "Read config from $dir\n" if $DEBUG ;
+		print STDERR Data::Dumper->Dump(["Config=", $href]) if $DEBUG >= 5 ;
 		
 	}
 	return $href ;
@@ -746,7 +750,7 @@ sub write
 		{
 		no strict "refs" ;
 			my $fn = "write_dvb_$region" ;
-			&$fn("$dir/$FILES{$region}{'file'}", $href->{$region}) ;
+			&$fn("$dir/$FILES{$region}{'file'}", $href->{$region}, $href->{'freqfile'}) ;
 		}
 
 		print STDERR "Written config to $dir\n" if $DEBUG ;
@@ -910,6 +914,8 @@ sub merge
 {
 	my ($new_href, $old_href, $scan_info_href) = @_ ;
 
+print STDERR Data::Dumper->Dump(["merge - Scan info [$scan_info_href]=", $scan_info_href]) if $DEBUG>=5 ;
+
 	$scan_info_href ||= {} ;
 
 #	region: 'ts' => 
@@ -936,6 +942,8 @@ sub merge
 
 	$old_href = $new_href if (!$old_href) ;
 	
+print STDERR Data::Dumper->Dump(["merge END - Scan info [$scan_info_href]=", $scan_info_href]) if $DEBUG>=5 ;
+
 	return $old_href ;
 }
 
@@ -1000,6 +1008,8 @@ sub merge_scan_freqs
 {
 	my ($new_href, $old_href, $options_href, $verbose, $scan_info_href) = @_ ;
 
+print STDERR Data::Dumper->Dump(["merge_scan_freqs - Scan info [$scan_info_href]=", $scan_info_href]) if $DEBUG>=5 ;
+
 	$scan_info_href ||= {} ;
 	$scan_info_href->{'chans'} ||= {} ;
 	$scan_info_href->{'tsids'} ||= {} ;
@@ -1043,6 +1053,8 @@ print STDERR " + Overwrite existing {$region}{$section} with new ....\n" if $DEB
 	}
 
 	$old_href = $new_href if (!$old_href) ;
+	
+print STDERR Data::Dumper->Dump(["merge_scan_freqs END - Scan info [$scan_info_href]=", $scan_info_href]) if $DEBUG>=5 ;
 	
 print STDERR "merge_scan_freqs() - DONE\n" if $DEBUG ;
 	
@@ -1592,6 +1604,76 @@ sub read_dvb_ts
 	return \%dvb_ts ;
 }
 
+#----------------------------------------------------------------------
+
+=item B<read_dvb_ts_freqs($fname)>
+
+Read the transponder settings file comments section, if present, containing the
+frequency file information used during the scan. The values are in "VDR" format:
+
+	# VDR freq      bw   fec_hi fec_lo mod   transmission-mode guard-interval hierarchy inversion
+
+For example, the frequency file format:
+
+	# T 578000000 8MHz 2/3    NONE   QAM64 2k                1/32           NONE
+	
+will be saved as:	
+	
+	# VDR 578000000 8  23     0      64    2                 32             0			0
+
+=cut
+
+sub read_dvb_ts_freqs
+{
+	my ($fname) = @_ ;
+
+print STDERR "read_dvb_ts_freqs($fname)\n" if $DEBUG>=5 ;
+
+	my %dvb_ts_freqs = () ;
+	open my $fh, "<$fname" or die "Error: Unable to read $fname : $!" ;
+	
+	my $line ;
+	while(defined($line=<$fh>))
+	{
+		chomp $line ;
+		next unless $line =~ /^\s*#/ ; # skip non-comments
+		
+print STDERR " + line $line\n" if $DEBUG>=5 ;
+
+		## Parse line
+		if ($line =~ m%^\s*#\s*VDR\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)%i)
+		{
+			my $freq = Linux::DVB::DVBT::dvb_round_freq($1) ;
+			
+			if (exists($dvb_ts_freqs{$freq}))
+			{
+				print STDERR "Note: frequency $freq Hz already seen, skipping\n" ;
+				next ;
+			}
+
+print STDERR " + + add $freq\n" if $DEBUG>=5 ;
+
+			$dvb_ts_freqs{$freq} = {
+				frequency => $freq,
+				bandwidth => $2,
+				code_rate_high => $3,
+				code_rate_low => $4,
+				modulation => $5,
+				transmission => $6,
+				guard_interval => $7,
+				hierarchy => $8,
+				inversion => $9,
+			} ;
+		}		
+		 
+	}	
+	close $fh ;
+
+print STDERR Data::Dumper->Dump(["read_dvb_ts_freqs - href=", \%dvb_ts_freqs]) if $DEBUG>=5 ;
+	
+	return \%dvb_ts_freqs ;
+}
+
 
 #----------------------------------------------------------------------
 
@@ -1603,9 +1685,41 @@ Write transponder config information
 
 sub write_dvb_ts
 {
-	my ($fname, $href) = @_ ;
+	my ($fname, $href, $freqs_href) = @_ ;
 
 	open my $fh, ">$fname" or die "Error: Unable to write $fname : $!" ;
+
+print STDERR Data::Dumper->Dump(["write_dvb_ts - href=", $href, "freqs=", $freqs_href]) if $DEBUG>=5 ;
+	
+	## Save frequency list first (if available)
+	if ($freqs_href && (keys %$freqs_href))
+	{
+		#		# VDR freq      bw   fec_hi fec_lo mod   transmission-mode guard-interval hierarchy inversion
+		#	
+		#		# VDR 578000000 8    23     0      64    2                 32             0         0 
+		#
+		print $fh "##    freq bw fec_hi fec_lo mod transmission-mode guard-interval hierarchy inversion\n" ;
+		foreach my $freq (sort {$a <=> $b} keys %$freqs_href)
+		{
+			my $tuning_href = $freqs_href->{$freq} ;
+			print $fh "# VDR " ;
+			foreach my $field (qw/
+				frequency
+				bandwidth
+				code_rate_high
+				code_rate_low
+				modulation
+				transmission
+				guard_interval
+				hierarchy
+				inversion
+			/)
+			{
+				printf $fh "%d ", $tuning_href->{$field} ;
+			}
+			print $fh "\n" ;
+		}
+	}
 	
 	# Write config information
 	#

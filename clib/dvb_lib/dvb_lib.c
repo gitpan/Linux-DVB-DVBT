@@ -59,45 +59,70 @@ char device[32];
 struct devinfo *info ;
 int adap, fe, fd;
 
-struct devinfo *entry ;
-struct list_head *item;
-
 	INIT_LIST_HEAD(&list);
 
     for (adap = 0; adap < MAX_ADAPTERS; adap++)
     {
-		adapter_name(adap, adapter, sizeof(adapter));
-
         for (fe = 0; fe < MAX_FRONTENDS; fe++)
         {
-			frontend_name(fe, device,sizeof(device), adapter) ;
-			fd = open(device, O_RDONLY | O_NONBLOCK);
-			if (-1 == fd)
-				continue;
+        	info = dvb_probe_frontend(adap, fe, debug) ;
+        	if (!info)
+        		continue ;
 
-			if (-1 == ioctl(fd, FE_GET_INFO, &feinfo)) {
-				if (debug)
-					perror("ioctl FE_GET_INFO");
-				close(fd);
-				continue;
-			}
-
-		    info = (struct devinfo *)malloc(sizeof(struct devinfo));
-		    memset(info,0,sizeof(struct devinfo));
-			strcpy(info->device, adapter);
-			strcpy(info->name, feinfo.name);
-			info->adapter_num = adap ;
-			info->frontend_num = fe ;
-			info->flags = (int)feinfo.caps ;
-		    list_add_tail(&info->next, &list);
-
-			close(fd);
-
+        	list_add_tail(&info->next, &list);
         }
     }
 
     return &list;
 }
+
+/* ----------------------------------------------------------------------- */
+// Creates an info struct if this is a valid frontend, otherwise returns NULL
+struct devinfo * dvb_probe_frontend(unsigned adap, unsigned fe, int debug)
+{
+struct dvb_frontend_info feinfo;
+char adapter[32];
+char device[32];
+struct devinfo *info = NULL ;
+int fd;
+
+	adapter_name(adap, adapter, sizeof(adapter));
+	frontend_name(fe, device,sizeof(device), adapter) ;
+	fd = open(device, O_RDONLY | O_NONBLOCK);
+	if (-1 == fd)
+		return info ;
+
+	if (-1 == ioctl(fd, FE_GET_INFO, &feinfo)) {
+		if (debug)
+			perror("ioctl FE_GET_INFO");
+		close(fd);
+		return info ;
+	}
+
+	info = (struct devinfo *)malloc(sizeof(struct devinfo));
+	memset(info,0,sizeof(struct devinfo));
+	strcpy(info->device, adapter);
+	strcpy(info->name, feinfo.name);
+	info->adapter_num = adap ;
+	info->frontend_num = fe ;
+	info->flags = (int)feinfo.caps ;
+
+	// extra
+	info->type = feinfo.type ;
+	info->frequency_min = feinfo.frequency_min ;
+	info->frequency_max = feinfo.frequency_max ;
+	info->frequency_stepsize = feinfo.frequency_stepsize ;
+	info->frequency_tolerance = feinfo.frequency_tolerance ;
+	info->symbol_rate_min = feinfo.symbol_rate_min ;
+	info->symbol_rate_max = feinfo.symbol_rate_max ;
+	info->symbol_rate_tolerance = feinfo.symbol_rate_tolerance ;
+
+	close(fd);
+
+    return info;
+}
+
+
 
 /*----------------------------------------------------------------------
  Portable function to set a socket into nonblocking mode.

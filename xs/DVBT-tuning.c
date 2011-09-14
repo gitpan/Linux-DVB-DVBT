@@ -137,7 +137,7 @@ dvb_scan_tune (DVB *dvb, HV *parameters)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, "#@f DVBT.xs::dvb_tune() : tuning freq=%d Hz, inv=(%d) "
+	fprintf(stderr, "#@f DVBT.xs::dvb_scan_tune() : tuning freq=%d Hz, inv=(%d) "
 		"bandwidth=(%d) code_rate=(%d - %d) constellation=(%d) "
 		"transmission=(%d) guard=(%d) hierarchy=(%d)\n",
 		frequency,

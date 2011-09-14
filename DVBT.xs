@@ -8,7 +8,9 @@
 #include "xs/shared/DVBT-common.h"
 #include "xs/DVBT-specific.h"
 
-#define DVBT_VERSION		"2.02"
+#include "xs/DVBT-init-c.c"
+
+#define DVBT_VERSION		"2.03"
 
 MODULE = Linux::DVB::DVBT		PACKAGE = Linux::DVB::DVBT
 

@@ -19,7 +19,7 @@ if you wish to (I mainly use the time coversion functions in my scripts).
 
 use strict ;
 
-our $VERSION = '2.03' ;
+our $VERSION = '2.05' ;
 our $DEBUG = 0 ;
 
 our %CONTENT_DESC = (
@@ -333,7 +333,16 @@ sub genre
 }
 
 
+
 #-----------------------------------------------------------------------------
+# Usually run in the order:
+#
+#		fix_title(\$title, \$synopsis) ;
+#		fix_synopsis(\$title, \$synopsis, \$new_program) ;
+#		fix_episodes(\$title, \$synopsis, \$episode, \$num_episodes) ;
+#		fix_audio(\$title, \$synopsis, \%flags) ;
+#		subtitle(\$synopsis, \$subtitle) ;
+
 
 =item B<fix_title($title_ref, $synopsis_ref)>
 
@@ -359,6 +368,8 @@ sub fix_title
 
 	return unless ($$title_ref && $$synopsis_ref) ;
 
+print STDERR "fix_title(title=\"$$title_ref\", synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
+
 	# fix title when title is 'Julian Fellowes Investigates...'
 	# and synopsis is '...a Most Mysterious Murder. The Case of xxxxx'
 	if ($$synopsis_ref =~ s/^\.\.\.\s?//) 
@@ -383,7 +394,67 @@ sub fix_title
 	# Followed by ...
 	$$synopsis_ref =~ s/Followed by .*// ;
 	
+	# Strip leading/trailing space
+	$$title_ref =~ s/^\s+// ;
+	$$title_ref =~ s/\s+$// ;
+	$$synopsis_ref =~ s/^\s+// ;
+	$$synopsis_ref =~ s/\s+$// ;
+	
+	
+print STDERR "fix_title() - END title=\"$$title_ref\", synopsis=\"$$synopsis_ref\"\n" if $DEBUG ;
 }
+
+#-----------------------------------------------------------------------------
+
+=item B<fix_synopsis($title_ref, $synopsis_ref, $new_prog_ref)>
+
+(Used by EPG function)
+
+Checks the synopsis for any indication that this is a new program/series.
+
+Examples of supported new program indication are:
+
+	New.
+	Brand new ****.
+	All new ****.
+
+Also removes extraneous information like:
+
+	Also in HD.
+
+=cut
+
+sub fix_synopsis
+{
+	my ($title_ref, $synopsis_ref, $new_prog_ref) = @_ ;
+
+	$$synopsis_ref ||= "" ;
+	$$new_prog_ref ||= 0 ;
+
+print STDERR "fix_synopsis(title=\"$$title_ref\", synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
+
+	# Examples:
+	# All New!
+	# Brand new series.
+	# New.
+	# New:
+	if ($$synopsis_ref =~ s%^\s*(all\s+|brand\s+){0,1}new(\s+\S+){0,1}\s*([\.\!\:\-]+\s*)%%i) 
+	{
+		$$new_prog_ref = 1 ;
+	}
+
+	# Also in HD.
+	$$synopsis_ref =~ s%\s*Also in HD[\.\s]*%%i ;
+
+	# Strip leading/trailing space
+	$$synopsis_ref =~ s/^\s+// ;
+	$$synopsis_ref =~ s/\s+$// ;
+
+print STDERR "fix_synopsis() - END title=\"$$title_ref\", synopsis=\"$$synopsis_ref\", newprog=$$new_prog_ref\n" if $DEBUG ;
+}
+
+
+
 
 #-----------------------------------------------------------------------------
 
@@ -408,6 +479,8 @@ sub fix_episodes
 
 	$$synopsis_ref ||= "" ;
 
+print STDERR "fix_episodes(title=\"$$title_ref\", synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
+
 	# optional ()
 	# optional ending .
 	#			
@@ -416,12 +489,19 @@ sub fix_episodes
 	# "Episode 1 of 7."
 	# "Part 1 of 7."
 	# "(1/7)."
-	if ($$synopsis_ref =~ s%\(*\s*\S*\s*(\d+)\s*(?:/|\\|of)\s*(\d+)[\:\.\s\)]*%%i) 
+	
+	#                        (*   word*  dig        /|\|of     dig    :.)*
+	if ($$synopsis_ref =~ s%\(*\s*\w*\s*(\d+)\s*(?:/|\\|of)\s*(\d+)[\:\.\s\)]*%%i) 
 	{
 		$$episode_ref = $1;
 		$$num_episodes_ref = $2;
 	}
+
+	# Strip leading/trailing space
+	$$synopsis_ref =~ s/^\s+// ;
+	$$synopsis_ref =~ s/\s+$// ;
 						
+print STDERR "fix_episodes() - END title=\"$$title_ref\", synopsis=\"$$synopsis_ref\", episode=$$episode_ref, num_episodes_ref=$$num_episodes_ref\n" if $DEBUG ;
 }
 
 #-----------------------------------------------------------------------------
@@ -445,6 +525,8 @@ sub fix_audio
 {
 	my ($title_ref, $synopsis_ref, $flags_href) = @_ ;
 
+print STDERR "fix_audio(title=\"$$title_ref\", synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
+
     # extract audio described / subtitled / deaf_signed from synopsis
 	$$synopsis_ref ||= "" ;
 	return unless $$synopsis_ref =~ s/\[([A-Z,]+)\][\.\s]*//;
@@ -455,46 +537,12 @@ sub fix_audio
 	    my $method = $AUDIO_FLAGS{$flag} || next; # bad data
 	    $flags_href->{$method} = 1;
     }
+print STDERR "fix_audio() - END title=\"$$title_ref\", synopsis=\"$$synopsis_ref\"\n" if $DEBUG ;
 }
 
 #-----------------------------------------------------------------------------
 
-=item B<fix_synopsis($title_ref, $synopsis_ref, $new_prog_ref)>
-
-(Used by EPG function)
-
-Checks the synopsis for any indication that this is a new program/series.
-
-Examples of supported new program indication are:
-
-	New.
-	Brand new ****.
-	All new ****.
-
-=cut
-
-sub fix_synopsis
-{
-	my ($title_ref, $synopsis_ref, $new_prog_ref) = @_ ;
-
-	$$synopsis_ref ||= "" ;
-	$$new_prog_ref ||= 0 ;
-
-	# Examples:
-	# All New!
-	# Brand new series.
-	# New.
-	# New:
-	if ($$synopsis_ref =~ s%^\s*(all\s+|brand\s+){0,1}new(\s+\S+){0,1}\s*([\.\!\:]+\s*)%%i) 
-	{
-		$$new_prog_ref = 1 ;
-	}
-}
-
-
-#-----------------------------------------------------------------------------
-
-=item B<subtitle($synopsis)>
+=item B<subtitle($synopsis_ref, $subtitle_ref, $genre_ref)>
 
 Extracts a sub-title from the synopsis. Looks for text of the format:
 
@@ -510,35 +558,86 @@ NOTE: Not to be confused with subtitling for the hard of hearing!
 
 =cut
 
+=item B<subtitle($synopsis)>
+
+Same as L</subtitle($synopsis_ref, $subtitle_ref, $genre_ref)> but supports old-style
+interface.
+
+=cut
+
 sub subtitle
 {
-	my ($synopsis) = @_ ;
+	my ($synopsis_ref, $subtitle_ref, $genre_ref) = @_ ;
 
-	my $subtitle = "" ;
-
-	# "Blood Wedding (Part 1): ...."
-	if ($synopsis =~ /^\s*([^\:]+)\:/) 
+	## Allow for old-style interface
+	if (!ref($synopsis_ref))
 	{
-		$subtitle = $1;
+		my $synopsis = $synopsis_ref ;
+		$synopsis_ref = \$synopsis ;
+	}
+	my $subtitle = "" ;
+	$subtitle_ref ||= \$subtitle ;
+	my $genre = "" ;
+	$genre_ref ||= \$genre ;
+
+
+	## Defaults	
+	$$genre_ref = "" ;
+	$$subtitle_ref = "" ;
+
+print STDERR "subtitle(synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
+
+	my $restore_synopsis ;
+	
+	## Don't treat time(s) as start of subtitle
+	## e.g. 4:50 from paddington
+	# "Blood Wedding (Part 1): ...."
+	if ($$synopsis_ref =~ s/^\s*(.+?)\:(?!\d\d)\s*//) 
+	{
+		$$subtitle_ref = $1;
+		$restore_synopsis = ':' ;
 	}
 	
 	# If none found then see if we can use a sort sentence from the start of the synopsis
-	if (!$subtitle)
+	if (!$$subtitle_ref)
 	{
-		if ($synopsis =~ /^\s*([^\.]+)\./) 
+		if ($$synopsis_ref =~ s/^\s*([^\.]+)\.\s*//) 
 		{
-			$subtitle = $1;
+			$$subtitle_ref = $1;
+			$restore_synopsis = '.' ;
 		}
 		else
 		{
 			# get a limited subset
-			$subtitle = $synopsis ;
-			$subtitle =~ s/^\s+// ;
-			$subtitle = substr $subtitle, 0, 32 ;
+			$$subtitle_ref = $$synopsis_ref ;
+			$$subtitle_ref =~ s/^\s+// ;
+			$$subtitle_ref = substr $$subtitle_ref, 0, 32 ;
 		}
 	}
+
+	## Check what's left of synopsis to remove any genre info
+	# Drama series. 
+	if ($$synopsis_ref =~ s/^\s*(\w+) series\.\s*//i)
+	{
+		$$genre_ref = $1 ;
+	}
 	
-	return $subtitle ;					
+	## Glue subtitle back onto front of synopsis
+	if ($restore_synopsis)
+	{
+		$$synopsis_ref = "$$subtitle_ref$restore_synopsis $$synopsis_ref" ;
+	}
+
+	# Strip leading/trailing space
+	$$synopsis_ref =~ s/^\s+// ;
+	$$synopsis_ref =~ s/\s+$// ;
+	$$subtitle_ref =~ s/^\s+// ;
+	$$subtitle_ref =~ s/\s+$// ;
+
+print STDERR "subtitle() - END synopsis=\"$$synopsis_ref\", subtitle=\"$$subtitle_ref\"\n" if $DEBUG ;
+
+	# return subtitle
+	return $$subtitle_ref ;
 }
 
 

@@ -50,5 +50,6 @@ int setNonblocking(int fd) ;
 /* ----------------------------------------------------------------------- */
 
 struct list_head* dvb_probe(int debug) ;
+struct devinfo * dvb_probe_frontend(unsigned adap, unsigned fe, int debug) ;
 
 #endif

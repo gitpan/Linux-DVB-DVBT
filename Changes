@@ -1,5 +1,17 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.11 Wed Sep 14 11:34:00 2011
+	- Added ability to scan based on country code rather than frequency file (similar to w_scan)
+	- Added a '-countries' option to dvbt-scan to show a list of valid country codes.
+	- Now saves the tuning settings embedded in the configuration file so re-scans can be run
+	  with no arguments
+	- Updated device list gathering to report only DVB-T devices (with the option to report all
+	  discovered devices).
+	- Added extra type and frequency information to device list
+	- Now handles SYMLINK devices so that user can nail the device to a fixed adapter number (using udev)
+	- Added 'adapter' field that accepts a string in the format <adapter_num>:<frontend_num> (e.g. 100:1)
+	  to simplify specifying the device adapter/frontend numbers in command line scripts.
+
 2.10 Wed Aug 10 16:26:00 2011
 	- Added timeslip recording (track start/end/both of program when recording)
 	- Improved handling for multiple recordings from the same multiplex

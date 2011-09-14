@@ -7,21 +7,27 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "1.002" ;
+our $VERSION = "1.004" ;
 
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $merge, $check, $noprune, $adap) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $merge, $check, $noprune, $adap, $list_countries) ;
 	my ($allow_duplicates, $prefer_more_chans) ;
+	my ($DEBUG_PERL, $DEBUG_DVB) ;
 	GetOptions('v|verbose=i' => \$VERBOSE,
 			   'debug=i' => \$DEBUG,
+			   'dbg-perl=i' => \$DEBUG_PERL,
+			   'dbg-dvb=i' => \$DEBUG_DVB,
 			   'h|help' => \$help,
 			   'man' => \$man,
+
+			   'a|adap|dvb=s' => \$adap,
+			   'countries' => \$list_countries,
+
 			   'clean' => \$clean,
 			   'merge' => \$merge,
 			   'cfg=s' => \$config,
 			   'noprune' => \$noprune,
 			   'check' => \$check,
-			   'a|adap|dvb=i' => \$adap,
 			   'dup=i' => \$allow_duplicates,
 			   'more_chans=i' => \$prefer_more_chans,
 			   ) or pod2usage(2) ;
@@ -32,15 +38,28 @@ our $VERSION = "1.002" ;
     pod2usage(1) if $help;
     pod2usage(-verbose => 2) if $man;
     
-    if (@ARGV == 0)
+    
+    ## Just show country list?
+    if ($list_countries)
     {
-    	print "$0: No files given.\n" ;
-    	pod2usage(-verbose => 2) ;
+    	my @countries = Linux::DVB::DVBT::Freq::country_list() ;
+    	print "Supported countries:\n" ;
+    	foreach my $aref (@countries)
+    	{
+    		my ($code, $country) = @$aref ;
+    		print "$code : $country\n" ;
+    	}
+    
+    	exit 0 ;
     }
+    
+    
+	$DEBUG_PERL = $DEBUG if ($DEBUG_PERL < $DEBUG) ;
+	$DEBUG_DVB = $DEBUG if ($DEBUG_DVB < $DEBUG) ;
 
-$VERBOSE ||= 1 ;
-	Linux::DVB::DVBT->debug($DEBUG) ;
-	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
+	$VERBOSE ||= 1 ;
+	Linux::DVB::DVBT->debug($DEBUG_PERL) ;
+	Linux::DVB::DVBT->dvb_debug($DEBUG_DVB) ;
 	Linux::DVB::DVBT->verbose($VERBOSE) ;
 
 	## Create dvb
@@ -48,9 +67,10 @@ $VERBOSE ||= 1 ;
 	## die on *any* error, so there is no error checking in this script
 	##
 	my $dvb = Linux::DVB::DVBT->new(
-		'adapter_num'	=> $adap,
+		'adapter'	=> $adap,
 	) ;
-	
+
+	# set options
 	$dvb->set('prune_channels' => 0) if $noprune ;
 	$dvb->config_path($config) if $config ;
 	if (defined($clean))
@@ -64,11 +84,53 @@ $VERBOSE ||= 1 ;
 	
 	$dvb->scan_allow_duplicates($allow_duplicates) if defined($allow_duplicates) ;
 	$dvb->scan_prefer_more_chans($prefer_more_chans) if defined($prefer_more_chans) ;
+
+	# check for any previous scan
+	my $last_tuning_href = $dvb->get_tuning_info() ;
+	my $got_previous = 0 ;
+	if (exists($last_tuning_href->{'freqfile'}) && keys %{$last_tuning_href->{'freqfile'}})
+	{
+		$got_previous = 1 ;
+	}
+Linux::DVB::DVBT::prt_data("Existing tuning info=", $last_tuning_href) if $DEBUG>=10 ;
+	
+	# check args
+    if ((@ARGV == 0) && !$got_previous)
+    {
+    	print "$0: No frequency file given.\n" ;
+    	pod2usage(-verbose => 2) ;
+    }
+
 	
 	
 	## Do the scan
-	my $freqfile = $ARGV[0] ;
-	$dvb->scan_from_file($freqfile) ;
+	my $freqfile ;
+	my $country ;
+	if (length $ARGV[0] == 2)
+	{
+		$country = uc $ARGV[0] ;
+	}
+	
+	
+	if ($country)
+	{
+		print STDERR "Scanning frequencies for $country. Please wait, this will take some time...\n" ;
+		$dvb->scan_from_country($country) ;
+	}
+	else
+	{
+		if (@ARGV > 0)
+		{
+			$freqfile = $ARGV[0] ;
+			$dvb->scan_from_file($freqfile) ;
+		}
+		else
+		{
+			# use previous scan frequencies
+			print STDERR "Using previous scan results to set frequency list...\n" ;
+			$dvb->scan_from_previous() ;
+		}
+	}
 
 
 	## All done, just show the results
@@ -129,6 +191,20 @@ $VERBOSE ||= 1 ;
 		
 		if (!$ok)
 		{
+			my $ARG = "" ;
+			if ($country)
+			{
+				$ARG = "$country" ;
+			}
+			else
+			{
+				if (@ARGV > 0)
+				{
+					$ARG = $freqfile ;
+				}
+			}
+			
+		
 			print STDERR <<"ERRMSG" ;
                                                                                                                         
 =======================================================================================                                 
@@ -137,7 +213,7 @@ Sorry, but your scan failed. Please either contact me or raise a bug report at:
                                                                                                                         
 It would be most helpful if you can attach a debug log of your scan. To do this run:                                    
                                                                                                                         
- # dvbt-scan -debug 15 -verbose 15 $freqfile >scan.log 2>&1                                                             
+ # dvbt-scan -debug 15 -verbose 15 $ARG >scan.log 2>&1                                                             
  # tar cvfz scan.log.tar.gz scan.log                                                                                    
                                                                                                                         
 then attach the scan.log.tar.gz file to your email or bug report.                                                       
@@ -162,7 +238,7 @@ dvbt-scan - Initialise DVBT channels
 
 =head1 SYNOPSIS
 
-dvbt-scan [options] frequency_file
+dvbt-scan [options] [ <frequency file | country code> ]
 
 Options:
 
@@ -171,7 +247,8 @@ Options:
        -help                brief help message
        -man                 full documentation
        -clean               perform a clean scan
-       -a adap              use adapter number
+       -a|dvb adap          use adapter number
+       -countries           list country codes
        
 =head1 OPTIONS
 
@@ -203,6 +280,10 @@ change it is best to start from scratch again by using this option.
 
 Use if you wish to specify which one of multiple DVB adapters to use (useful if you are recording on the default adapter).
 
+=item B<-countries>
+
+Does not run a scan, instead it lists all the supported country codes (i.e. those country codes that have information for used DVB-T frequencies).
+
 =back
 
 =head1 DESCRIPTION
@@ -214,6 +295,10 @@ into configuration files.
 
 If this program is run as root then the configuration files are stored under B</etc/dvb> and are available
 for any user. Otherwise they are stored in B<$HOME/.tv> for just the user.
+
+The command line argument specified must be either a frequency file or a country code. Alternatively, iff a scan has been performed before,
+then specifying no argument causes the scan to reuse the previously saved frequencies. Note that this only works for scans performed by
+version 2.11 (and upwards) of the Linux::DVB::DVBT module.
 
 The frequency file is usually something like: B</usr/share/dvb/dvb-t/uk-Oxford>
 
@@ -229,6 +314,14 @@ $HOME/.kde/share/apps/kaffeine/dvb-t. If all else fails you can always get them 
 http://www.cpan.org/authors/id/S/SD/SDPRICE/Files/dvb-t.tar.gz
 
 To determine which file to use, check http://www.ukfree.tv/transmitters.php and enter your postcode. 
+
+Alternatively a country code (compliant with ISO 3166-1) can be specified and a (longer!) scan of all valid frequencies for that country
+will be performed. For example, to scan in the UK use:
+
+	$ dvbt-scan GB
+	
+For reference, a scan of 6 frequencies stored in a frequency file takes approximately 4 minutes. A scan based on the UK country code (which
+consists of 57 frequencies) takes approximately 24 minutes. 
 
 
 For full details of the DVBT functions, please see:

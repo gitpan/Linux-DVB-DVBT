@@ -1,3 +1,6 @@
+#     freq      bw   fec_hi fec_lo mod   transmission-mode guard-interval hierarchy inversion
+# VDR 578000000 8    23     0      64    2                 32             0         0
+
 [4107]
 name = Oxford/Bexley
 frequency = 578000000
