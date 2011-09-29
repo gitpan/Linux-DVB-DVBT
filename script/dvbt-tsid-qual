@@ -238,7 +238,7 @@ sub print_chan
 	{
 		$$radio_ref = 1 ;
 	}
-	elsif ($ch_href->{type} eq 'tv')
+	elsif ($ch_href->{type} =~ /tv/)
 	{
 		$$tv_ref = 1 ;
 	}

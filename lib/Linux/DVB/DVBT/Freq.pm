@@ -18,7 +18,7 @@ Module provides routines that create a list of frequencies to scan based on the 
 
 use strict ;
 
-our $VERSION = '1.00' ;
+our $VERSION = '1.01' ;
 our $DEBUG = 0 ;
 
 
@@ -305,19 +305,38 @@ our %BASE_FREQ = (
 our %FREQ_STEP = (
 	'NOT_USED'		=> [],
 	'DVBT_AU'		=> [
-		{'min'=>5, 	'max'=>69,	'freq'=> 7000000},
+		{'min'=>5, 	'max'=>69,	'freq'=> 7000000,	'bw'=>7},
 	],
 	'DVBT_DE'		=> [
-		{'min'=>5, 	'max'=>12,	'freq'=> 7000000},
-		{'min'=>21,	'max'=>69,	'freq'=> 8000000},
+		{'min'=>5, 	'max'=>12,	'freq'=> 7000000,	'bw'=>7},
+		{'min'=>21,	'max'=>69,	'freq'=> 8000000,	'bw'=>8},
 	],
 	'DVBT_FR'		=> [
-		{'min'=>5, 	'max'=>12,	'freq'=> 7000000},
-		{'min'=>21,	'max'=>69,	'freq'=> 8000000},
+		{'min'=>5, 	'max'=>12,	'freq'=> 7000000,	'bw'=>7},
+		{'min'=>21,	'max'=>69,	'freq'=> 8000000,	'bw'=>8},
 	],
 	'DVBT_GB'		=> [
-		{'min'=>5, 	'max'=>12,	'freq'=> 7000000},
-		{'min'=>21,	'max'=>69,	'freq'=> 8000000},
+		{'min'=>5, 	'max'=>12,	'freq'=> 7000000,	'bw'=>7},
+		{'min'=>21,	'max'=>69,	'freq'=> 8000000,	'bw'=>8},
+	],
+) ;
+
+
+our %FREQ_OFFSET = (
+	'NOT_USED'		=> [],
+	'DVBT_AU'		=> [
+		{'min'=>5,	'max'=>69,	'offset_min'=> 0,		'offset_max'=>125000},
+	],
+	'DVBT_DE'		=> [
+		{'min'=>5,	'max'=>69,	'offset_min'=> 0,		'offset_max'=>0},
+	],
+	'DVBT_FR'		=> [
+		{'min'=>5, 	'max'=>12,	'offset_min'=> 0,		'offset_max'=>0},
+		{'min'=>21,	'max'=>69,	'offset_min'=> -167000,	'offset_max'=>167000},
+	],
+	'DVBT_GB'		=> [
+		{'min'=>5, 	'max'=>12,	'offset_min'=> 0,		'offset_max'=>0},
+		{'min'=>21,	'max'=>69,	'offset_min'=> -167000,	'offset_max'=>167000},
 	],
 ) ;
 
@@ -398,26 +417,13 @@ Returns an array of frequencies (or an empty list).
 sub freq_list
 {
 	my ($iso3166) = @_ ;
-	my @freqs ;
 	
-	if (country_supported($iso3166))
+	my @freqs ;
+	my @freq_list = chan_freq_list($iso3166) ;
+	
+	foreach my $href (@freq_list)
 	{
-		$iso3166 = uc $iso3166 ;
-		my ($chan_type, $country) = @{$COUNTRY_LIST{$iso3166}} ;
-		
-		my $base_freq_list = $BASE_FREQ{$chan_type} ;
-		my $freq_step_list = $FREQ_STEP{$chan_type} ;
-		
-		foreach my $freq_href (@$base_freq_list)
-		{
-			my $base_freq = $freq_href->{'freq'} ;
-			for (my $chan = $freq_href->{'min'}; $chan <= $freq_href->{'max'}; ++$chan)
-			{
-				my $freq_step = _lookup_freq_step($chan, $freq_step_list) ;
-				my $frequency = $base_freq + ($chan * $freq_step) ;
-				push @freqs, $frequency ;
-			}
-		}
+		push @freqs, $href->{'freq'} ;
 	}
 	
 	return @freqs ;
@@ -448,18 +454,29 @@ sub chan_freq_list
 		
 		my $base_freq_list = $BASE_FREQ{$chan_type} ;
 		my $freq_step_list = $FREQ_STEP{$chan_type} ;
+		my $freq_offset_list = $FREQ_OFFSET{$chan_type} ;
 			
 		foreach my $freq_href (@$base_freq_list)
 		{
 			my $base_freq = $freq_href->{'freq'} ;
 			for (my $chan = $freq_href->{'min'}; $chan <= $freq_href->{'max'}; ++$chan)
 			{
-				my $freq_step = _lookup_freq_step($chan, $freq_step_list) ;
-				my $frequency = $base_freq + ($chan * $freq_step) ;
-				push @freqs, {
-					'chan'	=> $chan,
-					'freq'	=> $frequency,	
-				} ;
+				my ($freq_step, $bw) = _lookup_freq_step($chan, $freq_step_list) ;
+				my ($offset_min, $offset_max) = _lookup_freq_offset($chan, $freq_offset_list) ;
+				
+				my @offsets = (0) ;
+				unshift(@offsets, $offset_min) if ($offset_min < 0) ;
+				push(@offsets, $offset_max) if ($offset_max < 0) ;
+				
+				foreach my $offset (@offsets)
+				{
+					my $frequency = $base_freq + ($chan * $freq_step) + $offset ;
+					push @freqs, {
+						'chan'	=> $chan,
+						'freq'	=> $frequency,	
+						'bw'	=> $bw,	
+					} ;
+				}
 			}
 		}
 	}
@@ -472,16 +489,37 @@ sub _lookup_freq_step
 {
 	my ($chan, $freq_step_list) = @_ ;
 	my $freq_step = 8000000 ;
+	my $bw = 8 ;
 	
 	foreach my $freq_href (@$freq_step_list)
 	{
 		if  ( ($chan >= $freq_href->{'min'}) && ($chan <= $freq_href->{'max'}) )
 		{
 			$freq_step = $freq_href->{'freq'} ;
+			$bw = $freq_href->{'bw'} ;
 			last ;
 		}
 	}
-	return $freq_step ;
+	return wantarray ?  ($freq_step, $bw) : $freq_step ;
+}
+
+#-----------------------------------------------------------------------------
+sub _lookup_freq_offset
+{
+	my ($chan, $freq_offset_list) = @_ ;
+	my $min = 0 ;
+	my $max = 0 ;
+	
+	foreach my $freq_href (@$freq_offset_list)
+	{
+		if  ( ($chan >= $freq_href->{'min'}) && ($chan <= $freq_href->{'max'}) )
+		{
+			$min = $freq_href->{'offset_min'} ;
+			$max = $freq_href->{'offset_max'} ;
+			last ;
+		}
+	}
+	return ($min, $max) ;
 }
 
 

@@ -53,6 +53,7 @@ our $VERSION = "2.00" ;
 	##
 	my $dvb = Linux::DVB::DVBT->new(
 		'adapter_num'	=> $adap,
+		'timeout'	=> 3600,
 	) ;
 	$dvb->config_path($config) if $config ;
 

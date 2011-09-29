@@ -8,7 +8,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "3.03" ;
+our $VERSION = "3.04" ;
 
 	my ($help, $man, $DEBUG, $DEBUG_SCRIPT, $VERBOSE, $config, $check, $extra_check, $multiplex, $tsid_only, $adap, $write) ;
 	my ($list, $del_tsid) ;
@@ -427,7 +427,7 @@ sub print_chan
 		$tuning_href->{'pr'}{$chan}{'pnr'},
 		$ch_href->{type} ;
 	
-	if ($ch_href->{type} eq 'tv')
+	if ($ch_href->{type} =~ /tv/)
 	{
 		++$$tv_ref ;
 	}

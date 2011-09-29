@@ -874,20 +874,29 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
 		dlen = mpeg_getbits(data,j+28,12);
 
 	    if (dvb_debug>1) {
-			fprintf_timestamp(stderr, " + type=%2d pid=%d (0x%04x)\n",
-				type, pid, pid) ;
+			fprintf_timestamp(stderr, " + type=%2d (0x%02x) pid=%d (0x%04x)\n",
+				type, type, pid, pid) ;
 	    }
 
 		switch (type) {
-		case 1:
-		case 2:
-		    /* video */
+
+		/* video */
+		case MPEG1Video:
+		case MPEG2Video:
+		case MPEG4Video:
+		case H264Video:
+
 		    if (!program->v_pid)
 				program->v_pid = pid;
 		    break;
-		case 3:
-		case 4:
-		    /* audio */
+
+
+		/* audio */
+		case MPEG1Audio:
+		case MPEG2Audio:
+		case MPEG2AudioAmd1:
+		case AACAudio:
+
 		    if (!program->a_pid)
 		    	program->a_pid = pid;
 		    lang = get_lang_tag(data + (j+40)/8, dlen);
@@ -895,8 +904,10 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
 		    snprintf(program->audio + slen, sizeof(program->audio) - slen,
 			     "%s%.3s:%d", slen ? " " : "", lang ? lang : "xxx", pid);
 		    break;
-		case 6:
-		    /* private data */
+
+		/* private data */
+		case PrivData:
+
 		    parse_pmt_desc(data + (j+40)/8, dlen, program, pid);
 		    break;
 		}

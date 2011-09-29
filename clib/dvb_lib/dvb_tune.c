@@ -658,6 +658,25 @@ done:
 }
 
 /* ----------------------------------------------------------------------- */
+/* Returns true if any other process currently has this frontend in use */
+int dvb_frontend_is_busy(struct dvb_state *h)
+{
+int rc;
+int is_busy = 0 ;
+
+    if ( (rc=dvb_frontend_open(h, /* write=1*/1)) < 0 )
+    {
+    	is_busy = 1 ;
+    }
+    else
+    {
+    	dvb_frontend_release(h, /* write */ 1) ;
+    }
+
+    return is_busy ;
+}
+
+/* ----------------------------------------------------------------------- */
 /* print tuning settings */
 void dvb_frontend_tune_info(struct dvb_state *h)
 {

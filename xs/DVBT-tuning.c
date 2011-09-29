@@ -210,3 +210,13 @@ dvb_round_freq(int freqin)
  OUTPUT:
    RETVAL
 
+# /*---------------------------------------------------------------------------------------------------*/
+# /* See if this adapter frontend is busy */
+int
+dvb_is_busy(DVB *dvb)
+
+ CODE:
+   RETVAL = dvb_frontend_is_busy(dvb) ;
+ OUTPUT:
+   RETVAL
+

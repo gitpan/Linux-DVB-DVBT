@@ -403,7 +403,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.11';
+our $VERSION = '2.12';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -864,6 +864,17 @@ my %EPG_FLAGS = (
 ) ;
 
 
+## Service type codings (i.e. program types)
+my %SERVICE_TYPE = (
+	'tv'					=> 0x01,
+	'radio'					=> 0x02,
+	'hd-tv'					=> 0x19,
+) ;
+
+## Service type name
+my %SERVICE_NAME = map {$_ => $SERVICE_TYPE{$_} } keys %SERVICE_TYPE ;
+
+
 #============================================================================================
 
 =head2 CONSTRUCTOR
@@ -901,7 +912,6 @@ sub new
 
 	# Set devices list
 	$self->device_list() ; # ensure list has been created
-##	$self->devices($devices_aref) ; # point to class ARRAY ref
 
 	# Initialise hardware
 	# Special case - allow for dvb being preset (for testing)
@@ -1153,9 +1163,12 @@ sub device_list
 						# get info
 						my $info_href = dvb_device_probe($adap, $fe, $DEBUG) ;
 	
+						prt_data("dvb_device_probe(adap=$adap, fe=$fe)=", $info_href) if $DEBUG >= 10 ;
+	
 						# skip non DVB-T adapters unless we're displaying all adapters
-						my $type = $info_href->{'type'} ;
+						my $type = $info_href->{'type'} || "" ;
 						next if ($type ne 'DVB-T') && !$showall ;
+						next unless $type ;
 						
 						# check for this being a link (i.e. using udev to fix the adapaters to known identifiers)
 						if ( -l $fe_f )
@@ -1791,13 +1804,30 @@ prt_data("!!POST-PROCESS tsid_map=", \%tsid_map) if $DEBUG>=5 ;
 	{
 		## check for valid channel
 		my $delete = 0 ;
-		if (($scan_href->{'pr'}{$chan}{'type'}==1) || ($scan_href->{'pr'}{$chan}{'type'}==2) )
+
+		my ($service_video, $service_audio) = (0, 0) ;
+		if (
+			($scan_href->{'pr'}{$chan}{'type'}==$SERVICE_TYPE{'tv'}) || 
+			($scan_href->{'pr'}{$chan}{'type'}==$SERVICE_TYPE{'hd-tv'}) 
+		)
+		{
+			++$service_video ;
+		}
+		if (
+			($scan_href->{'pr'}{$chan}{'type'}==$SERVICE_TYPE{'radio'}) 
+		)
+		{
+			++$service_audio ;
+		}
+print STDERR " : : $chan : type=$scan_href->{'pr'}{$chan}{'type'}  service vid? $service_video, audio? $service_audio\n" if $DEBUG >=5;
+
+		if ( $service_video || $service_audio )
 		{
 
 print STDERR " : : $chan : vid=$scan_href->{'pr'}{$chan}{'video'}  aud=$scan_href->{'pr'}{$chan}{'audio'}\n" if $DEBUG >=5;
 
 			## check that this type has the required streams
-			if ($scan_href->{'pr'}{$chan}{'type'}==1)
+			if ($service_video)
 			{
 				## video
 				if (!$scan_href->{'pr'}{$chan}{'video'} || !$scan_href->{'pr'}{$chan}{'audio'})
@@ -2122,11 +2152,14 @@ prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBU
 	
 	
 	## Get frequencies
-	my @frequencies = Linux::DVB::DVBT::Freq::freq_list($iso3166) ;
+	my @frequencies = Linux::DVB::DVBT::Freq::chan_freq_list($iso3166) ;
 
 	## process list
-	foreach my $frequency (@frequencies)
+	foreach my $href (@frequencies)
 	{
+		my $bw = $href->{'bw'} ;
+		my $frequency = $href->{'freq'} ;
+		
 		my $freq = dvb_round_freq($frequency) ;
 			
 		if (exists($freqs_href->{$freq}))
@@ -2143,7 +2176,7 @@ prt_data("Capabilities=", $capabilities_href, "FE Cap=", \%FE_CAPABLE)  if $DEBU
 
 		my %tuning_params = (
 			frequency => $freq,
-			bandwidth => $AUTO,
+			bandwidth => $bw,
 			code_rate_high => $AUTO,
 			code_rate_low => $AUTO,
 			modulation => $AUTO,
@@ -2283,6 +2316,7 @@ sub _scan_frequency_list
 		'tuning_list'			=> \@tuning_list,
 		'estimated_percent'		=> 0,
 		'total_freqs'			=> scalar(@tuning_list),
+		'current_freq'			=> 0,
 		'done_freqs'			=> 0,
 		'scan_info'				=> {},
 	) ;
@@ -2312,6 +2346,7 @@ sub _scan_frequency_list
 print STDERR "Loop start: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 
 		# update frequencies
+		@tuning_list = sort {$a->{'frequency'} <=> $b->{'frequency'}} @tuning_list ;
 		foreach my $href (@tuning_list)
 		{
 			my $freq_round = dvb_round_freq($href->{'frequency'}) ;
@@ -2328,10 +2363,12 @@ prt_data("Loop start freq list=", \%freq_list) if $DEBUG>=3 ;
 			{
 				++$done_freqs if $freq_list{$f} ;
 			}
-			$callback_info{'estimated_percent'} = int( $done_freqs * 100.0 / $total_freqs + 0.5) ;
+			$callback_info{'estimated_percent'} = int( $done_freqs * 100.0 / $total_freqs + 0.5)+1 ;
+			$callback_info{'estimated_percent'} = 97 if $callback_info{'estimated_percent'}>97 ;
 			$callback_info{'total_freqs'} = $total_freqs ;
 			$callback_info{'done_freqs'} = $done_freqs ;
 			$callback_info{'scan_info'} = $self->tuning() ;
+			$callback_info{'tuning_list'} = \@tuning_list ;	 
 	
 			my $cb = $self->scan_cb_loop_start() ;
 			&$cb(\%callback_info) ;
@@ -2340,12 +2377,13 @@ prt_data("Loop start freq list=", \%freq_list) if $DEBUG>=3 ;
 
 
 		## keep trying to tune while we've got something to try	
+		my $frequency = 0 ;
 		while (!$tuned && @tuning_list)
 		{
 			my $rc = -1 ;
 			my %tuning_params ;
 			my $tuning_params_href = shift @tuning_list ;
-			my $frequency = dvb_round_freq($tuning_params_href->{'frequency'}) ;
+			$frequency = dvb_round_freq($tuning_params_href->{'frequency'}) ;
 			$freq_list{$frequency} = 1 ;
 			
 			# make sure frequency is valid
@@ -2397,6 +2435,27 @@ print STDERR "Attempt tune: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 		last if !$tuned ;
 
 
+		# callback
+		if ($self->scan_cb_loop_start)
+		{
+			my $total_freqs = scalar(keys %freq_list) ;
+			my $done_freqs = 0 ;
+			foreach my $f (keys  %freq_list)
+			{
+				++$done_freqs if $freq_list{$f} ;
+			}
+			$callback_info{'estimated_percent'}++ ;
+			$callback_info{'estimated_percent'} = 98 if $callback_info{'estimated_percent'}>98 ;
+			$callback_info{'total_freqs'} = $total_freqs ;
+			$callback_info{'done_freqs'} = $done_freqs ;
+			$callback_info{'scan_info'} = $self->tuning() ;
+			$callback_info{'current_freq'} = $frequency ;
+	
+			my $cb = $self->scan_cb_loop_start() ;
+			&$cb(\%callback_info) ;
+		}
+
+
 print STDERR "Scan merge : ", $self->merge(),"\n" if $DEBUG>=2 ;
 			
 		# Scan
@@ -2441,6 +2500,7 @@ prt_data("Loop end Tuning list=", \@tuning_list) if $DEBUG>=2 ;
 				++$done_freqs if $freq_list{$f} ;
 			}
 			$callback_info{'estimated_percent'} = int( $done_freqs * 100.0 / $total_freqs + 0.5) ;
+			$callback_info{'estimated_percent'} = 99 if $callback_info{'estimated_percent'}>99 ;
 			$callback_info{'total_freqs'} = $total_freqs ;
 			$callback_info{'done_freqs'} = $done_freqs ;
 			$callback_info{'scan_info'} = $self->tuning() ;
@@ -2520,6 +2580,7 @@ prt_data("## Scan Info ##", $scan_info_href) if $DEBUG>=2 ;
 		$callback_info{'total_freqs'} = scalar(keys %freq_list) ;
 		$callback_info{'done_freqs'} = scalar(keys %freq_list) ;
 		$callback_info{'scan_info'} = $self->tuning() ;
+		$callback_info{'current_freq'} = 0 ;
 
 		my $cb = $self->scan_cb_end() ;
 		&$cb(\%callback_info) ;
@@ -2545,6 +2606,23 @@ prt_data("## Scan Info ##", $scan_info_href) if $DEBUG>=2 ;
 =cut
 
 #============================================================================================
+
+#----------------------------------------------------------------------------
+
+=item B<is_busy()>
+
+Returns 0 is the currently selected adapter frontend is not busy; 1 if it is.
+
+=cut
+
+sub is_busy
+{
+	my $self = shift ;
+
+	my $is_busy = dvb_is_busy($self->{dvb}) ;
+	
+	return $is_busy ;
+}
 
 #----------------------------------------------------------------------------
 
@@ -2763,7 +2841,7 @@ and contains HASHes of the form:
 	{
 		'channel'		=> channel name (e.g. "BBC THREE") 
 		'channel_num'	=> the logical channel number (e.g. 7)
-		'type'			=> radio or tv channel ('radio' or 'tv')
+		'type'			=> radio or tv channel ('radio', 'tv' or 'hd-tv')
 	}
 
 =cut
@@ -2817,11 +2895,17 @@ sub get_channel_list
 				} 
 				keys %{$tuning_href->{'pr'}})
 			{
-				my $type = $tuning_href->{'pr'}{$channel_name}{'type'} || 1 ;
+				my $type = $tuning_href->{'pr'}{$channel_name}{'type'} || $SERVICE_TYPE{'tv'} ;
+				my $type_str = 'special' ;
+				if (exists($SERVICE_NAME{$type}))
+				{
+					$type_str = $SERVICE_NAME{$type} ;
+				}
+				
 				push @$channels_aref, { 
 					'channel'		=> $channel_name, 
 					'channel_num'	=> $tuning_href->{'pr'}{$channel_name}{'lcn'} || $channel_num,
-					'type'			=> $type == 1 ? 'tv' :  ($type == 2 ? 'radio' : 'special'),
+					'type'			=> $type_str,
 					'type_code'		=> $type,
 				} ;
 				
@@ -4992,6 +5076,10 @@ sub hwinit
 	# get & set the device names
 	my $names_href = dvb_device_names($dvb) ;
 	$self->set(%$names_href) ;
+	
+	# Set adapter
+	$self->adapter( sprintf("%d:%d", $self->adapter_num, $self->frontend_num) ) ;
+	
 }
 
 #----------------------------------------------------------------------------
@@ -5308,6 +5396,14 @@ None that I know of!
 The current release supports:
 
 =over 4
+
+=item *
+
+DVB-T2 support (i.e. HD TV). I've modified the libraries so that they correctly understand the DVB-T2 types used
+to transport the MPEG4 video. This has been tested using a PCTV 290e DVB-T/T2 usb stick (using the experimental drivers
+available at http://git.linuxtv.org/media_build.git). So now scanning and recording will work with HD channels.
+
+(For more information on using the PCTV 290e see http://stevekerrison.com/290e/). 
 
 =item *
 

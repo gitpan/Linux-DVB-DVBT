@@ -1,5 +1,9 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.12 Thu Sep 29 15:44:00 2011
+	- Added support for DVB-T2 channels (both in scanning and recording). All supplied scripts should now
+	  correctly handle HD channels (which are shown as 'hd-tv' type).
+
 2.11 Wed Sep 14 11:34:00 2011
 	- Added ability to scan based on country code rather than frequency file (similar to w_scan)
 	- Added a '-countries' option to dvbt-scan to show a list of valid country codes.

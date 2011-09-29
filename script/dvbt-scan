@@ -170,7 +170,7 @@ Linux::DVB::DVBT::prt_data("Existing tuning info=", $last_tuning_href) if $DEBUG
 			$tuning_href->{'pr'}{$chan}{'tsid'},
 			$tuning_href->{'pr'}{$chan}{'pnr'} ;
 		
-		if ($ch_href->{type} eq 'tv')
+		if ($ch_href->{type} =~ /tv/)
 		{
 			++$tv ;
 		}
