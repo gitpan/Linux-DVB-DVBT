@@ -1,5 +1,8 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.13 Thu Sep 29 15:57:00 2011
+	- Typo!
+
 2.12 Thu Sep 29 15:44:00 2011
 	- Added support for DVB-T2 channels (both in scanning and recording). All supplied scripts should now
 	  correctly handle HD channels (which are shown as 'hd-tv' type).

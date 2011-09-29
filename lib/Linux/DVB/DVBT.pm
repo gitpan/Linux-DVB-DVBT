@@ -403,7 +403,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.12';
+our $VERSION = '2.13';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -872,7 +872,7 @@ my %SERVICE_TYPE = (
 ) ;
 
 ## Service type name
-my %SERVICE_NAME = map {$_ => $SERVICE_TYPE{$_} } keys %SERVICE_TYPE ;
+my %SERVICE_NAME = map { $SERVICE_TYPE{$_} => $_ } keys %SERVICE_TYPE ;
 
 
 #============================================================================================
@@ -2897,6 +2897,7 @@ sub get_channel_list
 			{
 				my $type = $tuning_href->{'pr'}{$channel_name}{'type'} || $SERVICE_TYPE{'tv'} ;
 				my $type_str = 'special' ;
+Linux::DVB::DVBT::prt_data("type=$type, NAMES=", \%SERVICE_NAME) if $DEBUG>=10 ;
 				if (exists($SERVICE_NAME{$type}))
 				{
 					$type_str = $SERVICE_NAME{$type} ;
