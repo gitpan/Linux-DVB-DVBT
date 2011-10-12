@@ -36,8 +36,9 @@ if (dvb_debug>1) _fn_end(_name, err) ;
 // CONSTANTS
 /* ----------------------------------------------------------------------- */
 
-#define MAX_ADAPTERS	4
-#define MAX_FRONTENDS	4
+#define MAX_ADAPTERS	16
+#define MAX_FRONTENDS	16
+
 
 /* ----------------------------------------------------------------------- */
 // FUNCTIONS
@@ -49,7 +50,6 @@ int setNonblocking(int fd) ;
 // PERL INTERFACE
 /* ----------------------------------------------------------------------- */
 
-struct list_head* dvb_probe(int debug) ;
 struct devinfo * dvb_probe_frontend(unsigned adap, unsigned fe, int debug) ;
 
 #endif

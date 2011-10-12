@@ -77,14 +77,17 @@ dvb_epg(DVB *dvb, int verbose, int alive, int section)
 			}
 			if (epg->name[0])
 			{
+				// title
 				HVS_STRING(rh, epg, name);
 			}
 			if (epg->stext[0])
 			{
+				// synopsis / description
 				HVS_STRING(rh, epg, stext);
 			}
 			if (epg->etext)
 			{
+				// extended text
 				HVS_STRING(rh, epg, etext);
 			}
 			if (epg->playing)

@@ -525,6 +525,8 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
     int i,j,k,tag,len,len2,len3;
     int dump,slen,part,pcount;
 
+    int stream_content, component_type ;
+
     for (i = 0; i < dlen; i += desc[i+1] +2) {
 		tag = desc[i];
 		len = desc[i+1];
@@ -589,13 +591,44 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
 				break;
 
 			case 0x50: /*  component descriptor */
+				stream_content = desc[i+2] & 0x0f ;
+				component_type = desc[i+3] ;
+
 				if (verbose > 1)
 					fprintf(stderr," component=%d,%d",
-						desc[i+2] & 0x0f, desc[i+3]);
+						stream_content, component_type);
 
-				if (1 == (desc[i+2] & 0x0f)) {
-					/* video */
-					switch (desc[i+3]) {
+				//	Stream_content Component_type Description
+				//	0x00 0x00 to 0xFF reserved for future use
+				//
+
+
+				// MPEG-2 Video
+
+				//	Stream_content Component_type Description
+				//	0x01 0x00 reserved for future use
+				//	0x01 0x01 MPEG-2 video, 4:3 aspect ratio, 25 Hz (see note 2)
+				//	0x01 0x02 MPEG-2 video, 16:9 aspect ratio with pan vectors, 25 Hz (see note 2)
+				//	0x01 0x03 MPEG-2 video, 16:9 aspect ratio without pan vectors, 25 Hz (see note 2)
+				//	0x01 0x04 MPEG-2 video, > 16:9 aspect ratio, 25 Hz (see note 2)
+				//	0x01 0x05 MPEG-2 video, 4:3 aspect ratio, 30 Hz (see note 2)
+				//	0x01 0x06 MPEG-2 video, 16:9 aspect ratio with pan vectors, 30 Hz (see note 2)
+				//	0x01 0x07 MPEG-2 video, 16:9 aspect ratio without pan vectors, 30 Hz (see note 2)
+				//	0x01 0x08 MPEG-2 video, > 16:9 aspect ratio, 30 Hz (see note 2)
+				//	0x01 0x09 MPEG-2 high definition video, 4:3 aspect ratio, 25 Hz (see note 2)
+				//	0x01 0x0A MPEG-2 high definition video, 16:9 aspect ratio with pan vectors, 25 Hz (see note 2)
+				//	0x01 0x0B MPEG-2 high definition video, 16:9 aspect ratio without pan vectors, 25 Hz (see note 2)
+				//	0x01 0x0C MPEG-2 high definition video, > 16:9 aspect ratio, 25 Hz (see note 2)
+				//	0x01 0x0D MPEG-2 high definition video, 4:3 aspect ratio, 30 Hz (see note 2)
+				//	0x01 0x0E MPEG-2 high definition video, 16:9 aspect ratio with pan vectors, 30 Hz (see note 2)
+				//	0x01 0x0F MPEG-2 high definition video, 16:9 aspect ratio without pan vectors, 30 Hz (see note 2)
+				//	0x01 0x10 MPEG-2 high definition video, > 16:9 aspect ratio, 30 Hz (see note 2)
+				//	0x01 0x11 to 0xAF reserved for future use
+				//	0x01 0xB0 to 0xFE user defined
+				//	0x01 0xFF reserved for future use
+				//
+				if (1 == stream_content) {
+					switch (component_type) {
 						case 0x01:
 						case 0x05:
 							epg->flags |= EPG_FLAG_VIDEO_4_3;
@@ -620,9 +653,30 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
 							break;
 					}
 				}
-				if (2 == (desc[i+2] & 0x0f)) {
+
+				// MPEG-1 Audio
+
+				//	Stream_content Component_type Description
+				//	0x02 0x00 reserved for future use
+				//	0x02 0x01 MPEG-1 Layer 2 audio, single mono channel
+				//	0x02 0x02 MPEG-1 Layer 2 audio, dual mono channel
+				//	0x02 0x03 MPEG-1 Layer 2 audio, stereo (2 channel)
+				//	0x02 0x04 MPEG-1 Layer 2 audio, multi-lingual, multi-channel
+				//	0x02 0x05 MPEG-1 Layer 2 audio, surround sound
+				//	0x02 0x06 to 0x3F reserved for future use
+				//	0x02 0x40 MPEG-1 Layer 2 audio description for the visually impaired
+				//	0x02 0x41 MPEG-1 Layer 2 audio for the hard of hearing
+				//	0x02 0x42 receiver-mixed supplementary audio as per annex E of TS 101 154 [9]
+				//	0x02 0x43 to 0x46 reserved for future use
+				//	0x02 0x47 MPEG-1 Layer 2 audio, receiver mix audio description as per annex E of TS 101 154 [9]
+				//	0x02 0x48 MPEG-1 Layer 2 audio, broadcaster mix audio description
+				//	0x02 0x49 to 0xAF reserved for future use
+				//	0x02 0xB0 to 0xFE user-defined
+				//	0x02 0xFF reserved for future use
+				//
+				if (2 == stream_content) {
 					/* audio */
-					switch (desc[i+3]) {
+					switch (component_type) {
 						case 0x01:
 							epg->flags |= EPG_FLAG_AUDIO_MONO;
 							break;
@@ -640,10 +694,147 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
 							break;
 					}
 				}
-				if (3 == (desc[i+2] & 0x0f)) {
+
+				// DVB Subtitles
+
+				//	Stream_content Component_type Description
+				//	0x03 0x00 reserved for future use
+				//	0x03 0x01 EBU Teletext subtitles
+				//	0x03 0x02 associated EBU Teletext
+				//	0x03 0x03 VBI data
+				//	0x03 0x04 to 0x0F reserved for future use
+				//	0x03 0x10 DVB subtitles (normal) with no monitor aspect ratio criticality
+				//	0x03 0x11 DVB subtitles (normal) for display on 4:3 aspect ratio monitor
+				//	0x03 0x12 DVB subtitles (normal) for display on 16:9 aspect ratio monitor
+				//	0x03 0x13 DVB subtitles (normal) for display on 2.21:1 aspect ratio monitor
+				//	0x03 0x14 DVB subtitles (normal) for display on a high definition monitor
+				//	0x03 0x15 to 0x1F reserved for future use
+				//	0x03 0x20 DVB subtitles (for the hard of hearing) with no monitor aspect ratio criticality
+				//	0x03 0x21 DVB subtitles (for the hard of hearing) for display on 4:3 aspect ratio monitor
+				//	0x03 0x22 DVB subtitles (for the hard of hearing) for display on 16:9 aspect ratio monitor
+				//	0x03 0x23 DVB subtitles (for the hard of hearing) for display on 2.21:1 aspect ratio monitor
+				//	0x03 0x24 DVB subtitles (for the hard of hearing) for display on a high definition monitor
+				//	0x03 0x25 to 0x2F reserved for future use
+				//	0x03 0x30 Open (in-vision) sign language interpretation for the deaf
+				//	0x03 0x31 Closed sign language interpretation for the deaf
+				//	0x03 0x32 to 0x3F reserved for future use
+				//	0x03 0x40 video up-sampled from standard definition source material
+				//	0x03 0x41 to 0xAF reserved for future use
+				//	0x03 0xB0 to 0xFE user defined
+				//	0x03 0xFF reserved for future use
+				//
+				if (3 == stream_content) {
 					/* subtitles / vbi */
 					epg->flags |= EPG_FLAG_SUBTITLES;
 				}
+
+				// AC3 Audio
+
+				//	Stream_content Component_type Description
+				//	0x04 0x00 to 0x7F reserved for AC-3 audio modes (refer to table D.1)
+				//	0x04 0x80 to 0xFF reserved for enhanced AC-3 audio modes (refer to table D.1)
+				//
+
+				if (4 == stream_content) {
+				}
+
+				// H264 Video
+
+				//	Stream_content Component_type Description
+				//	0x05 0x00 reserved for future use
+				//	0x05 0x01 H.264/AVC standard definition video, 4:3 aspect ratio, 25 Hz (see note 2)
+				//	0x05 0x02 reserved for future use
+				//	0x05 0x03 H.264/AVC standard definition video, 16:9 aspect ratio, 25 Hz (see note 2)
+				//	0x05 0x04 H.264/AVC standard definition video, > 16:9 aspect ratio, 25 Hz (see note 2)
+				//	0x05 0x05 H.264/AVC standard definition video, 4:3 aspect ratio, 30 Hz (see note 2)
+				//	0x05 0x06 reserved for future use
+				//	0x05 0x07 H.264/AVC standard definition video, 16:9 aspect ratio, 30 Hz (see note 2)
+				//	0x05 0x08 H.264/AVC standard definition video, > 16:9 aspect ratio, 30 Hz (see note 2)
+				//	0x05 0x09 to 0x0A reserved for future use
+				//	0x05 0x0B H.264/AVC high definition video, 16:9 aspect ratio, 25 Hz (see note 2)
+				//	0x05 0x0C H.264/AVC high definition video, > 16:9 aspect ratio, 25 Hz (see note 2)
+				//	0x05 0x0D to 0x0E reserved for future use
+				//	0x05 0x0F H.264/AVC high definition video, 16:9 aspect ratio, 30 Hz (see note 2)
+				//	0x05 0x10 H.264/AVC high definition video, > 16:9 aspect ratio, 30 Hz (see note 2)
+				//	0x05 0x11 to 0xAF reserved for future use
+				//	0x05 0xB0 to 0xFE user-defined
+				//	0x05 0xFF reserved for future use
+				//
+
+				if (5 == stream_content) {
+					epg->flags |= EPG_FLAG_VIDEO_H264;
+					switch (component_type) {
+						case 0x01:
+						case 0x05:
+							epg->flags |= EPG_FLAG_VIDEO_4_3;
+							break;
+						case 0x03:
+						case 0x04:
+						case 0x07:
+						case 0x08:
+							epg->flags |= EPG_FLAG_VIDEO_16_9;
+							break;
+						case 0x0b:
+						case 0x0c:
+						case 0x0f:
+						case 0x10:
+							epg->flags |= EPG_FLAG_VIDEO_16_9;
+							epg->flags |= EPG_FLAG_VIDEO_HDTV;
+							break;
+					}
+				}
+
+				// HE-AAC
+
+				//	Stream_content Component_type Description
+				//	0x06 0x00 reserved for future use
+				//	0x06 0x01 HE-AAC audio, single mono channel
+				//	0x06 0x02 reserved for future use
+				//	0x06 0x03 HE-AAC audio, stereo
+				//	0x06 0x04 reserved for future use
+				//	0x06 0x05 HE-AAC audio, surround sound
+				//	0x06 0x06 to 0x3F reserved for future use
+				//	0x06 0x40 HE-AAC audio description for the visually impaired
+				//	0x06 0x41 HE-AAC audio for the hard of hearing
+				//	0x06 0x42 HE-AAC receiver-mixed supplementary audio as per annex E of TS 101 154 [9]
+				//	0x06 0x43 HE-AAC v2 audio, stereo
+				//	0x06 0x44 HE-AAC v2 audio description for the visually impaired
+				//	0x06 0x45 HE-AAC v2 audio for the hard of hearing
+				//	0x06 0x46 HE-AAC v2 receiver-mixed supplementary audio as per annex E of TS 101 154 [9]
+				//	0x06 0x47 HE-AAC receiver mix audio description for the visually impaired
+				//	0x06 0x48 HE-AAC broadcaster mix audio description for the visually impaired
+				//	0x06 0x49 HE-AAC v2 receiver mix audio description for the visually impaired
+				//	0x06 0x4A HE-AAC v2 broadcaster mix audio description for the visually impaired
+				//	0x06 0x4B to 0xAF reserved for future use
+				//	0x06 0xB0 to 0xFE user-defined
+				//	0x06 0xFF reserved for future use
+				//
+
+				if (6 == stream_content) {
+					epg->flags |= EPG_FLAG_AUDIO_HEAAC;
+				}
+
+				//	Stream_content Component_type Description
+				//	0x07 0x00 to 0x7F reserved for DTS audio modes (refer to annex G)
+				//	0x07 0x80 to 0xFF reserved for future use
+				//
+				//	Stream_content Component_type Description
+				//	0x08 0x00 reserved for future use
+				//	0x08 0x01 DVB SRM data [48]
+				//	0x08 0x02 to 0xFF reserved for DVB CPCM modes [46] to [i.4]
+				//
+				//	Stream_content Component_type Description
+				//	0x09 to 0x0B 0x00 to 0xFF reserved for future use
+				//	0x0C to 0x0F 0x00 to 0xFF user defined
+				//
+				//	NOTE 1: The profiles and levels of the codecs mentioned in table 26 are as defined in TS 101 154 [9] and TS 102 005 [10].
+				//	NOTE 2: In table 26, the terms "standard definition", "high definition", "25 Hz" and "30 Hz" are used as defined in
+				//	TS 101 154 [9] clauses 5.1 to 5.4 for MPEG-2 and clauses 5.5 to 5.7 for H.264/AVC and clauses 5.8 to 5.11 for
+				//	VC-1 respectively.
+
+				if (verbose > 1)
+					fprintf(stderr," (flags=0x%04x)", epg->flags) ;
+
 				break;
 
 			case 0x53: /*  CA descriptor */

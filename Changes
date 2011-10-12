@@ -1,5 +1,10 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.14 Wed Oct 12 12:57:00 2011
+	- Handle extra cases for component descriptor (0x50) to gather HD-TV information
+	- Strip out invalid frequencies from scan results (e.g. when scan doesn't return information on a seen frequency)
+	- Strip out invalid chars from epg (e.g. encrypted HD). Ensures downstream programs (JSON) are not corrupted.
+
 2.13 Thu Sep 29 15:57:00 2011
 	- Typo!
 

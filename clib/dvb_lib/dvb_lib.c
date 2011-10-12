@@ -46,36 +46,6 @@ static void demux_name(int demux, char *demux_name, int len, char *adapter_name)
 	snprintf(demux_name,len,"%s/demux%d", adapter_name, demux);
 }
 
-
-
-/* ----------------------------------------------------------------------- */
-struct list_head* dvb_probe(int debug)
-{
-static struct list_head list ;
-
-struct dvb_frontend_info feinfo;
-char adapter[32];
-char device[32];
-struct devinfo *info ;
-int adap, fe, fd;
-
-	INIT_LIST_HEAD(&list);
-
-    for (adap = 0; adap < MAX_ADAPTERS; adap++)
-    {
-        for (fe = 0; fe < MAX_FRONTENDS; fe++)
-        {
-        	info = dvb_probe_frontend(adap, fe, debug) ;
-        	if (!info)
-        		continue ;
-
-        	list_add_tail(&info->next, &list);
-        }
-    }
-
-    return &list;
-}
-
 /* ----------------------------------------------------------------------- */
 // Creates an info struct if this is a valid frontend, otherwise returns NULL
 struct devinfo * dvb_probe_frontend(unsigned adap, unsigned fe, int debug)

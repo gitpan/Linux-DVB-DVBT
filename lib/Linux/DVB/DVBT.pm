@@ -403,7 +403,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.13';
+our $VERSION = '2.14';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -855,10 +855,12 @@ my %EPG_FLAGS = (
     'AUDIO_DUAL'      => (1 << 2),
     'AUDIO_MULTI'     => (1 << 3),
     'AUDIO_SURROUND'  => (1 << 4),
+    'AUDIO_HEAAC'     => (1 << 5),
 
     'VIDEO_4_3'       => (1 << 8),
     'VIDEO_16_9'      => (1 << 9),
     'VIDEO_HDTV'      => (1 << 10),
+    'VIDEO_H264'      => (1 << 11),
 
     'SUBTITLES'       => (1 << 16),
 ) ;
@@ -3262,7 +3264,10 @@ For example:
 
 This allows for a simple regexp to extract the information (e.g. in a TV listings application 
 you may want to only use the major category in the main view, then show the extra genre information in
-a more detailed view)
+a more detailed view).
+
+Note that the genre information is mostly correct (for films) but is not reliable. Most programs are tagged as 'show' 
+(even some films!).
 
 The flags HASH format is:
 
@@ -3272,15 +3277,19 @@ The flags HASH format is:
 	'dual-mono'		=> flag set if program is in 2 channel mono
 	'multi'			=> flag set if program is in multi-lingual, multi-channel audio
 	'surround'		=> flag set if program is in surround sound
+	'he-aac'		=> flag set if component descriptor indicates audio is in HE-ACC format
 	
 	# video information
 	'4:3'			=> flag set if program is in 4:3 
 	'16:9'			=> flag set if program is in 16:9 
 	'hdtv'			=> flag set if program is in high definition 
+	'h264'			=> flag set if component descriptor indicates video is in .H264 format
 	
 	'subtitles'		=> flag set if subtitles (for the hard of hearing) are available for this program
 				
 	'new'			=> flag set if description mentions that this is a new program/series
+
+Note that (especially for DVB-T2 HD-TV channels) not all of the flags that should be set *are* set! It depends on the broadcaster.
 
 Dates HASH format is:
 
@@ -3519,7 +3528,7 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 			'subtitle'	=> $subtitle,
 			'text'		=> $synopsis,
 			'etext'		=> $etext,
-			'genre'		=> $epg_entry->{'genre'},
+			'genre'		=> $epg_entry->{'genre'} || '',
 
 			'episode'	=> $episode,
 			'num_episodes' => $num_episodes,
@@ -3527,34 +3536,35 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 			'tva_prog'	=> $epg_entry->{'tva_prog'} || '',
 			'tva_series'=> $epg_entry->{'tva_series'} || '',
 
-			#    'AUDIO_MONO'      => (1<<0),
-			#    'AUDIO_STEREO'    => (1<<1),
-			#    'AUDIO_DUAL'      => (1<<2),
-			#    'AUDIO_MULTI'     => (1<<3),
-			#    'AUDIO_SURROUND'  => (1<<4),
-			#
-			#    'VIDEO_4_3'       => (1<< 8),
-			#    'VIDEO_16_9'      => (1<< 9),
-			#    'VIDEO_HDTV'      => (1<<10),
-			#
-			#    'SUBTITLES'       => (1<<16),
-			
 			'flags'		=> {
 				'mono'			=> $epg_flags & $EPG_FLAGS{'AUDIO_MONO'} ? 1 : 0,
 				'stereo'		=> $epg_flags & $EPG_FLAGS{'AUDIO_STEREO'} ? 1 : 0,
 				'dual-mono'		=> $epg_flags & $EPG_FLAGS{'AUDIO_DUAL'} ? 1 : 0,
 				'multi'			=> $epg_flags & $EPG_FLAGS{'AUDIO_MULTI'} ? 1 : 0,
 				'surround'		=> $epg_flags & $EPG_FLAGS{'AUDIO_SURROUND'} ? 1 : 0,
+				'he-aac'		=> $epg_flags & $EPG_FLAGS{'AUDIO_HEAAC'} ? 1 : 0,
 
 				'4:3'			=> $epg_flags & $EPG_FLAGS{'VIDEO_4_3'} ? 1 : 0,
 				'16:9'			=> $epg_flags & $EPG_FLAGS{'VIDEO_16_9'} ? 1 : 0,
 				'hdtv'			=> $epg_flags & $EPG_FLAGS{'VIDEO_HDTV'} ? 1 : 0,
+				'h264'			=> $epg_flags & $EPG_FLAGS{'VIDEO_H264'} ? 1 : 0,
 
 				'subtitles'		=> $epg_flags & $EPG_FLAGS{'SUBTITLES'} ? 1 : 0,
 				
 				'new'			=> $new_program,
 			},
 		} ;
+		
+		## Process strings
+		foreach my $field (qw/title subtitle text/)
+		{
+			# ensure filled with something
+			if (!$epg{$chan}{$pid}{$field})
+			{
+				$epg{$chan}{$pid}{$field} = 'unknown' ;
+			}
+		}
+		
 
 prt_data("EPG final entry ($chan) $pid=", $epg{$chan}{$pid}) if $DEBUG>=2 ;
 

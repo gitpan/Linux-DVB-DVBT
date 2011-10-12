@@ -7,7 +7,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "1.000" ;
+our $VERSION = "1.001" ;
 
 
 	my ($channel, $date, $start, $end, $title, $text) ;
@@ -26,12 +26,13 @@ $text
 .
 
 
-	my ($help, $man, $DEBUG, $VERBOSE, $config, $adap) ;
+	my ($help, $man, $DEBUG, $VERBOSE, $config, $adap, $section) ;
 	GetOptions('v|verbose=s' => \$VERBOSE,
 			   'debug=s' => \$DEBUG,
 			   'h|help' => \$help,
 			   'man' => \$man,
 			   'cfg=s' => \$config,
+			   'section=s' => \$section,
 			   'a|adap|dvb=i' => \$adap,
 			   ) or pod2usage(2) ;
 
@@ -53,8 +54,16 @@ $text
 
 	$dvb->config_path($config) if $config ;
 	
+	if ($section)
+	{
+		if ($section =~ /^0x([\da-f]+)/i)
+		{
+			$section = hex($1) ;
+		}
+	}
+	
 	## Get EPG info - automatically tunes the frontend
-	my ($epg_href, $dates_href) = $dvb->epg() ;
+	my ($epg_href, $dates_href) = $dvb->epg($section) ;
 
 	# Sort channel names
 	foreach $channel (sort keys %$epg_href)

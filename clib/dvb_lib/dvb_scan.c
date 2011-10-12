@@ -1024,7 +1024,7 @@ if (dvb_debug >= 15)
 							fprintf(stderr, "clone stream: freq %d -> tune=%d\n", clone_stream->frequency, clone_stream->tuned) ;
 
 					}
-	    		}
+	    		} // !tuned
 	    		
 	    		// check to see if this stream *has* actually been tuned already
 	    		stream_freqi = freqitem_get_from_stream(stream) ;

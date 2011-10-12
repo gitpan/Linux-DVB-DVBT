@@ -192,6 +192,28 @@ my @tests = (
 		'episodes'	=> 0,
 		'new_program' => 0,
 	},
+
+	{
+		'raw-title'	=> '\x4e\x65\x77\x20\x54\x72\x69\x63\x6b\x73',
+		'raw-text'	=> 'O\x01\x02nly the Brave: Drama series.\x0a The team reinvestigates the murder of Eddie Chapman.',
+		'text'	=> 'Only the Brave: The team reinvestigates the murder of Eddie Chapman.',
+		'title'	=> 'New Tricks',
+		'subtitle'	=> 'Only the Brave',
+		'episode'	=> 0,
+		'episodes'	=> 0,
+		'new_program' => 0,
+	},
+	{
+		'raw-title'	=> '\x0e\x05\x07\x02\x05\x02\x06\x06\x06\x07',
+		'raw-text'	=> '\x7f\x02Only',
+		'text'	=> 'unknown',
+		'title'	=> 'unknown',
+		'subtitle'	=> 'unknown',
+		'episode'	=> 0,
+		'episodes'	=> 0,
+		'new_program' => 0,
+	},
+
 );
 
 my @checks = (
@@ -211,8 +233,8 @@ plan tests => scalar(@tests) * (scalar(@checks) + 1) ;
 	foreach my $test_href (@tests)
 	{
 		my %results = (
-			'text'		=> $test_href->{'raw-text'},
-			'title'		=> $test_href->{'raw-title'},
+			'text'		=> Linux::DVB::DVBT::Utils::text($test_href->{'raw-text'}),
+			'title'		=> Linux::DVB::DVBT::Utils::text($test_href->{'raw-title'}),
 			'subtitle'	=> '',
 			'episode'	=> 0,
 			'episodes'	=> 0,
@@ -227,6 +249,17 @@ plan tests => scalar(@tests) * (scalar(@checks) + 1) ;
 		Linux::DVB::DVBT::Utils::fix_episodes(\$results{title}, \$results{text}, \$results{episode}, \$results{episodes}) ;
 		Linux::DVB::DVBT::Utils::fix_audio(\$results{title}, \$results{text}, \%flags) ;
 		Linux::DVB::DVBT::Utils::subtitle(\$results{text}, \$results{subtitle}) ;
+		
+		## Process strings
+		foreach my $field (qw/title subtitle text etext/)
+		{
+			# ensure filled with something
+			if (!$results{$field})
+			{
+				$results{$field} = 'unknown' ;
+			}
+		}
+		
 		
 		foreach my $aref (@checks)
 		{

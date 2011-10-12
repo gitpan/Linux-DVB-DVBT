@@ -9,6 +9,18 @@
 // round up frequency to nearest kHz
 #define ROUND_FREQUENCY(freq)	(int)(((float)freq / 1000.0) + 0.5 ) * 1000
 
+//  Frequency must be at least 100 MHz
+//  The Stockholm agreement of 1961 says:
+//    Band III  : 174 MHz - 230 MHz
+//    Band IV/V : 470 MHz - 826 MHz
+//
+//  Current dvb-t files range: 177.5 MHz - 858 MHz
+//
+//  So 100 MHz allows for country "variations"!
+//
+#define MIN_FREQ		100000000
+#define VALID_FREQ(f)	((f) >= MIN_FREQ ? 1 : 0)
+
 
 // Default is to use 'auto'
 #define VDR_MAX 		999

@@ -7,18 +7,40 @@
 #include "dvb.h"
 
 
+//
+//
+//                 7 6 5 4 3 2 1 0
+//                     | | | | | |
+//  he-aac ------------' | | | | |  0x00020
+//  surround ------------' | | | |  0x00010
+//  multi -----------------' | | |  0x00008
+//  dual --------------------' | |  0x00004
+//  stereo --------------------' |  0x00002
+//  mono ------------------------'
+//
 #define EPG_FLAG_AUDIO_MONO      (1<<0)
 #define EPG_FLAG_AUDIO_STEREO    (1<<1)
 #define EPG_FLAG_AUDIO_DUAL      (1<<2)
 #define EPG_FLAG_AUDIO_MULTI     (1<<3)
 #define EPG_FLAG_AUDIO_SURROUND  (1<<4)
+#define EPG_FLAG_AUDIO_HEAAC	 (1<<5)
 #define EPG_FLAGS_AUDIO          (0xff)
 
+//
+//          15 14 13 12  11 10  9  8
+//                        |  |  |  |
+//  H264 -----------------'  |  |  |  0x00800
+//  HDTV --------------------'  |  |  0x00400
+//  16:9 -----------------------'  |  0x00200
+//  4:3 ---------------------------'  0x00100
+//
 #define EPG_FLAG_VIDEO_4_3       (1<< 8)
 #define EPG_FLAG_VIDEO_16_9      (1<< 9)
 #define EPG_FLAG_VIDEO_HDTV      (1<<10)
+#define EPG_FLAG_VIDEO_H264      (1<<11)
 #define EPG_FLAGS_VIDEO          (0xff << 8)
 
+// 0x10000
 #define EPG_FLAG_SUBTITLES       (1<<16)
 
 /* ----------------------------------------------------------------------- */

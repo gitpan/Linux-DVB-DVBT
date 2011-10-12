@@ -19,7 +19,7 @@ if you wish to (I mainly use the time coversion functions in my scripts).
 
 use strict ;
 
-our $VERSION = '2.05' ;
+our $VERSION = '2.06' ;
 our $DEBUG = 0 ;
 
 our %CONTENT_DESC = (
@@ -119,6 +119,26 @@ our %AUDIO_FLAGS = (
   'S'  => 'is_subtitled',
   'SL' => 'is_deaf_signed',
 );
+
+our %CHAR_TRANSLATE ;
+
+#============================================================================================
+BEGIN {
+	
+	foreach my $cc (0..255)
+	{
+		my $chr = chr $cc ;
+		my $xlt = $chr ;
+		if (($cc < ord(' ')) || ($cc > ord('~') ))
+		{
+			$xlt = '' ;
+		}
+		$CHAR_TRANSLATE{$chr} = $xlt ;
+	}
+	
+	$CHAR_TRANSLATE{"\n"} = ' ' ;
+}
+
 
 #============================================================================================
 
@@ -304,7 +324,26 @@ sub text
 
 	if ($text)
 	{
-		$text =~ s/\\x([\da-fA-F]{2})/chr hex $1/ge ;
+		## if text starts with non-ascii then assume it is encrypted and skip it
+		if ($text =~ /^\\x([\da-fA-F]{2})/)
+		{
+			my $cc = hex $1 ;
+			if ( ($cc < 0x20) || ($cc > 0x7e) )
+			{
+				return "" ;
+			}
+		}
+		
+		$text =~ s/\\x([\da-fA-F]{2})/$CHAR_TRANSLATE{chr hex $1}/ge ;
+
+		# remove newlines
+		$text =~ s/[\r\n]/ /g ;
+		# replace multiple whitespace
+		$text =~ s/\s+/ /g ;
+		# remove leading space
+		$text =~ s/^\s+//g ;
+		# remove trailing space
+		$text =~ s/\s+$//g ;
 	}	
 	return $text ;
 }
