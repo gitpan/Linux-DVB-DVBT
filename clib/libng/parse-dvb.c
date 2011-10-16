@@ -139,29 +139,41 @@ static int handle_control_8(unsigned char *src,  int slen,
 }
 
 /* ----------------------------------------------------------------------- */
-void mpeg_parse_psi_string(char *src, int slen,
-			   char *dest, int dlen)
+void mpeg_parse_psi_string(char *src, int slen, char *dest, int dlen)
 {
     char *tmp;
-    int tlen,ch = 0;
+    int tlen ;
+    unsigned ch = 0;
+    unsigned first_byte = (unsigned)src[0] ;
 
-    if (src[0] < 0x20) {
-	ch = src[0];
-	src++;
-	slen--;
+//fprintf(stderr, "mpeg_parse_psi_string src len=%d [0x%02x ..], dest len=%d\n", slen, first_byte, dlen) ;
+
+    if (first_byte < 0x20) {
+		ch = first_byte;
+		src++;
+		slen--;
     }
 
     memset(dest,0,dlen);
+
+//fprintf(stderr, " + ch = 0x%02x\n", ch) ;
+
     if (ch < 0x10) {
-	/* 8bit charset */
-	tmp = malloc(slen);
-	tlen = handle_control_8(src, slen, tmp, slen);
-	iconv_string(psi_charset[ch], "UTF-8", tmp, tlen, dest, dlen);
-	free(tmp);
+//fprintf(stderr, " + handle_control_8()\n") ;
+		/* 8bit charset */
+		tmp = malloc(slen);
+//fprintf(stderr, " + + malloc() %p\n", tmp) ;
+		tlen = handle_control_8(src, slen, tmp, slen);
+//fprintf(stderr, " + + calling iconv_string() ...\n") ;
+		iconv_string(psi_charset[ch], "UTF-8", tmp, tlen, dest, dlen);
+//fprintf(stderr, " + + free() %p\n", tmp) ;
+		free(tmp);
     } else {
-	/* 16bit charset */
-	iconv_string(psi_charset[ch], "UTF-8", src, slen, dest, dlen);
+//fprintf(stderr, " + iconv()\n") ;
+		/* 16bit charset */
+		iconv_string(psi_charset[ch], "UTF-8", src, slen, dest, dlen);
     }
+//fprintf(stderr, "mpeg_parse_psi_string - DONE\n") ;
 }
 
 /* ======================================================================= */

@@ -519,6 +519,16 @@ static void dump_data(unsigned char *data, int len)
 }
 
 /* ----------------------------------------------------------------------- */
+static void dump_hex(unsigned char *data, int len)
+{
+    int i;
+
+    for (i = 0; i < len; i++) {
+		fprintf(stderr,"%d:0x%02x ", i, (int)data[i]);
+    }
+}
+
+/* ----------------------------------------------------------------------- */
 static void parse_eit_desc(unsigned char *desc, int dlen,
 			   struct epgitem *epg, int verbose)
 {
@@ -539,6 +549,14 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
 			dump=1;
 		}
 
+		// debug segfault
+		if (dump) {
+			fprintf(stderr," Tag data (len=%d)[ ",len);
+			dump_hex(desc+i+2,len);
+			fprintf(stderr,"]\n");
+		}
+
+
 		switch (tag) {
 			case 0x4a: /*  linkage descriptor */
 				/** TO DO **/
@@ -550,16 +568,64 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
 				break;
 
 			case 0x4d: /*  short event (eid) */
+				//	short_event_descriptor(){
+				//		0: descriptor_tag 8 uimsbf
+				//		1: descriptor_length 8 uimsbf [len]
+				//
+				//0	|	2-4: ISO_639_language_code 24 bslbf
+				//	|
+				//3	|	5: event_name_length 8 uimsbf [len2]
+				//	|	for (i=0;i<event_name_length;i++){
+				//4	|		6->len2-1:event_name_char 8 uimsbf
+				//	|	}
+				//	|
+				//4+|	6+len2: text_length 8 uimsbf [len3]
+				//	|	for (i=0;i<text_length;i++){
+				//5+|		text_char 8 uimsbf
+				//	v	}
+				// len
+				//	}
 				len2 = desc[i+5];
 				len3 = desc[i+6+len2];
 
+				if (verbose > 1)
+					fprintf(stderr," + total len=%d : len2=%d [name 4..%d], len3=%d [stext %d..%d]\n",
+							len,
+							len2, 4+len2-1,
+							len3, 5+len2, 5+len2+len3-1);
+
 				memcpy(epg->lang,desc+i+2,3);
-				if (len2>0) mpeg_parse_psi_string((char*)desc+i+6,    len2, epg->name,
-						  sizeof(epg->name)-1);
-				if (len3>0) mpeg_parse_psi_string((char*)desc+i+7+len2, len3, epg->stext,
-						  sizeof(epg->stext)-1);
+
+				if (len2>0)
+				{
+					if (verbose > 1)
+						fprintf(stderr," + mpeg_parse_psi_string(name)\n");
+
+					mpeg_parse_psi_string((char*)desc+i+6,    len2, epg->name,
+							  sizeof(epg->name)-1);
+				}
+
+				if (len3>0)
+				{
+					if (verbose > 1)
+						fprintf(stderr," + mpeg_parse_psi_string(stext)\n");
+
+					mpeg_parse_psi_string((char*)desc+i+7+len2, len3, epg->stext,
+							  sizeof(epg->stext)-1);
+				}
+
+
 				if (0 == strcmp(epg->name, epg->stext))
-				memset(epg->stext, 0, sizeof(epg->stext));
+				{
+					if (verbose > 1)
+						fprintf(stderr," + memset(stext)\n");
+
+					memset(epg->stext, 0, sizeof(epg->stext));
+				}
+
+				if (verbose > 1)
+					fprintf(stderr," + TAG 0x4d done\n");
+
 				break;
 
 			case 0x4e: /*  extended event (eid) */
@@ -833,7 +899,7 @@ static void parse_eit_desc(unsigned char *desc, int dlen,
 				//	VC-1 respectively.
 
 				if (verbose > 1)
-					fprintf(stderr," (flags=0x%04x)", epg->flags) ;
+					fprintf(stderr," (flags=0x%04x)", 0xffff & (unsigned)epg->flags) ;
 
 				break;
 
@@ -1279,7 +1345,8 @@ int rc ;
 
 			//fprintf_timestamp(stderr, "error polling for data\n");
 			SET_DVB_ERROR(ERR_EPG_POLL) ;
-			close(eit->fd);
+			if (eit->fd) close(eit->fd);
+			free(eit) ;
 			return (struct list_head *)0;
 		}
 
@@ -1313,6 +1380,8 @@ int rc ;
 				if (dvb_debug>5) fprintf_timestamp(stderr,"== epg complete - failed to get section ==\n") ;
 
 				// assume we've finished - some tuners seem to indicate to poll() that they're ready even when they aren't
+				if (eit->fd) close(eit->fd);
+				free(eit) ;
 				return &epg_list ;	
 			}
 		}
@@ -1351,6 +1420,8 @@ int rc ;
 				{
 					if (dvb_debug>5) fprintf_timestamp(stderr,"== epg complete - no more updates ==\n") ;
 
+					if (eit->fd) close(eit->fd);
+					free(eit) ;
 					return &epg_list ;
 				}
 			}
@@ -1364,6 +1435,8 @@ int rc ;
 		fprintf_timestamp(stderr, "== get_eit() END ==\n\n") ;
 	}
 
+	if (eit->fd) close(eit->fd);
+	free(eit) ;
 	return &epg_list ;
 }
 

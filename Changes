@@ -1,5 +1,11 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.15 Sun Oct 16 17:13:00 2011
+	- Fixed bug in mpeg_parse_psi_string() - comparison of first byte was being incorrectly sign extended and the byte
+	  treated as a signed int (rather than unsigned). This caused the string to be incorrectly decoded and iconv_string()
+	  to segfault
+	- Fixed small epg memory leak
+	
 2.14 Wed Oct 12 12:57:00 2011
 	- Handle extra cases for component descriptor (0x50) to gather HD-TV information
 	- Strip out invalid frequencies from scan results (e.g. when scan doesn't return information on a seen frequency)
