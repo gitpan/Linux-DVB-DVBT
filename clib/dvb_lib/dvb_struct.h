@@ -56,11 +56,11 @@ typedef struct dvb_state {
 
 struct devinfo {
     struct list_head    next;
-    char  device[32];
+    char  device[512];
     int adapter_num ;
     int frontend_num ;
-    char  name[32];
-    char  bus[32];
+    char  name[512];
+    char  bus[512];
     int   flags;
 
 	fe_type_t  type;

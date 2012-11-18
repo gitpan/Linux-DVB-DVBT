@@ -118,3 +118,22 @@ dvb_file_flags()
      fprintf(stderr, "O_TRUNC     0x%08x\n", O_TRUNC) ;
      fprintf(stderr, "O_CREAT     0x%08x\n", O_CREAT) ;
 
+
+# /*---------------------------------------------------------------------------------------------------*/
+# /* Get amount of free disk space for specified path */
+
+float
+dvb_free_disk(char *path)
+
+	INIT:
+		unsigned long long free_space ;
+
+	CODE:
+		free_space = get_free_space(path) ;
+		//fprintf(stderr, "free_space(%s) %llu\n", path, free_space) ;
+		RETVAL = (float)free_space ;
+		//fprintf(stderr, " + space %.2f\n", RETVAL) ;
+
+	OUTPUT:
+		RETVAL
+

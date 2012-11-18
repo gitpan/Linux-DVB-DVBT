@@ -50,8 +50,11 @@ struct epgitem {
     int                 tsid;
     int                 pnr;
     int                 updated;
+
     time_t              start;       /* unix epoch */
     time_t              stop;
+    unsigned			duration_secs ;
+
     char                lang[4];
     char                name[128];
     char                stext[256];

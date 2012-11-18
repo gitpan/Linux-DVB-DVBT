@@ -19,7 +19,7 @@ if you wish to (I mainly use the time coversion functions in my scripts).
 
 use strict ;
 
-our $VERSION = '2.06' ;
+our $VERSION = '2.07' ;
 our $DEBUG = 0 ;
 
 our %CONTENT_DESC = (
@@ -473,6 +473,7 @@ sub fix_synopsis
 print STDERR "fix_synopsis(title=\"$$title_ref\", synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
 
 	# Examples:
+	
 	# All New!
 	# Brand new series.
 	# New.
@@ -481,7 +482,7 @@ print STDERR "fix_synopsis(title=\"$$title_ref\", synopsis=\"$$synopsis_ref\")\n
 	{
 		$$new_prog_ref = 1 ;
 	}
-
+	
 	# Also in HD.
 	$$synopsis_ref =~ s%\s*Also in HD[\.\s]*%%i ;
 
@@ -627,6 +628,13 @@ sub subtitle
 print STDERR "subtitle(synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
 
 	my $restore_synopsis ;
+
+	# Strip out "* series." from start (e.g. Drama series, Crime drama series, etc)
+	## Check what's left of synopsis to remove any genre info
+	if ($$synopsis_ref =~ s/^\s*(\w+\s+){1,2}series\.\s*//i)
+	{
+		$$genre_ref = $1 ;
+	}
 	
 	## Don't treat time(s) as start of subtitle
 	## e.g. 4:50 from paddington
@@ -656,10 +664,11 @@ print STDERR "subtitle(synopsis=\"$$synopsis_ref\")\n" if $DEBUG ;
 
 	## Check what's left of synopsis to remove any genre info
 	# Drama series. 
-	if ($$synopsis_ref =~ s/^\s*(\w+) series\.\s*//i)
+	if ($$synopsis_ref =~ s/^\s*(\w+\s+){1,2}series\.\s*//i)
 	{
 		$$genre_ref = $1 ;
 	}
+	
 	
 	## Glue subtitle back onto front of synopsis
 	if ($restore_synopsis)

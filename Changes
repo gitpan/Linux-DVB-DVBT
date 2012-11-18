@@ -1,5 +1,16 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.17 Sun Nov 18 19:49:00 2012
+	- Updated dvbt-strength to report error if adapter is not found
+	- Added support for multi-language subtitles (thanks to rainbowcrypt)
+	- Bug fix: corrected operation of record() so that it starts with a clean 
+	  multiplex record (previously it was re-using an existing set and overwriting
+	  previously recorded files) 
+	- Bug fix: corrected buffer over run caused by device names overflowing structure 
+
+2.16 Fri Oct 28 17:01:00 2011
+	- Fixed problem in EPG reporting where the program duration was being incorrectly calculated due to change from British Summer Time to GMT
+
 2.15 Sun Oct 16 17:13:00 2011
 	- Fixed bug in mpeg_parse_psi_string() - comparison of first byte was being incorrectly sign extended and the byte
 	  treated as a signed int (rather than unsigned). This caused the string to be incorrectly decoded and iconv_string()

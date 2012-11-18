@@ -181,10 +181,11 @@ struct freq_info *finfo ;
 //    {
 //    	fprintf(stderr, "PROG [program=>%p list.next=%p list.prev=%p] ", program, program->next.next, program->next.prev) ;
 //    }
-	fprintf(stderr, "TSID %d PNR %d : name %s : network %s : running %d : type %d : prog %d, video %d, audio %d, ttext %d, pcr %d : audio %s (up %d / seen %d) : Tuned ",
+	fprintf(stderr, "TSID %d PNR %d : name %s : network %s : running %d : type %d : prog %d, video %d, audio %d, ttext %d, pcr %d : audio %s subtitle %s (up %d / seen %d) : Tuned ", /*by rainbowcrypt*/
 			program->tsid, program->pnr, program->name, program->net, program->running,
 			program->type, program->p_pid, program->v_pid, program->a_pid, program->t_pid, program->pcr_pid,
 			program->audio,
+			program->subtitle, /*by rainbowcrypt */
 			program->updated, program->seen
 	) ;
 	
@@ -624,7 +625,7 @@ void hexdump(char *prefix, unsigned char *data, size_t size)
 static void parse_pmt_desc(unsigned char *desc, int dlen,
 			   struct psi_program *program, int pid)
 {
-    int i,t,l;
+    int i,t,l,slen;
 
     for (i = 0; i < dlen; i += desc[i+1] +2) {
 		t = desc[i];
@@ -646,7 +647,9 @@ static void parse_pmt_desc(unsigned char *desc, int dlen,
 			case 0x59: /* subtitles (pmt) */
 				if (!program->s_pid)
 					program->s_pid = pid;
-
+					slen = strlen(program->subtitle); /*by rainbowcrypt*/
+					snprintf(program->subtitle + slen, sizeof(program->subtitle) - slen,
+						"%s%.3s:%d",slen ? " " : "", desc+i+2,pid);/*by rainbowcrypt*/
 				if (dvb_debug>5)
 					fprintf(stderr," subtitles=%3.3s\n",desc+i+2);
 			    break;

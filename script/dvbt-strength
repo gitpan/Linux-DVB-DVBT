@@ -8,7 +8,7 @@ use File::Basename ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = '2.004' ;
+our $VERSION = '2.005' ;
 
     my $progname = basename $0 ;
 
@@ -42,7 +42,18 @@ our $VERSION = '2.004' ;
 	## NOTE: With default object settings, the application will
 	## die on *any* error, so there is no error checking in this script
 	##
-	my $dvb = Linux::DVB::DVBT->new('adapter_num' => $adapter) ;
+	my $dvb = Linux::DVB::DVBT->new(
+		'adapter_num' => $adapter,
+		'errmode' => 'message',
+	) ;
+	Linux::DVB::DVBT::prt_data("dvb=", $dvb) if $DEBUG ;
+
+	my $errors_aref = $dvb->errors() ;
+	if ( @$errors_aref )
+	{
+		my $error = join(', ', @$errors_aref) ;
+		failed("Adapter $adapter not working : $error", $dvb_name, $hwcheck, $mail) ;
+	}
 	
 	# use other config?
 	$dvb->config_path($config) if $config ;
@@ -62,19 +73,8 @@ our $VERSION = '2.004' ;
 	
 	if ($@)
 	{
-		## Expected this to work
-		if ($hwcheck)
-		{
-			info("FAILED : $@") ;
-			if ($mail)
-			{
-				`date | mail -s "$dvb_name failure" $mail` ;
-			}
-			exit 3 ;
-		}
-		
-		info("FAILED : $@") if $VERBOSE ;
-		exit 2 ;
+		## expected this to work
+		failed($@, $dvb_name, $hwcheck, $mail) ;
 	}
 	
 	Linux::DVB::DVBT::prt_data("Info=", \%info) if $DEBUG ;
@@ -150,6 +150,26 @@ our $VERSION = '2.004' ;
 # SUBROUTINES
 #=================================================================================
 
+#-----------------------------------------------------------------------------
+# report error
+sub failed
+{
+    my ($error, $dvbname, $hwcheck, $mail) = @_ ;
+
+	## Expected this to work
+	if ($hwcheck)
+	{
+		info("FAILED : $error") ;
+		if ($mail)
+		{
+			`date | mail -s "$dvb_name failure" $mail` ;
+		}
+		exit 3 ;
+	}
+	
+	info("FAILED : $error") if $VERBOSE ;
+	exit 2 ;
+}
 
 #-----------------------------------------------------------------------------
 # Format a timestamp for the reply

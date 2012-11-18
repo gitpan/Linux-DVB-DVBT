@@ -52,4 +52,6 @@ int setNonblocking(int fd) ;
 
 struct devinfo * dvb_probe_frontend(unsigned adap, unsigned fe, int debug) ;
 
+unsigned long long get_free_space(const char *path) ;
+
 #endif

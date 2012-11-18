@@ -7,7 +7,7 @@ use Test::More ;
 use Linux::DVB::DVBT ;
 use Linux::DVB::DVBT::Config ;
 
-#$Linux::DVB::DVBT::Conf::DEBUG = 15 ;
+##$Linux::DVB::DVBT::Config::DEBUG = 15 ;
 
 #[4107-4171]
 #video = 600
@@ -22,6 +22,7 @@ use Linux::DVB::DVBT::Config ;
 #type = 1
 #pmt = 4171
 #audio_details = eng:601 eng:602 fra:9999 deu:9900
+#subtitle_details = eng:705 eng:706 fra:707 deu:708
 
 my %demux = (
 	'600'	=> {
@@ -34,16 +35,19 @@ my %demux = (
         pmt => 4171,
         pnr => 4171,
         subtitle => 605,
+        subtitle_details => 'eng:605 eng:706 fra:707 deu:708',
         teletext => 0,
         tsid => 4107,
         type => 1,
         video => 600,
 	},
+
 ) ;
 my @tests = (
 	{
 		'out'	=> "avs",
 		'lang'	=> "",
+		'sub_lang'	=> "",
 		'audio_pids'	=> 
 			[ 601,  ],
 		'out_pids'	=> 
@@ -68,6 +72,7 @@ my @tests = (
 	{
 		'out'	=> "av",
 		'lang'	=> "+eng",
+		'sub_lang'	=> "",
 		'audio_pids'	=> 
 			[ 601, 602,  ],
 		'out_pids'	=> 
@@ -92,6 +97,7 @@ my @tests = (
 	{
 		'out'	=> "a",
 		'lang'	=> "eng",
+		'sub_lang'	=> "",
 		'audio_pids'	=> 
 			[ 602,  ],
 		'out_pids'	=> 
@@ -106,6 +112,7 @@ my @tests = (
 	{
 		'out'	=> "",
 		'lang'	=> "fra",
+		'sub_lang'	=> "",
 		'audio_pids'	=> 
 			[ 9999,  ],
 		'out_pids'	=> 
@@ -125,6 +132,7 @@ my @tests = (
 	{
 		'out'	=> "a",
 		'lang'	=> "eng eng",
+		'sub_lang'	=> "",
 		'error'	=> 1,
 		'audio_pids'	=> 
 			[ 602,  ],
@@ -135,6 +143,7 @@ my @tests = (
 	{
 		'out'	=> "",
 		'lang'	=> "ita",
+		'sub_lang'	=> "",
 		'error'	=> 1,
 		'audio_pids'	=> 
 			[  ],
@@ -145,6 +154,7 @@ my @tests = (
 	{
 		'out'	=> "",
 		'lang'	=> "fra eng",
+		'sub_lang'	=> "",
 		'error'	=> 1,
 		'audio_pids'	=> 
 			[ 9999,  ],
@@ -155,11 +165,43 @@ my @tests = (
 	{
 		'out'	=> "",
 		'lang'	=> "fra eng deu",
+		'sub_lang'	=> "",
 		'error'	=> 1,
 		'audio_pids'	=> 
 			[ 9999, ],
 		'out_pids'	=> 
 			[
+			],
+	},
+
+	{
+		'out'	=> "avs",
+		'lang'	=> "",
+		'sub_lang'	=> "fra deu",
+		'audio_pids'	=> 
+			[ 601,  ],
+		'out_pids'	=> 
+			[
+				{
+					'pid' => 601,
+					'pidtype' => 'audio',
+					'demux_params' => $demux{600},
+				},
+				{
+					'pid' => 600,
+					'pidtype' => 'video',
+					'demux_params' => $demux{600},
+				},
+				{
+					'pid' => 707,
+					'pidtype' => 'subtitle',
+					'demux_params' => $demux{600},
+				},
+				{
+					'pid' => 708,
+					'pidtype' => 'subtitle',
+					'demux_params' => $demux{600},
+				},
 			],
 	},
 );
@@ -196,7 +238,7 @@ plan tests => scalar(@tests) * 2 * 2 ;
 	foreach my $href (@tests)
 	{
 		test_audio($demux_params_href, $href->{'lang'}, $href->{'audio_pids'}, $href->{'error'}||0) ;
-		test_out($demux_params_href, $href->{'out'}, $href->{'lang'}, $href->{'out_pids'}, $href->{'error'}||0) ;
+		test_out($demux_params_href, $href->{'out'}, $href->{'lang'}, $href->{'sub_lang'}||"", $href->{'out_pids'}, $href->{'error'}||0) ;
 	}
 	exit 0 ;
 
@@ -217,12 +259,12 @@ sub test_audio
 #------------------------------------------------------------------------------------------------
 sub test_out
 {
-	my ($demux_params_href, $out, $lang, $expected_aref, $expect_error) = @_ ;
+	my ($demux_params_href, $out, $lang, $sub_lang, $expected_aref, $expect_error) = @_ ;
 
 	my @pids ;
 	my $error ; 
 	
-	$error = Linux::DVB::DVBT::Config::out_pids($demux_params_href, $out, $lang, \@pids) ;
+	$error = Linux::DVB::DVBT::Config::out_pids($demux_params_href, $out, $lang, $sub_lang, \@pids) ;
 	is_deeply(\@pids, $expected_aref, "Output spec pids lang=\"$lang\" out=\"$out\"") ;
 	is( $error?1:0, $expect_error, "Output spec error lang=\"$lang\" out=\"$out\" ") ;
 }

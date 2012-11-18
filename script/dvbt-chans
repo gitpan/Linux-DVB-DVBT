@@ -8,7 +8,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "3.04" ;
+our $VERSION = "3.05" ;
 
 	my ($help, $man, $DEBUG, $DEBUG_SCRIPT, $VERBOSE, $config, $check, $extra_check, $multiplex, $tsid_only, $adap, $write) ;
 	my ($list, $del_tsid) ;
@@ -417,7 +417,7 @@ sub print_chan
 	}
 	if ($tuning_href->{'pr'}{$chan}{'subtitle'})
 	{
-		$avstr .= "subtitle=$tuning_href->{'pr'}{$chan}{'subtitle'} " ;
+		$avstr .= "subtitle=$tuning_href->{'pr'}{$chan}{'subtitle'} ($tuning_href->{'pr'}{$chan}{'subtitle_details'})" ; #by rainbowcrypt
 	}
 	printf "%-$widths{check}s%$widths{lcn}d | %-$widths{chan}s | %$widths{tsid}s-%-$widths{pnr}d | %-$widths{type}s | $avstr $checkstr\n", 
 		$check_flag ? " " : "*",

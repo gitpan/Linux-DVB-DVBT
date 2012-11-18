@@ -214,6 +214,41 @@ my @tests = (
 		'new_program' => 0,
 	},
 
+# Depths: Crime drama. The body of an Arab diver is washed ashore on Coney Island, prompting fears of a terrorist plot.
+# Lonelyville: Crime drama series. The discovery of a woman's body tied up with complex knots leads the detectives to a lonely writer researching the dating scene.
+# Crime drama series. Goren and Eames hunt a killer whose fanatical beliefs may be the key to catching him.
+
+	{
+		'raw-title'	=> 'Law & Order: Criminal Intent',
+		'raw-text'	=> 'Depths: Crime drama. The body of an Arab diver is washed ashore on Coney Island, prompting fears of a terrorist plot.',
+		'text'	=> 'Depths: Crime drama. The body of an Arab diver is washed ashore on Coney Island, prompting fears of a terrorist plot.',
+		'title'	=> 'Law & Order: Criminal Intent',
+		'subtitle'	=> 'Depths',
+		'episode'	=> 0,
+		'episodes'	=> 0,
+		'new_program' => 0,
+	},
+	{
+		'raw-title'	=> 'Law & Order: Criminal Intent',
+		'raw-text'	=> 'Lonelyville: Crime drama series. The discovery of a woman\'s body tied up with complex knots leads the detectives to a lonely writer researching the dating scene.',
+		'text'	=> 'Lonelyville: The discovery of a woman\'s body tied up with complex knots leads the detectives to a lonely writer researching the dating scene.',
+		'title'	=> 'Law & Order: Criminal Intent',
+		'subtitle'	=> 'Lonelyville',
+		'episode'	=> 0,
+		'episodes'	=> 0,
+		'new_program' => 0,
+	},
+	{
+		'raw-title'	=> 'Law & Order: Criminal Intent',
+		'raw-text'	=> 'Crime drama series. Goren and Eames hunt a killer whose fanatical beliefs may be the key to catching him.',
+		'text'	=> 'Goren and Eames hunt a killer whose fanatical beliefs may be the key to catching him.',
+		'title'	=> 'Law & Order: Criminal Intent',
+		'subtitle'	=> 'Goren and Eames hunt a killer whose fanatical beliefs may be the key to catching him',
+		'episode'	=> 0,
+		'episodes'	=> 0,
+		'new_program' => 0,
+	},
+
 );
 
 my @checks = (

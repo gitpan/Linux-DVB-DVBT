@@ -13,7 +13,7 @@ subtitle = 605
 type = 1
 pnr = 4171
 audio_details = eng:601 eng:602 fra:9999 deu:9900
-
+subtitle_details = eng:605 eng:706 fra:707 deu:708
 
 [4107-4235]
 video = 610

@@ -19,6 +19,7 @@
 #include "dvb_debug.h"
 
 /* ------------------------------------------------------------------------ */
+//#define DEBUG_MJD	1
 
 /*
 4.4.2 Terrestrial delivery systems
@@ -438,6 +439,13 @@ static time_t decode_mjd_time(int mjd, int start)
     time_t t;
     int y2,m2,k;
 
+#ifdef DEBUG_MJD
+    if (dvb_debug >= 10)
+    {
+    	fprintf(stderr, "decode_mjd_time(%d, 0x%06x)\n", mjd, start) ;
+    }
+#endif
+
     memset(&tm,0,sizeof(tm));
 
     /* taken as-is from EN-300-486 */
@@ -448,6 +456,16 @@ static time_t decode_mjd_time(int mjd, int start)
     tm.tm_year = y2 + k + 1900;
     tm.tm_mon  = m2 - 1 - k * 12;
 
+#ifdef DEBUG_MJD
+    if (dvb_debug >= 10)
+    {
+    fprintf(stderr,"mjd %d => %04d-%02d-%02d %02d:%02d:%02d\n",
+	    mjd,
+	    tm.tm_year, tm.tm_mon, tm.tm_mday,
+	    tm.tm_hour, tm.tm_min, tm.tm_sec);
+    }
+#endif
+
     /* time is bcd ... */
     tm.tm_hour  = ((start >> 20) & 0xf) * 10;
     tm.tm_hour += ((start >> 16) & 0xf);
@@ -456,11 +474,14 @@ static time_t decode_mjd_time(int mjd, int start)
     tm.tm_sec   = ((start >>  4) & 0xf) * 10;
     tm.tm_sec  += ((start)       & 0xf);
 
-#if 0
-    fprintf(stderr,"mjd %d, time 0x%06x  =>  %04d-%02d-%02d %02d:%02d:%02d",
+#ifdef DEBUG_MJD
+    if (dvb_debug >= 10)
+    {
+    fprintf(stderr,"(added start) mjd %d, time 0x%06x  =>  %04d-%02d-%02d %02d:%02d:%02d",
 	    mjd, start,
 	    tm.tm_year, tm.tm_mon, tm.tm_mday,
 	    tm.tm_hour, tm.tm_min, tm.tm_sec);
+    }
 #endif
 
     /* convert to unix epoch */
@@ -469,7 +490,8 @@ static time_t decode_mjd_time(int mjd, int start)
     t = mktime(&tm);
     t -= timezone;
 
-#if 0
+#ifdef DEBUG_MJD
+    if (dvb_debug >= 10)
     {
 	char buf[16];
 
@@ -482,7 +504,9 @@ static time_t decode_mjd_time(int mjd, int start)
 
 	localtime_r(&t,&tm);
 	strftime(buf,sizeof(buf),"%H:%M:%S %z",&tm);
-	fprintf(stderr,"  =>  %s\n",buf);
+	fprintf(stderr,"  =>  %s",buf);
+
+	fprintf(stderr," => t %u => ctime(t) %s\n", (unsigned)t, ctime(&t));
     }
 #endif
 
@@ -490,9 +514,17 @@ static time_t decode_mjd_time(int mjd, int start)
 }
 
 /* ----------------------------------------------------------------------- */
-static int decode_length(int length)
+static unsigned decode_length(unsigned length)
 {
-    int hour, min, sec;
+    unsigned hour, min, sec;
+    unsigned len ;
+
+#ifdef DEBUG_MJD
+    if (dvb_debug >= 10)
+    {
+    	fprintf(stderr, "decode_length(0x%06x)\n", length) ;
+    }
+#endif
 
     /* time is bcd ... */
     hour  = ((length >> 20) & 0xf) * 10;
@@ -502,8 +534,18 @@ static int decode_length(int length)
     sec   = ((length >>  4) & 0xf) * 10;
     sec  += ((length)       & 0xf);
 
-    return hour * 3600 + min * 60 + sec;
+    len = hour * 3600 + min * 60 + sec;
+
+#ifdef DEBUG_MJD
+    if (dvb_debug >= 10)
+    {
+    	fprintf(stderr, " + HH %u MM %u SS %u -> Length = %d\n", hour, min, sec, len) ;
+    }
+#endif
+
+    return len ;
 }
+
 
 /* ----------------------------------------------------------------------- */
 static void dump_data(unsigned char *data, int len)
@@ -1142,7 +1184,8 @@ struct partitem *partp ;
 
 		epg = epgitem_get(tsid,pnr,id, &new);
 		epg->start  = decode_mjd_time(mjd,start);
-		epg->stop   = epg->start + decode_length(length);
+		epg->duration_secs   = decode_length( (unsigned)length );
+		epg->stop   = epg->start + epg->duration_secs ;
 		epg->updated++;
 
 	    if (dvb_debug>1)
@@ -1157,8 +1200,9 @@ if (new) partp->parts_left-- ;
 #endif
 
 		if (verbose > 2)
-			fprintf(stderr,"  id %d mjd %d time %06x du %06x r %d ca %d  #",
+			fprintf(stderr,"  id %d mjd %d time %06x du %06x : duration %u : r %d ca %d  #",
 				id, mjd, start, length,
+				epg->duration_secs,
 				mpeg_getbits(data,j+80,3),
 				mpeg_getbits(data,j+83,1));
 

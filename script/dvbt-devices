@@ -7,7 +7,7 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "1.000" ;
+our $VERSION = "1.001" ;
 
 my %CAPABILITIES = (
 		FE_IS_STUPID			=> 'Not too bright',
@@ -49,6 +49,7 @@ my %CAPABILITIES = (
     pod2usage(-verbose => 2) if $man;
 
 	Linux::DVB::DVBT->debug($DEBUG) ;
+	Linux::DVB::DVBT->dvb_debug($DEBUG) ;
 	Linux::DVB::DVBT->verbose(1) ;
 
 	## Create dvb (use first found adapter). 

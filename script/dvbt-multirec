@@ -10,10 +10,10 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 use Linux::DVB::DVBT ;
 use Linux::DVB::DVBT::Ffmpeg ;
 
-our $VERSION = "2.00" ;
+our $VERSION = "2.01" ;
 
 	my ($help, $man, $DEBUG, $DEBUG_FFMPEG, $VERBOSE, $config, $adap, $anypid, $info) ;
-	my ($tsid, $lang, $keep) ;
+	my ($tsid, $lang, $lang_sub, $keep) ; #by rainbowcrypt
 	
 	my $out = 'av' ;
 
@@ -28,6 +28,7 @@ our $VERSION = "2.00" ;
 			   'keep'		=> \$keep,
 			   'out=s'		=> \$out,
 			   'lang=s'		=> \$lang,
+               'sublang=s'  => \$lang_sub, #by rainbowcrypt
 			   'tsid=i'		=> \$tsid,
 			   'anypid'		=> \$anypid,
 			   'info'		=> \$info,
@@ -65,6 +66,7 @@ our $VERSION = "2.00" ;
 	## Select the channel(s)
 	my %options = (
 		'lang'			=> $lang,
+        'sublang'       => $lang_sub, #by rainbowcrypt
 		'out'			=> $out,
 		'tsid'			=> $tsid,
 		'no-pid-check'	=> $anypid,
@@ -145,7 +147,7 @@ dvbt-multirec - Record streams from a multiplex
 
 =head1 SYNOPSIS
 
-dvbt-record [options] [recording specification]
+dvbt-multirec [options] [recording specification]
 
 Options:
 
@@ -155,6 +157,7 @@ Options:
        -man                 full documentation
        -out outspec         set default output spec
        -lang langspec       set default language spec
+       -sublang langspec    set default language spec for subtitles
        -tsid value          specify multiplex tsid
        -anypid              allow any pid value
        -info                display recording details

@@ -403,7 +403,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.15';
+our $VERSION = '2.17';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -1677,10 +1677,17 @@ print STDERR "scan info::  + add comment 'no freqs : TSID $tsid' - CHAN $name\n"
 		}
 		
 		# save program data
+		my $hdtv = 0 ;
 		$scan_href->{'pr'}{$name} = $prog_href ;
 		if (exists($scan_href->{'lcn'}{$tsid}) && exists($scan_href->{'lcn'}{$tsid}{$pnr}))
 		{
 			$scan_href->{'pr'}{$name}{'lcn'} = $scan_href->{'lcn'}{$tsid}{$pnr}{'lcn'} ;
+
+			if ($scan_href->{'pr'}{$name}{'type'}==$SERVICE_TYPE{'hd-tv'}) 
+			{
+				# set flag for this TSID
+				$hdtv = 1 ;
+			}
 		}
 		
 		# Set transponder freq
@@ -1690,6 +1697,9 @@ print STDERR "scan info::  + add comment 'no freqs : TSID $tsid' - CHAN $name\n"
 		}
 		$tsids{$tsid}{'frequency'} = $freq ; 
 		$scan_href->{'ts'}{$tsid} = $tsids{$tsid} ;
+		
+		# hd-tv flag (set if *any* program in it's multiplex is HD)
+		$scan_href->{'ts'}{$tsid}{'hd-tv'} = $hdtv ;
 
 		push @{$scan_info_href->{'chans'}{$name}{'comments'}}, "set freq $freq : TSID $tsid" ;
 
@@ -2516,6 +2526,30 @@ print STDERR "Loop end: ".scalar(@tuning_list)." freqs\n" if $DEBUG>=2 ;
 
 	} # while @tuning_list
 
+###############################
+if ($DEBUG)
+{
+# check to ensure each tsid has some programs. If not then we can delete that tsid
+
+	my %tsids ;
+	my $scan_href = $self->tuning() ;
+	foreach my $prog (keys %{$scan_href->{'pr'}})
+	{
+		my $prog_href = $scan_href->{'pr'}{$prog} ;
+		my $tsid = $prog_href->{'tsid'} ;
+		$tsids{$tsid} = 1 ;
+	}
+	foreach my $tsid (keys %{$scan_href->{'ts'}})
+	{
+		if (!exists($tsids{$tsid}))
+		{
+			print STDERR " * TSID $tsid has no progs\n" ;
+		}
+	}
+}
+###############################
+
+
 	## restore flag
 	$self->merge($saved_merge) ;
 
@@ -3109,7 +3143,8 @@ print STDERR "record($file, $duration)" if $DEBUG ;
 
 	## Set up the multiplex info for this single file
 
-	# get entry for this file (or create it)
+	# create entry for this file 
+	$self->multiplex_close() ;
 	my $href = $self->_multiplex_file_href($file) ;
 	
 	# set time
@@ -3136,7 +3171,11 @@ print STDERR "record($file, $duration)" if $DEBUG ;
 	## Now record
 Linux::DVB::DVBT::prt_data("multiplex_info=", $self->{'_multiplex_info'}) if $DEBUG>=10 ;
 
-	return $self->multiplex_record(%{$self->{'_multiplex_info'}}) ;
+	my $rc = $self->multiplex_record(%{$self->{'_multiplex_info'}}) ;
+
+	$self->multiplex_close() ;
+
+	return $rc ;
 }
 
 #----------------------------------------------------------------------------
@@ -3327,6 +3366,7 @@ sub epg
 
 	# Get tuning information
 	my $tuning_href = $self->get_tuning_info() ;
+prt_data("tuning hash=", $tuning_href) if $DEBUG >= 2 ;
 
 	# Create a lookup table to convert [tsid-pnr] values into channel names & channel numbers 
 	my $channel_lookup_href ;
@@ -3469,6 +3509,9 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 		my $end = strftime "%H:%M:%S", @end_localtime ;
 		my $end_date  = strftime "%Y-%m-%d", @end_localtime ;
 
+prt_data("Start Time: start=$start, date=$date,  localtime=", \@start_localtime) if $DEBUG>=10 ;
+prt_data("End Time:   end=$end,   date=$end_date,  localtime=", \@end_localtime) if $DEBUG>=10 ;
+
 
 		# keep track of dates
 		$dates{$chan} ||= {
@@ -3495,7 +3538,17 @@ prt_data("EPG raw entry ($chan)=", $epg_entry) if $DEBUG>=2 ;
 		}
 
 
+		## Set the duration explicitly to allow for BST->GMT clock changes etc
 		my $duration = Linux::DVB::DVBT::Utils::duration($start, $end) ;
+#		my $duration ;
+#		{	
+#			my $secs = $epg_entry->{'duration_secs'} ;
+#			my $mins = int($secs/60) ;
+#			my $hours = int($mins/60) ;
+#			$mins = $mins % 60 ;
+#	
+#			$duration = sprintf "%02d:%02d", $hours, $mins ;
+#		}
 		
 		my $title = Linux::DVB::DVBT::Utils::text($epg_entry->{'name'}) ;
 		my $synopsis = Linux::DVB::DVBT::Utils::text($epg_entry->{'stext'}) ;
@@ -3635,7 +3688,7 @@ sub add_demux_filter
 	my $self = shift ;
 	my ($pid, $pid_type, $tsid, $demux_params_href) = @_ ;
 
-	$tsid ||= 0 ;
+	$tsid ||= "0" ;
 	
 printf STDERR "add_demux_filter(pid=$pid, type=$pid_type, tsid=$tsid)\n", $pid if $DEBUG ;
 
@@ -3659,8 +3712,8 @@ prt_data("frontend_href=", $frontend_href) if $DEBUG >= 5 ;
 	# re-tune if not the same tsid
 	if ($frontend_href)
 	{
-#		$frontend_href = undef if $frontend_href->{'tsid'} != $tsid ;
-		$frontend_href = undef if $frontend_href->{'tsid'} ne $tsid ;
+		my $current_tsid = $frontend_href->{'tsid'} || "" ;
+		$frontend_href = undef if $current_tsid ne $tsid ;
 	}
 	
 	# check tuning
@@ -4016,6 +4069,7 @@ my %multiplex_params = (
 	'^c'				=> 'chan',
 	'^p'				=> 'pid',
 	'^lan'				=> 'lang',
+    '^sublang'			=> 'sublang',
 	'^out'				=> 'out',
 	'^(len|duration)'	=> 'duration',
 	'^off'				=> 'offset',
@@ -4026,8 +4080,8 @@ my %multiplex_params = (
 	'^max'				=> 'max_timeslip',
 	
 ) ;
-sub multiplex_parse
-{
+sub multiplex_parse 
+{ # modified by rainbowcrypt
 	my $self = shift ;
 	my ($chan_spec_aref, @args) = @_ ;
 
@@ -4158,6 +4212,13 @@ sub multiplex_parse
 				}
 			}
 			
+		    # sublang - requires chan #by rainbowcrypt
+			if ($var eq 'sublang')
+			{
+				$current_chan_href->{'sublang'} = $value ;
+                next ;
+			}
+
 		}
 		else
 		{
@@ -4264,6 +4325,7 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 
 	## Defaults
 	my $def_lang = $options{'lang'} || "" ;
+	my $def_lang_sub = $options{'sublang'} || ""; #by rainbowcrypt
 	my $def_out = $options{'out'} || "" ;
 
 	## start with TSID option
@@ -4336,7 +4398,6 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 			}
 
 			# slippage time (default = 1 hour)
-#			$href->{'max_timeslip'} ||= $spec_href->{'max_timeslip'} || 3600 ;
 			$href->{'max_timeslip'} = Linux::DVB::DVBT::Utils::time2secs($spec_href->{'max_timeslip'} || 3600) ;
 			
 			# calc total length
@@ -4349,6 +4410,7 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 			{
 				my $channel_name = $chan_href->{'chan'} ;
 				my $lang = $chan_href->{'lang'}  || $def_lang ;
+				my $lang_sub = $chan_href->{'sublang'}  || $def_lang_sub ; #by rainbowcrypt
 				my $out = $chan_href->{'out'} || $def_out ;
 				
 				push @{$href->{'channels'}}, $channel_name ;
@@ -4364,7 +4426,7 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 				$tsid ||= $frontend_params_href->{'tsid'} ;
 				if ($tsid ne $frontend_params_href->{'tsid'})
 				{
-					return $self->handle_error("Channel $channel_name (on $frontend_params_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
+					return $self->handle_error("Channel $channel_name (on TSID $frontend_params_href->{'tsid'}) is not in the same multiplex as other channels/pids (on TSID $tsid)") ;
 				}
 				
 				# Ensure the combination of file format, output spec, and language spec are valid. They get adjusted as required
@@ -4380,10 +4442,11 @@ print STDERR "multiplex_select()\n" if $DEBUG>=10 ;
 				$href->{'destext'} = $ext ;
 				$href->{'out'} = $out ;
 				$href->{'lang'} = $lang ;
+				$href->{'sublang'} = $lang_sub; # by rainbowcrypt
 
 				# Handle output specification to get a list of pids
 				my @pids ;
-				$error = Linux::DVB::DVBT::Config::out_pids($demux_params_href, $out, $lang, \@pids) ;
+				$error = Linux::DVB::DVBT::Config::out_pids($demux_params_href, $out, $lang, $lang_sub, \@pids) ; #by rainbowcrypt
 				return $self->handle_error($error) if $error ;
 				
 				if ($need_eit)
@@ -4432,12 +4495,6 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 			
 			foreach my $pid (@{$spec_href->{'pids'}})
 			{
-#				# add error if already got pids for this file
-#				if ( $files{$file}{'chans'} )
-#				{
-#					return $self->handle_error("Cannot mix chan definitions with pid definitions for file \"$file\"") ;
-#				}
-
 				# array of: { 'pidtype'=>$type, 'tsid' => $tsid, ... } for this pid value
 				my $pid_href ;
 				my @pid_info = Linux::DVB::DVBT::Config::pid_info($pid, $tuning_href) ;
@@ -4476,7 +4533,6 @@ prt_data(" + Add pids for chan = ", \@pids) if $DEBUG >= 15 ;
 						# find entry with matching TSID
 						foreach (@pid_info)
 						{
-#							if ($_->{'tsid'} == $tsid)
 							if ($_->{'tsid'} eq $tsid)
 							{
 								$pid_href = $_ ;
@@ -4504,10 +4560,9 @@ prt_data(" + Add pid = ", $pid_href) if $DEBUG >= 15 ;
 
 					# check multiplex
 					$tsid ||= $pid_href->{'tsid'} ;
-#					if (!defined($tsid) || !defined($pid_href->{'tsid'}) || ($tsid != $pid_href->{'tsid'}) )
 					if (!defined($tsid) || !defined($pid_href->{'tsid'}) || ($tsid ne $pid_href->{'tsid'}) )
 					{
-						return $self->handle_error("PID $pid (on $pid_href->{'tsid'}) is not in the same multiplex as other channels/pids (on $tsid)") ;
+						return $self->handle_error("PID $pid (on TSID $pid_href->{'tsid'}) is not in the same multiplex as other channels/pids (on TSID $tsid)") ;
 					}
 					
 					# add a filter
@@ -5397,6 +5452,10 @@ any of the C code itself.
 Steve Price
 
 Please report bugs using L<http://rt.cpan.org>.
+
+=head1 CONTRIBUTORS
+
+rainbowcrypt - Thanks for adding support for multi-language subtitles
 
 =head1 BUGS
 

@@ -153,6 +153,7 @@ struct psi_program {
     int                  s_pid;             // subtitle
     int                  pcr_pid;           // PCR (program clock reference)
     char                 audio[PSI_STR_MAX];
+    char                 subtitle[PSI_STR_MAX]; /*by rainbowcrypt*/
     char                 net[PSI_STR_MAX];
     char                 name[PSI_STR_MAX];
 

@@ -3,11 +3,11 @@ Linux-DVB-DVBT
 
 Linux::DVB::DVBT is a package that provides an object interface to any installed Freeview 
 tuner cards fitted to a Linux PC. The package supports initial set up (i.e. frequency scanning),
-searching for the latest electronic program guide (EPG), and selectign a channel for recording
+searching for the latest electronic program guide (EPG), and selecting a channel for recording
 the video to disk.
 
 Example scripts have been provided in the package which illustrate the expected use of the package (and
-are useable programs in themeselves). For futher details please see 'perldoc Linux::DVB::DVBT'.
+are useable programs in themselves). For futher details please see 'perldoc Linux::DVB::DVBT'.
 
 
 INSTALLATION

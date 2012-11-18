@@ -255,4 +255,5 @@ clib/dvb_ts_lib/tables/parse_si_st.h
 clib/dvb_ts_lib/tables/parse_si_tdt.h
 clib/dvb_ts_lib/tables/parse_si_tot.h
 
-META.yml                                 Module meta-data (added by MakeMaker)
+META.yml                                 Module YAML meta-data (added by MakeMaker)
+META.json                                Module JSON meta-data (added by MakeMaker)

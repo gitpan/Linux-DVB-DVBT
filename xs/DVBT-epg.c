@@ -69,6 +69,7 @@ dvb_epg(DVB *dvb, int verbose, int alive, int section)
 			HVS_I(rh, epg, pnr) ;
 			HVS_I(rh, epg, start) ;
 			HVS_I(rh, epg, stop) ;
+			HVS_I(rh, epg, duration_secs) ;
 			HVS_I(rh, epg, flags) ;
 
 			if (epg->lang[0])

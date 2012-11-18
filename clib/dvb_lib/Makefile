@@ -13,6 +13,10 @@ CFLAGS   += -D_FILE_OFFSET_BITS=64
 CFLAGS   += -D_GNU_SOURCE
 CFLAGS   += -DHAVE_DVB
 
+# Add lots of extra checks
+CFLAGS += -Wall -Werror -Wpointer-arith -Wcast-qual -Wwrite-strings -Waggregate-return -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations 
+CFLAGS += -Wredundant-decls -Wnested-externs 
+
 ifdef TESTDEF
 	CFLAGS += -D $(TESTDEF)
 endif

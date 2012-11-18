@@ -244,6 +244,13 @@ print "pid_info(pid=\"$pid\")\n" if $DEBUG ;
 		{
 			push @chan_pids, ['audio', $_] ;
 		}
+
+		# extra subtitle by rainbowcrypt
+		my @sub = sub_list( $tuning_href->{'pr'}{$chan} ) ;
+		foreach (@sub)
+		{
+			push @chan_pids, ['subtitle', $_] ;
+		}
 		
 		# SI
 		foreach my $si (qw/pmt/)
@@ -570,10 +577,151 @@ print " + Added pid = $pid\n" if $DEBUG >= 10 ;
 	
 	return $error ;
 }
+#----------------------------------------------------------------------
+
+=item B<subtitle_pids($demux_params_href, $language_spec, $pids_aref)> #copy/paste from audio_pid by rainbowcrypt
+
+Process the demux parameters and a language specifier to return the list of audio
+streams required. 
+
+demux_params are of the form:
+
+	        {
+	          pnr => 4171,
+	          tsid => 4107,
+	          tuned_freq => 57800000,
+	          ...
+	        },
+
+(i.e. $tuning_href->{'pr'}{$channel_name})
+
+	
+Language specifier string is in the format:
+
+=over 4
+
+=item a)
+
+Empty string : just return the default audio stream pid
+
+=item b)
+
+Comma/space seperated list of one or more language names : returns the audio stream pids for all that match (does not necessarily include default stream)
+
+=back
+	
+If the list in (b) contains a '+' character (normally at the start) then the default audio stream is automatically included in teh list, and the 
+extra streams are added to it.
+	
+For example, if a channel has the following audio details: eng:100 eng:101 fra:102 deu:103
+Then the following specifications result in the lists as shown:
+
+=over 4
+
+=item *	
+
+"" => (100)
+
+=item *	
+
+"eng deu" => (100, 103)
+
+=item *	
+
+"+eng fra" => (100, 101, 102)
+
+=back
+	
+Note that the language names are not case sensitive
+
+
+=cut
+
+sub subtitle_pids
+{ #copy/paste from audio_pid by rainbowcrypt
+	my ($demux_params_href, $language_spec, $pids_aref) = @_ ;
+	my $error = 0 ;
+	
+print "subtitle_pids(lang=\"$language_spec\")\n" if $DEBUG ;
+
+	my $subtitle_pid = $demux_params_href->{'subtitle'} ;
+	
+	## simplest case is no language spec
+	$language_spec ||= "" ;
+	if (!$language_spec)
+	{
+print " + simplest case - add default subtitle $subtitle_pid\n" if $DEBUG ;
+
+		push @$pids_aref, $subtitle_pid ;
+		return 0 ;		
+	}
+
+	# split details
+	my @subtitle_details ;
+	my $details = $demux_params_href->{'subtitle_details'} || "" ;
+print "subtitle_details=\"$details\")\n" if $DEBUG ;
+	while ($details =~ m/(\S+):(\d+)/g)
+	{
+		my ($lang, $pid) = ($1, $2) ;
+		push @subtitle_details, {'lang'=>lc $lang, 'pid'=>$pid} ;
+
+print " + lang=$subtitle_details[-1]{lang}  pid=$subtitle_details[-1]{pid}\n" if $DEBUG >= 10 ;
+	}
+
+	# drop default audio
+	shift @subtitle_details ;
+
+	# process language spec
+	if ($language_spec =~ s/\+//g)
+	{
+		# ensure default is in the list
+		push @$pids_aref, $subtitle_pid ;
+
+print " - lang spec contains '+', added default subtitle\n" if $DEBUG >= 10 ;
+	}
+
+print "process lang spec\n" if $DEBUG >= 10 ;
+
+	# work through the language spec
+	my $pid ;
+	my $lang ;
+	my @lang = split /[\s,]+/, $language_spec ;
+	while (@lang)
+	{
+		$lang = shift @lang ;
+
+print " + lang=$lang\n" if $DEBUG >= 10 ;
+		
+		$pid = undef ;
+		while (!$pid && @subtitle_details)
+		{
+			my $subtitle_href = shift @subtitle_details ;
+print " + + checking this subtitle detail: lang=$subtitle_href->{lang}  pid=$subtitle_href->{pid}\n" if $DEBUG >= 10 ;
+			if ($subtitle_href->{'lang'} =~ /$lang/i)
+			{
+				$pid = $subtitle_href->{'pid'} ;
+print " + + Found pid = $pid\n" if $DEBUG >= 10 ;
+
+				push @$pids_aref, $pid ;
+print " + Added pid = $pid\n" if $DEBUG >= 10 ;
+			}
+		}
+		last unless @subtitle_details ;
+	}
+	
+	# clean up
+	if (@lang || !$pid)
+	{
+		unshift @lang, $lang if $lang ;
+		$error = "Error: could not find the languages: " . join(', ', @lang) . " associated with program \"$demux_params_href->{pnr}\"" ;
+	}
+	
+	return $error ;
+}
 
 #----------------------------------------------------------------------
 
-=item B<out_pids($demux_params_href, $out_spec, $language_spec, $pids_aref)>
+=item B<out_pids($demux_params_href, $out_spec, $language_spec, $subtitle_language_spec, $pids_aref)> #modified by rainbowcrypt
 
 Process the demux parameters and an output specifier to return the list of all
 stream pids required. 
@@ -593,7 +741,7 @@ Returns an array of HASHes of the form:
 
 sub out_pids
 {
-	my ($demux_params_href, $out_spec, $language_spec, $pids_aref) = @_ ;
+	my ($demux_params_href, $out_spec, $language_spec, $subtitle_language_spec, $pids_aref) = @_ ;
 	my $error = 0 ;
 
 	## default
@@ -634,16 +782,22 @@ sub out_pids
 	}
 	
 	## Subtitle required?
-	if ($out_spec =~ /s/i)
+	if ($out_spec =~ /s/i) #modified by rainbowcrypt
 	{
-		my $pid = $demux_params_href->{'subtitle'} ;
-		push @$pids_aref, {
-			'pid' => $pid, 
-			'pidtype' => 'subtitle', 
+		my @subtitle_pids ;
+		$error = subtitle_pids($demux_params_href, $subtitle_language_spec, \@subtitle_pids) ;
+		return $error if $error ;
+		
+		foreach my $pid (@subtitle_pids)
+		{
+			push @$pids_aref, {
+				'pid' => $pid, 
+				'pidtype' => 'subtitle', 
 					
-			# keep ref to program HASH (used by downstream functions)  
-			'demux_params'	=> $demux_params_href,
-		} if $pid ;
+				# keep ref to program HASH (used by downstream functions)  
+				'demux_params'	=> $demux_params_href,
+			} if $pid ;
+		}
 	}
 	
 	return $error ;
@@ -680,6 +834,42 @@ sub audio_list
 	{
 		my ($lang, $pid) = ($1, $2) ;
 		push @pids, $pid if ($pid != $audio_pid) ;
+	}
+	
+	return @pids ;
+}
+
+#----------------------------------------------------------------------
+
+=item B<sub_list($demux_params_href)> by rainbowcrypt
+
+Process the demux parameters and return a list of additional subtitle
+streams (or an empty list if none available).
+
+For example:
+
+	        { 
+	          subtitle => 601,                   
+	          subtitle_details => DVD_malentendant:601 DVB-francais:602,       
+				...
+	        },
+
+would return the list: ( 602 )
+
+
+=cut
+
+sub sub_list
+{
+	my ($demux_params_href) = @_ ;
+	my @pids ;
+	
+	my $sub_pid = $demux_params_href->{'subtitle'} ;
+	my $details = $demux_params_href->{'subtitle_details'} || "" ;
+	while ($details =~ m/(\S+):(\d+)/g)
+	{
+		my ($lang, $pid) = ($1, $2) ;
+		push @pids, $pid if ($pid != $sub_pid) ;
 	}
 	
 	return @pids ;
@@ -1079,9 +1269,11 @@ print STDERR Data::Dumper->Dump(["_merge_tsid()", $new_href->{'ts'}]) if $DEBUG>
 	{
 		my $new_chans = scalar(keys %{$new_old_info_href->{'new'}{'tsid'}{$tsid}{'pr'}}) ;
 		my $old_chans = 0 ;
-		
-		my $new_strength = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'strength'} ;
-		my $old_strength = 0 ;
+
+		my $new_strength_href = _strength_create($new_old_info_href->{'new'}{'tsid'}{$tsid}) ;
+		my $old_strength_href = _strength_create(0) ;
+#		my $new_strength = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'strength'} ;
+#		my $old_strength = 0 ;
 		
 		my $new_freq = $new_old_info_href->{'new'}{'tsid'}{$tsid}{'freq'} ;
 		my $old_freq ;
@@ -1091,7 +1283,8 @@ print STDERR Data::Dumper->Dump(["_merge_tsid()", $new_href->{'ts'}]) if $DEBUG>
 		{
 			$overlap = 1 ;
 			$old_chans = scalar(keys %{$new_old_info_href->{'old'}{'tsid'}{$tsid}{'pr'}}) ;
-			$old_strength = $new_old_info_href->{'old'}{'tsid'}{$tsid}{'strength'} ;
+#			$old_strength = $new_old_info_href->{'old'}{'tsid'}{$tsid}{'strength'} ;
+			$old_strength_href = _strength_create($new_old_info_href->{'old'}{'tsid'}{$tsid}) ;
 			$old_freq = $new_old_info_href->{'old'}{'tsid'}{$tsid}{'freq'} ;
 			
 			if ($old_freq == $new_freq)
@@ -1118,22 +1311,32 @@ print STDERR Data::Dumper->Dump(["_merge_tsid()", $new_href->{'ts'}]) if $DEBUG>
 			if ($options_href->{'duplicates'})
 			{
 				$duplicate = 1 ;
-				$reason = "[duplicate] TSID $tsid : tsid already exists (new freq $new_freq, old freq $old_freq), creating duplicate" ;
+				$reason = "[duplicate] TSID $tsid : tsid already exists (new freq $new_freq chans $new_chans, old freq $old_freq chans $old_chans), creating duplicate" ;
 			}
 			else
 			{
 				# do we overwrite based on number of channels a multiplex contains OR on the signal strength
 				if (!$options_href->{'num_chans'} || ($new_chans == $old_chans))
 				{
+
 					# overwrite based on signal strength
-					if ($new_strength < $old_strength)
+##					if ($new_strength < $old_strength)
+					if (_strength_cmp($new_strength_href, $old_strength_href) < 0)
 					{
+						my $new_strength_str = _strength_str($new_strength_href);
+						my $old_strength_str = _strength_str($old_strength_href);
+
 						$delete = 1 ;
-						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength < existing freq $old_freq strength $old_strength - new freq ignored" ;
+#						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength ($new_chans chans) < existing freq $old_freq strength $old_strength ($old_chans chans) - new freq ignored" ;
+						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength_str ($new_chans chans) < existing freq $old_freq strength $old_strength_str ($old_chans chans) - new freq ignored" ;
 					}
 					else
 					{
-						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength >= existing freq $old_freq strength $old_strength - using new freq" ;
+						my $new_strength_str = _strength_str($new_strength_href);
+						my $old_strength_str = _strength_str($old_strength_href);
+
+#						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength >= existing freq $old_freq strength $old_strength - using new freq" ;
+						$reason = "[overlap] TSID $tsid : new freq $new_freq strength $new_strength_str ($new_chans chans) >= existing freq $old_freq strength $old_strength_str ($old_chans chans) - using new freq" ;
 					}
 				}
 				
@@ -1373,7 +1576,9 @@ sub _scan_info
 		$ts_info{$tsid} = {
 			'pr'		=> {},
 			'freq'		=> $scan_href->{'ts'}{$tsid}{'frequency'},
-			'strength'	=> $scan_href->{'ts'}{$tsid}{'strength'}
+			'strength'	=> $scan_href->{'ts'}{$tsid}{'strength'},
+			'snr'	=> $scan_href->{'ts'}{$tsid}{'snr'},
+			'ber'	=> $scan_href->{'ts'}{$tsid}{'ber'},
 		} ;
 	}
 	foreach my $chan (keys %{$scan_href->{'pr'}})
@@ -2006,6 +2211,103 @@ sub write_dvb_aliases
 	close $fh ;
 }
 
+
+#============================================================================================
+
+# TSID strength/snr/ber
+
+#----------------------------------------------------------------------
+sub _strength_create
+{
+	my ($href) = @_ ;
+
+	my $strength_href = {
+		'strength'	=> 0,
+		'snr'		=> 0,
+		'ber'		=> undef,
+		
+		'use'		=> undef,
+	} ;
+
+print STDERR "_strength_create()\n" if $DEBUG ;
+
+	if (ref($href) eq 'HASH')
+	{
+		foreach my $field (qw/strength snr ber/)
+		{
+print STDERR " + $field = $href->{$field}\n" if $DEBUG ;
+
+			$strength_href->{$field} = $href->{$field} if exists($href->{$field}) ;
+
+			# Handle special case where value reads back as all 1's
+			if ($strength_href->{$field} == 0xffff)
+			{
+print STDERR " + + clamped dodgy value\n" if $DEBUG ;
+
+				# treat it as a bad value
+				$strength_href->{$field} = 0 ;
+			}
+		}
+		
+#		# Handle special case where strength reads back as all 1's
+#		if ($strength_href->{'strength'} == 0xffff)
+#		{
+#			# treat it as a bad value
+#			$strength_href->{'strength'} = 0 ;
+#		}
+	}
+	
+	return $strength_href ;
+}
+
+
+#----------------------------------------------------------------------
+sub _strength_cmp
+{
+	my ($a_href, $b_href) = @_ ;
+
+	## Work through the fields in order of preference
+	my $use ;
+	foreach my $field (qw/snr strength ber/)
+	{
+		if (defined($a_href->{$field}) && defined($b_href->{$field}) && ($a_href->{$field} > 0) && ($a_href->{$field} > 0))
+		{
+			$use = $field ;
+			last ;
+		}
+	}
+
+print STDERR "_strength_cmp()\n" if $DEBUG ;
+	
+	$use ||= 'strength' ;
+	$a_href->{'use'} = $use ;
+	$b_href->{'use'} = $use ;
+
+	my $a_val = $a_href->{$use} ;
+	my $b_val = $b_href->{$use} ;
+	if ($use eq 'ber')
+	{
+		$a_val = 0xffff - $a_val ;
+		$b_val = 0xffff - $b_val ;
+	}
+
+print STDERR " + using $use - $a_val <=> $b_val\n" if $DEBUG ;
+	
+	return $a_val <=> $b_val ;
+}
+
+#----------------------------------------------------------------------
+sub _strength_str
+{
+	my ($href) = @_ ;
+
+	my $str = "unset" ;
+	if ($href->{'use'})
+	{
+		$str = "$href->{$href->{use}} ($href->{use})" ;
+	}
+	return $str ;
+}
 
 # ============================================================================================
 # END OF PACKAGE

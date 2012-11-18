@@ -107,6 +107,8 @@ dvb_scan(DVB *dvb, int verbose)
 			fh = (HV *)sv_2mortal((SV *)newHV());
 
 			HVS_I(fh, freqi, strength) ;
+			HVS_I(fh, freqi, ber) ;
+			HVS_I(fh, freqi, snr) ;
 			HVS(fh, seen, newSViv(freqi->flags.seen)) ;
 			HVS(fh, tuned, newSViv(freqi->flags.tuned)) ;
 
@@ -266,7 +268,9 @@ dvb_scan(DVB *dvb, int verbose)
 		//         int                  v_pid;             // video
 		//         int                  a_pid;             // audio
 		//         int                  t_pid;             // teletext
+		//         int                  s_pid;             // subtitle //by rainbowcrypt
 		//         char                 audio[PSI_STR_MAX];
+		//         char                 subtitle[PSI_STR_MAX]; //by rainbowcrypt
 		//         char                 net[PSI_STR_MAX];
 		//         char                 name[PSI_STR_MAX];
 		//
@@ -296,12 +300,13 @@ dvb_scan(DVB *dvb, int verbose)
 
  if (DVBT_DEBUG >= 10)
  {
-	fprintf(stderr, "#@p + PNR %d pmt=%d  Video=%d Audio=%d Teletext=%d (type=%d)\n",
+	fprintf(stderr, "#@p + PNR %d pmt=%d  Video=%d Audio=%d Teletext=%d Subtitle=%d (type=%d)\n", /* by rainbowcrypt*/
 		program->pnr,
 		program->p_pid,
 		program->v_pid,
 		program->a_pid,
 		program->t_pid,
+		program->s_pid, /*by rainbowcrypt*/
 		program->type
 	) ;
  }
@@ -317,6 +322,7 @@ dvb_scan(DVB *dvb, int verbose)
 			HVSN_I(rh, 	program, s_pid,		subtitle) ;
 			HVSN_I(rh, 	program, pcr_pid,	pcr) ;
 			HVSN_S(rh, 	program, audio,		audio_details) ;
+			HVSN_S(rh, 	program, subtitle,	subtitle_details) ; /*by rainbowcrypt*/
 			HVS_S(rh, 	program, net) ;
 			HVS_S(rh, 	program, name) ;
 

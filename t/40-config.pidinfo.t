@@ -90,6 +90,7 @@ my %demux = (
 				'pmt'	=> '4171',
 				'type'	=> '1',
 				'audio_details'	=> 'eng:601 eng:602 fra:9999 deu:9900',
+				'subtitle_details' => 'eng:605 eng:706 fra:707 deu:708',
 	},
 	'ITV4'		=> {
 				'video'	=> '601',

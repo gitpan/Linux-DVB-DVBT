@@ -12,6 +12,9 @@
 #include <sys/poll.h>
 #include <sys/types.h>
 
+// for statvfs
+#include <sys/statvfs.h>
+
 #include "dvb_lib.h"
 
 #define DVB_LIB_VER		"2.00"
@@ -51,14 +54,28 @@ static void demux_name(int demux, char *demux_name, int len, char *adapter_name)
 struct devinfo * dvb_probe_frontend(unsigned adap, unsigned fe, int debug)
 {
 struct dvb_frontend_info feinfo;
-char adapter[32];
-char device[32];
+char adapter[512];
+char device[512];
 struct devinfo *info = NULL ;
 int fd;
 
+if (debug)
+{
+	fprintf(stderr, "dvb_probe_frontend(%u, %u)\n", adap, fe) ;
+}
+
 	adapter_name(adap, adapter, sizeof(adapter));
-	frontend_name(fe, device,sizeof(device), adapter) ;
+	frontend_name(fe, device, sizeof(device), adapter) ;
 	fd = open(device, O_RDONLY | O_NONBLOCK);
+if (debug)
+{
+	fprintf(stderr, " + adapter %s, device %s : fd %d (errno %d)\n", adapter, device, fd, errno) ;
+	if (fd < 0)
+	{
+		perror("Failed to open device") ;
+	}
+}
+
 	if (-1 == fd)
 		return info ;
 
@@ -69,10 +86,15 @@ int fd;
 		return info ;
 	}
 
+	if (debug)
+	{
+		fprintf(stderr, " + got FE_GET_INFO\n", adap, fe) ;
+	}
+
 	info = (struct devinfo *)malloc(sizeof(struct devinfo));
 	memset(info,0,sizeof(struct devinfo));
-	strcpy(info->device, adapter);
-	strcpy(info->name, feinfo.name);
+	strncpy(info->device, adapter, sizeof(info->device));
+	strncpy(info->name, feinfo.name, sizeof(info->name));
 	info->adapter_num = adap ;
 	info->frontend_num = fe ;
 	info->flags = (int)feinfo.caps ;
@@ -88,6 +110,11 @@ int fd;
 	info->symbol_rate_tolerance = feinfo.symbol_rate_tolerance ;
 
 	close(fd);
+
+if (debug)
+{
+	fprintf(stderr, " + end of probe\n") ;
+}
 
     return info;
 }
@@ -120,3 +147,20 @@ int setNonblocking(int fd)
 #endif
 }
 
+
+//---------------------------------------------------------------------
+// Use statvfs to return the free space for the disk that contains the
+// specified path.
+//
+// NOTE: To work, the path (file or directory) *MUST* exist!
+//
+unsigned long long get_free_space(const char *path)
+{
+	unsigned long long result = 0;
+	struct statvfs sfs;
+	if ( statvfs (path, &sfs) != -1 )
+	{
+		result = (unsigned long long)sfs.f_bsize * sfs.f_bfree;
+	}
+	return result;
+}
