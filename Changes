@@ -1,5 +1,8 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.18 Fri Nov 18 11:32:00 2012
+	- Bug fix: fixed bug introduced to record() as part of fixing multiplex usage
+
 2.17 Sun Nov 18 19:49:00 2012
 	- Updated dvbt-strength to report error if adapter is not found
 	- Added support for multi-language subtitles (thanks to rainbowcrypt)

@@ -283,9 +283,6 @@ sub print_chan
 		my $duration = "0:0:$duration_secs" ;
 		unlink $file ;
 	
-#		## Select the channel
-#		$dvb->select_channel($chan) ;
-		
 		## Parse command line
 		my @chan_spec ;
 		my $error ;
@@ -308,9 +305,6 @@ sub print_chan
 			local *STDERR ;
 			open(STDERR, '>', \$stderr) or die "Can't open STDERR: $!";
 	
-	
-#			$dvb->record($file, $duration) ;
-
 			## Record
 			$error ||= $dvb->multiplex_record(%multiplex_info) ;
 		} ;

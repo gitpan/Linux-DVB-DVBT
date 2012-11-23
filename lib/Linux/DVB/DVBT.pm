@@ -403,7 +403,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.17';
+our $VERSION = '2.18';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -3144,7 +3144,6 @@ print STDERR "record($file, $duration)" if $DEBUG ;
 	## Set up the multiplex info for this single file
 
 	# create entry for this file 
-	$self->multiplex_close() ;
 	my $href = $self->_multiplex_file_href($file) ;
 	
 	# set time
@@ -3173,6 +3172,7 @@ Linux::DVB::DVBT::prt_data("multiplex_info=", $self->{'_multiplex_info'}) if $DE
 
 	my $rc = $self->multiplex_record(%{$self->{'_multiplex_info'}}) ;
 
+	## Clear multiplex info ready for next time
 	$self->multiplex_close() ;
 
 	return $rc ;
