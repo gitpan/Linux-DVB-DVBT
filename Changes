@@ -1,5 +1,9 @@
 Revision history for Perl extension Linux::DVB::DVBT.
 
+2.19 Mon Mar 18 14:20:00 2013
+	- Added proper support for decoding the AC3 and E-AC3 audio pids during scan, where the descriptors are within a private data section
+	- Added timeout option to scan (to allow for changing the default tuning timeout during scanning)
+
 2.18 Fri Nov 18 11:32:00 2012
 	- Bug fix: fixed bug introduced to record() as part of fixing multiplex usage
 

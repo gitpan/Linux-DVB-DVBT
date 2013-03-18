@@ -13,9 +13,18 @@
 
 #include "parse-mpeg.h"
 
+// dvb_ts_lib
+#include "descriptors/desc_structs.h"
+
 // dvb_lib
 #include "dvb_debug.h"
 #include "dvb_lib.h"
+
+// TODO: Move into dvb_ts_lib
+enum MPEG1_descriptor_ids {
+	DESC_ISO639_LANG                   	= 0x0A,		// ISO13818-1 table 2-39
+} ;
+
 
 static const char *stream_type_s[] = {
     [ 0x00          ] = "reserved",
@@ -620,12 +629,42 @@ void hexdump(char *prefix, unsigned char *data, size_t size)
 
 
 /* ----------------------------------------------------------------------- */
+static void add_audio_pid(struct psi_program *program, int audio_pid, const char *lang)
+{
+    if (!program->a_pid)
+    	program->a_pid = audio_pid;
+
+    int slen = strlen(program->audio);
+    snprintf(program->audio + slen, sizeof(program->audio) - slen,
+	     "%s%.3s:%d", slen ? " " : "", lang ? lang : "xxx", audio_pid);
+}
+
+/* ----------------------------------------------------------------------- */
+static char* get_lang_tag(unsigned char *desc, int dlen)
+{
+    int i,t,l;
+
+    for (i = 0; i < dlen; i += desc[i+1] +2) {
+		t = desc[i];
+		l = desc[i+1];
+
+		if (DESC_ISO639_LANG == t)
+			return (char*) desc+i+2;
+    }
+    return NULL;
+}
+
+
+
+/* ----------------------------------------------------------------------- */
 /* transport streams                                                       */
 
 static void parse_pmt_desc(unsigned char *desc, int dlen,
 			   struct psi_program *program, int pid)
 {
     int i,t,l,slen;
+    char lang[4] = "" ;
+    int audio_pid = -1 ;
 
     for (i = 0; i < dlen; i += desc[i+1] +2) {
 		t = desc[i];
@@ -635,7 +674,25 @@ static void parse_pmt_desc(unsigned char *desc, int dlen,
 	    fprintf(stderr," parse_pmt_desc() pid=%d t=0x%02x\n",pid,t);
 
 		switch (t) {
-			case 0x56:
+			case DESC_ISO639_LANG:
+			{
+				char *langp = get_lang_tag(desc, dlen) ;
+				strncpy(lang, langp, sizeof(lang)) ;
+				if (dvb_debug>5) {
+					fprintf_timestamp(stderr, " + lang=%s\n", lang) ;
+				}
+			}
+			break;
+
+			case DESC_AC3:
+			case DESC_ENHANCED_AC3:
+				audio_pid = pid ;
+				if (dvb_debug>5) {
+					fprintf_timestamp(stderr, " + AC3 pid=%d\n", pid) ;
+				}
+			break;
+
+			case DESC_TELETEXT:
 				if (!program->t_pid)
 					program->t_pid = pid;
 
@@ -644,7 +701,7 @@ static void parse_pmt_desc(unsigned char *desc, int dlen,
 			    }
 			break;
 
-			case 0x59: /* subtitles (pmt) */
+			case DESC_SUBTITLING: /* subtitles (pmt) */
 				if (!program->s_pid)
 					program->s_pid = pid;
 					slen = strlen(program->subtitle); /*by rainbowcrypt*/
@@ -652,24 +709,16 @@ static void parse_pmt_desc(unsigned char *desc, int dlen,
 						"%s%.3s:%d",slen ? " " : "", desc+i+2,pid);/*by rainbowcrypt*/
 				if (dvb_debug>5)
 					fprintf(stderr," subtitles=%3.3s\n",desc+i+2);
-			    break;
+		    break;
 		}
     }
-}
 
-/* ----------------------------------------------------------------------- */
-static char* get_lang_tag(unsigned char *desc, int dlen)
-{
-    int i,t,l;
-
-    for (i = 0; i < dlen; i += desc[i+1] +2) {
-	t = desc[i];
-	l = desc[i+1];
-
-	if (0x0a == t)
-	    return (char*) desc+i+2;
+    // Check to see if we got an audio pid as part of this section
+    if (audio_pid >= 0)
+    {
+    	// add the information to the audio list (and set the audio pid if not already set)
+    	add_audio_pid(program, audio_pid, lang) ;
     }
-    return NULL;
 }
 
 /* ----------------------------------------------------------------------- */
@@ -677,11 +726,13 @@ static void dump_data(unsigned char *data, int len)
 {
     int i;
 
-    for (i = 0; i < len; i++) {
-	if (isprint(data[i]))
-	    fprintf(stderr,"%c", data[i]);
-	else
-	    fprintf(stderr,"\\x%02x", (int)data[i]);
+    for (i = 0; i < len; i++)
+    {
+//		if (isprint(data[i]))
+//			fprintf(stderr,"%c", data[i]);
+//		else
+//			fprintf(stderr,"\\x%02x", (int)data[i]);
+		fprintf(stderr,"0x%02x ", (int)data[i]);
     }
 }
 
@@ -765,7 +816,7 @@ void mpeg_dump_desc(unsigned char *desc, int dlen)
 	    break;
 
 	default:
-	    fprintf(stderr," %02x[",desc[i]);
+	    fprintf(stderr," 0x%02x[",desc[i]);
 	    dump_data(desc+i+2,l);
 	    fprintf(stderr,"]");
 	}
@@ -899,16 +950,12 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
 		case MPEG2Audio:
 		case MPEG2AudioAmd1:
 		case AACAudio:
-
-		    if (!program->a_pid)
-		    	program->a_pid = pid;
 		    lang = get_lang_tag(data + (j+40)/8, dlen);
-		    slen = strlen(program->audio);
-		    snprintf(program->audio + slen, sizeof(program->audio) - slen,
-			     "%s%.3s:%d", slen ? " " : "", lang ? lang : "xxx", pid);
+	    	    add_audio_pid(program, pid, lang) ;
 		    break;
 
 		/* private data */
+		case PrivSec:
 		case PrivData:
 
 		    parse_pmt_desc(data + (j+40)/8, dlen, program, pid);
@@ -922,7 +969,8 @@ int mpeg_parse_psi_pmt(struct psi_program *program, unsigned char *data, int ver
 			    program->v_pid, program->a_pid, program->t_pid, program->s_pid,
 			    tuned_freq);
 		}
-		if (verbose > 2) {
+		if ( (verbose > 2) || (dvb_debug >= 3) ) 
+		{
 		    fprintf(stderr, "   pid 0x%04x (video=%d audio=%d) => %-32s #",
 			    pid, 
 			    program->v_pid, program->a_pid,

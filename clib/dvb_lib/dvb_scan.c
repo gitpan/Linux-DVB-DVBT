@@ -17,6 +17,8 @@
 #include <sys/ioctl.h>
 
 
+#include "tables/si_structs.h"
+
 #include "dvb_scan.h"
 #include "dvb_debug.h"
 
@@ -425,54 +427,6 @@ static int table_data_seen(struct dvbmon *dm, char *name, int id, int version)
 /* ----------------------------------------------------------------------------- */
 /* ----------------------------------------------------------------------------- */
 
-///* ----------------------------------------------------------------------------- */
-//void dvbmon_init_tables(struct dvbmon *dm, int o_nit, int o_sdt, int pmts)
-//{
-//    dm->tablimit = 3 + (o_nit ? 1 : 0) + (o_sdt ? 1 : 0) + pmts;
-//
-//if (dvb_debug >= 15) fprintf(stderr, "dvbmon_init_tables(onit=%d, osdt=%d, pmts=%d) : start\n", o_nit, o_sdt, pmts) ;
-//    
-//	table_add(dm, "pat",   0x00, 0x00, 0);
-//	table_add(dm, "nit",   0x10, 0x40, 0);
-//	table_add(dm, "sdt",   0x11, 0x42, 0);
-//	if (o_nit)
-//		table_add(dm, "nit",   0x10, 0x41, 0);
-//	if (o_sdt)
-//		table_add(dm, "sdt",   0x11, 0x46, 0);
-//
-//if (dvb_debug >= 15) fprintf(stderr, "dvbmon_init_tables() : done\n") ;
-//}
-//
-///* ----------------------------------------------------------------------------- */
-//void dvbmon_reset_tables(struct dvbmon *dm)
-//{
-//    struct list_head  *item, *safe;
-//    struct version    *ver;
-//    struct table      *tab;
-//
-//if (dvb_debug >= 15) fprintf(stderr, "dvbmon_reset_tables() : clear tables\n") ;
-//	// clear out tables
-//    list_for_each_safe(item,safe,&dm->tables) {
-//		tab = list_entry(item, struct table, next);
-//		table_del(dm, tab->pid, tab->sec);
-//    };
-//
-//if (dvb_debug >= 15) fprintf(stderr, "dvbmon_reset_tables() : clear versions\n") ;
-//    list_for_each_safe(item,safe,&dm->versions) {
-//		ver = list_entry(item, struct version, next);
-//		list_del(&ver->next);
-//		free(ver);
-//    };
-//
-//if (dvb_debug >= 15) fprintf(stderr, "dvbmon_reset_tables() : init tables\n") ;
-//	
-//	// restart
-//	dvbmon_init_tables(dm, /* other NIT */ 1,  /* other SDT */ 0, /* # PMTs */ 2) ;
-//
-//if (dvb_debug >= 15) fprintf(stderr, "dvbmon_reset_tables() : done\n") ;
-//	
-//}
-
 
 /* ----------------------------------------------------------------------------- */
 struct dvbmon*
@@ -650,9 +604,9 @@ unsigned char buf[4096];
 
     // Skip processing this table iff it's been seen before AND it's not PAT or NIT
     if (table_data_seen(dm, tab->name, id, version) &&
-    		0x00 != tab->sec /* pat */&&
-    		0x40 != tab->sec /* nit this */ &&
-    		0x41 != tab->sec /* nit other */
+    		SECTION_PAT != tab->sec /* pat */&&
+    		SECTION_NIT_ACTUAL != tab->sec /* nit this */ &&
+    		SECTION_NIT_OTHER != tab->sec /* nit other */
     )
     {
         if (dvb_debug) fprintf(stderr, "Table seen\n") ;
@@ -660,14 +614,14 @@ unsigned char buf[4096];
     }
 
     switch (tab->sec) {
-		case 0x00: /* pat */
+		case SECTION_PAT: /* pat */
 			old_tsid = dm->info->tsid;
 			mpeg_parse_psi_pat(dm->info, buf, dm->verbose, tuned_freq);
 			if (old_tsid != dm->info->tsid)
 				call_callbacks(dm, DVBMON_EVENT_SWITCH_TS, dm->info->tsid, 0);
 			break;
 
-		case 0x02: /* pmt */
+		case SECTION_PMT: /* pmt */
 			pr = psi_program_get(dm->info, dm->info->tsid, id, tuned_freq, 0);
 			if (!pr) {
 				if (dm->verbose) fprintf(stderr,"dvbmon: 404: tsid %d pid %d\n", dm->info->tsid, id);
@@ -676,13 +630,13 @@ unsigned char buf[4096];
 			mpeg_parse_psi_pmt(pr, buf, dm->verbose, tuned_freq);
 			break;
 
-		case 0x40: /* nit this  */
-		case 0x41: /* nit other */
+		case SECTION_NIT_ACTUAL: /* nit this  */
+		case SECTION_NIT_OTHER: /* nit other */
 			mpeg_parse_psi_nit(dm->info, buf, dm->verbose, tuned_freq);
 			break;
 
-		case 0x42: /* sdt this  */
-		case 0x46: /* sdt other */
+		case SECTION_SDT_ACTUAL: /* sdt this  */
+		case SECTION_SDT_OTHER: /* sdt other */
 			mpeg_parse_psi_sdt(dm->info, buf, dm->verbose, tuned_freq);
 			break;
 
@@ -748,25 +702,6 @@ if (dvb_debug)
 
 
 /* ------------------------------------------------------------------------ */
-//clear freq list
-//
-//do
-//{
-//	tune to freq#	+ add to freq list
-//		get TSID + freqi	
-//		if 
-//			freqi == freq# -> tuned=1 ok=1
-//		else
-//			add to freq list
-//		end
-//		
-//		get other freqs
-//		add freqs to freq list
-//	
-//	get next freq
-//}
-//while (freqs left in list)
-//
 static void tty_scan(struct dvb_state *dvb, struct dvbmon *dvbmon)
 {
 time_t tuned;
@@ -1125,10 +1060,7 @@ struct dvbmon *dvb_scan_freqs(struct dvb_state *dvb, int verbose)
 void dvb_scan_init(struct dvb_state *dvb, int verbose)
 {
 	// Initialise the monitor
-//    dvbmon = dvbmon_init(dvb, verbose, /* other NIT */ 1,  /* other SDT */ 1, /* # PMTs */ 2);
     dvbmon = dvbmon_init(dvb, verbose, /* other NIT */ 1,  /* other SDT */ 0, /* # PMTs */ 2);
-//    dvbmon = dvbmon_init(dvb, verbose);
-//    dvbmon_reset_tables(dvbmon) ;
 
 	// set up scanning callback handler
 	dvbmon_add_callback(dvbmon,dvbwatch_tty, dvbmon);

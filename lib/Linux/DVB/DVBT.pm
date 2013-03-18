@@ -403,7 +403,7 @@ our @ISA = qw(Exporter);
 #============================================================================================
 # GLOBALS
 #============================================================================================
-our $VERSION = '2.18';
+our $VERSION = '2.19';
 our $AUTOLOAD ;
 
 #============================================================================================
@@ -2415,6 +2415,7 @@ prt_data("Loop start freq list=", \%freq_list) if $DEBUG>=3 ;
 					}
 				}
 				$tuning_params{'frequency'} = $frequency ;
+				$tuning_params{'timeout'} = $self->timeout() ;
 				
 				# set tuning
 				print STDERR "Setting frequency: $frequency Hz\n" if $self->verbose ;
@@ -5455,7 +5456,7 @@ Please report bugs using L<http://rt.cpan.org>.
 
 =head1 CONTRIBUTORS
 
-rainbowcrypt - Thanks for adding support for multi-language subtitles
+Jean-Michel Masereel - Thanks for adding support for multi-language subtitles
 
 =head1 BUGS
 

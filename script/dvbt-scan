@@ -7,12 +7,13 @@ use Getopt::Long qw/:config no_ignore_case/ ;
 
 use Linux::DVB::DVBT ;
 
-our $VERSION = "1.004" ;
+our $VERSION = "1.005" ;
 
 
 	my ($help, $man, $DEBUG, $VERBOSE, $config, $clean, $merge, $check, $noprune, $adap, $list_countries) ;
 	my ($allow_duplicates, $prefer_more_chans) ;
 	my ($DEBUG_PERL, $DEBUG_DVB) ;
+	my $timeout = 90 ;
 	GetOptions('v|verbose=i' => \$VERBOSE,
 			   'debug=i' => \$DEBUG,
 			   'dbg-perl=i' => \$DEBUG_PERL,
@@ -30,6 +31,7 @@ our $VERSION = "1.004" ;
 			   'check' => \$check,
 			   'dup=i' => \$allow_duplicates,
 			   'more_chans=i' => \$prefer_more_chans,
+			   'timeout=i' => \$timeout,
 			   ) or pod2usage(2) ;
 
 	# force checking on
@@ -68,6 +70,7 @@ our $VERSION = "1.004" ;
 	##
 	my $dvb = Linux::DVB::DVBT->new(
 		'adapter'	=> $adap,
+		'timeout'	=> $timeout,
 	) ;
 
 	# set options
